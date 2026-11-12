@@ -1,6 +1,8 @@
 // Every item in the game. The server is the only authority on who owns what;
 // the client uses this table for names, icons and tooltips.
 
+import { BIRDS } from './birds.ts';
+
 export type ItemCategory =
   | 'material'
   | 'tool'
@@ -9,7 +11,8 @@ export type ItemCategory =
   | 'meal'
   | 'furniture'
   | 'clothing'
-  | 'plant';
+  | 'plant'
+  | 'bird';
 
 export type ItemTag =
   | 'wood'
@@ -27,9 +30,10 @@ export type ItemTag =
   | 'cozy'
   | 'clothing'
   | 'plant'
+  | 'bird'
   | 'tool';
 
-export type ToolKind = 'axe' | 'shovel' | 'rod' | 'pick' | 'spade';
+export type ToolKind = 'axe' | 'shovel' | 'rod' | 'net';
 
 export interface ItemDef {
   id: string;
@@ -64,8 +68,8 @@ const list: ItemDef[] = [
   { id: 'fishing_rod', name: 'Fishing Rod', icon: '🎣', category: 'tool', tags: ['tool'], sell: 40, stack: 1, tool: { kind: 'rod', power: 1 } },
   { id: 'iron_axe', name: 'Iron Axe', icon: '🪓', category: 'tool', tags: ['tool'], sell: 200, buy: 600, stack: 1, tool: { kind: 'axe', power: 2 } },
   { id: 'iron_shovel', name: 'Iron Shovel', icon: '⛏️', category: 'tool', tags: ['tool'], sell: 200, buy: 600, stack: 1, tool: { kind: 'shovel', power: 2 } },
-  { id: 'landscaping_pick', name: 'Landscaping Pick', icon: '⛰️', category: 'tool', tags: ['tool'], sell: 250, stack: 1, tool: { kind: 'pick', power: 1 } },
-  { id: 'water_spade', name: 'Waterscaping Spade', icon: '💧', category: 'tool', tags: ['tool'], sell: 250, stack: 1, tool: { kind: 'spade', power: 1 } },
+  { id: 'bird_net', name: 'Bird Net', icon: '🥅', category: 'tool', tags: ['tool'], sell: 40, stack: 1, tool: { kind: 'net', power: 1 } },
+  { id: 'silk_net', name: 'Silk Bird Net', icon: '🥅', category: 'tool', tags: ['tool'], sell: 180, buy: 550, stack: 1, tool: { kind: 'net', power: 2 } },
   { id: 'pro_rod', name: 'Pro Fishing Rod', icon: '🎣', category: 'tool', tags: ['tool'], sell: 180, buy: 550, stack: 1, tool: { kind: 'rod', power: 2 } },
 
   // ── Foraged food ─────────────────────────────────────────
@@ -152,6 +156,9 @@ export const FISH: FishDef[] = [
 
 for (const f of FISH) {
   list.push({ id: f.id, name: f.name, icon: f.icon, category: 'fish', tags: ['fish'], sell: f.sell });
+}
+for (const b of BIRDS) {
+  list.push({ id: b.id, name: b.name, icon: b.icon, category: 'bird', tags: ['bird'], sell: b.sell });
 }
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(list.map((i) => [i.id, i]));

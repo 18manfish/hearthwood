@@ -149,3 +149,14 @@ h1, h2, h3 { margin: 0; }
 .hud.pad .hotbar::before { content: 'LB'; }
 .hud.pad .hotbar::after { content: 'RB'; }
 .hud.pad .slot .k, .hud.pad .iconbtn .key { display: none; }
+
+/* Hotbar slot picker & editor */
+.slot.empty { background: rgba(255, 253, 247, 0.45); border: 3px dashed rgba(59, 47, 37, 0.25); }
+.slot-picker { position: absolute; width: 180px; display: flex; flex-direction: column; gap: 4px; padding: 8px; background: rgba(255, 253, 247, 0.97); border-radius: 14px; box-shadow: var(--shadow); z-index: 40; }
+.slot-picker .btn { justify-content: flex-start; text-align: left; }
+.slot-picker .btn.off { opacity: 0.55; }
+.hotbar-edit { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-bottom: 6px; }
+.hotbar-edit select { width: 100%; }
+/* Album */
+.album .tile.unknown { background: rgba(59, 47, 37, 0.06); }
+.album .tile.unknown .ico { filter: grayscale(1); opacity: 0.6; }

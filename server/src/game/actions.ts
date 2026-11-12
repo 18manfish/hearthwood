@@ -6,7 +6,7 @@ import {
   BIOMES, BUILDINGS, ENTERABLE, SHOP_TYPES, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
   VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE,
   FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_TALK, FRIENDSHIP_MAX, FRIENDSHIP_BIRTHDAY_BONUS, HAIR_STYLES,
-  Rng, Tile, PATH_REACH, TERRA_REACH, TERRA_TOOL, terraformError, terraformChanges, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
+  Rng, Tile, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
   type Action, type BuildingType, type TalkView, type WorldObject, type Building,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
@@ -15,6 +15,10 @@ import type { Room } from './Room.ts';
 import type { Session } from './Session.ts';
 import type { PlayerRecord } from '../types.ts';
 import * as inv from './inventory.ts';
+import { albumOf } from './Game.ts';
+import { logger } from '../log.ts';
+
+const log = logger('action');
 
 export interface ActionResult {
   ok: boolean;
@@ -273,7 +277,8 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     if (ctx.now > c.biteAt + c.window + config.netGraceMs) return { ok: true, msg: 'Too slow – it got away.' };
     const gained: Record<string, number> = {};
     if (!give(ctx, gained, c.fish!, 1)) return fail('Your pockets are full of those.');
-    ctx.s.send({ t: 'fish', castId: c.id, ok: true, item: c.fish!, msg: `You caught a ${ITEMS[c.fish!].name}!` });
+    const first = recordCatch(ctx, 'fish', c.fish!);
+    ctx.s.send({ t: 'fish', castId: c.id, ok: true, item: c.fish!, msg: `You caught a ${ITEMS[c.fish!].name}!${first ? ' 📖 New album entry!' : ''}` });
     return { ok: true, gained };
   },
 
@@ -313,23 +318,8 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     }
     if (a.type === 'villager_house' && ctx.room.villagers.size + ctx.room.totalCount('villager_house') - ctx.room.completedCount('villager_house') >= MAX_VILLAGERS)
       return fail('Your village is full.');
-    if (!ctx.room.grid.canPlace(a.x, a.z, def.w, def.h)) return fail('Not enough free space there.');
-    if (ENTERABLE.includes(a.type)) {
-      // The door (south side) must open onto walkable ground on the same cliff level.
-      const lvl = ctx.room.grid.level(a.x, a.z);
-      for (let dx = 0; dx < def.w; dx++) {
-        const tx = a.x + dx, tz = a.z + def.h;
-        if (!ctx.room.grid.walkableTile(tx, tz) || ctx.room.grid.level(tx, tz) !== lvl || ctx.room.grid.ramp(tx, tz) >= 0) return fail('The door needs open ground in front of it.');
-      }
-    }
-    // Must be built close to the player and not on top of anyone.
-    const cx = a.x + def.w / 2;
-    const cz = a.z + def.h / 2;
-    if (Math.hypot(ctx.s.x - cx, ctx.s.z - cz) > 6) return fail('Move closer to where you want to build.');
-    for (const other of ctx.room.sessions) {
-      if (other.x >= a.x - 0.3 && other.x <= a.x + def.w + 0.3 && other.z >= a.z - 0.3 && other.z <= a.z + def.h + 0.3)
-        return fail('Someone is standing there.');
-    }
+    const where = placementError(ctx, a.type, a.x, a.z, def.w, def.h);
+    if (where) return fail(where);
     if (!inv.removeAll(ctx.p, def.cost)) return fail('Not enough materials.');
     const b: Building = {
       id: ctx.room.newId('b'), type: a.type, x: a.x, z: a.z, w: def.w, h: def.h,
@@ -338,6 +328,66 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     ctx.room.addBuilding(b);
     const mins = Math.round((def.buildMinutes) / config.timeFactor);
     return { ok: true, msg: def.buildMinutes ? `Construction started! Ready in about ${mins >= 60 ? `${Math.round(mins / 60)}h` : `${Math.max(1, mins)} min`}.` : `${def.name} built!` };
+  },
+
+  relocate(ctx, a) {
+    const room = ctx.room;
+    if (!room.canBuild(ctx.p.id)) return fail('You can only move buildings on your own island.');
+    const b = room.buildings.get(a.id);
+    if (!b) return fail('That building isn’t there any more.');
+    if (BUILDINGS[b.type].fixed || b.type === 'dock') return fail('That can’t be moved.');
+    if (b.x === a.x && b.z === a.z) return fail('It’s already there.');
+    const cost = relocationCost(b.w, b.h);
+    if (ctx.p.coins < cost) return fail(`Moving it costs ${cost} coins.`);
+    // Check the new spot as if the building weren't standing where it is now.
+    room.grid.removeBuilding(b);
+    const where = placementError(ctx, b.type, a.x, a.z, b.w, b.h);
+    room.grid.addBuilding(b);
+    if (where) return fail(where);
+    for (const v of room.villagers.values())
+      if (v.x >= a.x - 0.3 && v.x <= a.x + b.w + 0.3 && v.z >= a.z - 0.3 && v.z <= a.z + b.h + 0.3) return fail('A villager is in the way.');
+    ctx.p.coins -= cost;
+    room.moveBuilding(b, a.x, a.z);
+    log.info('building moved', { player: ctx.p.id, island: room.id, building: b.type, to: [a.x, a.z], cost });
+    return { ok: true, msg: `${BUILDINGS[b.type].name} moved! (−${cost} coins)` };
+  },
+
+  permit(ctx, a) {
+    const def = PERMIT_BY_ID[a.id];
+    if (!nearCompleted(ctx, ['town_hall'])) return fail('Permits are sold at the Town Hall counter.');
+    if (!ctx.room.ownsHere(ctx.p.id)) return fail('Buy permits at your own Town Hall.');
+    const owned = (ctx.p.permits ??= []);
+    if (owned.includes(def.id)) return fail('You already have that permit.');
+    if (ctx.p.coins < def.price) return fail(`The ${def.name} costs ${def.price} coins.`);
+    ctx.p.coins -= def.price;
+    owned.push(def.id);
+    ctx.game.sendSelf(ctx.s);
+    log.info('permit bought', { player: ctx.p.id, permit: def.id });
+    return { ok: true, msg: `${def.icon} ${def.name} granted! Pick it in your hotbar or the Build menu.` };
+  },
+
+  catch(ctx, a) {
+    const o = ctx.room.objects.get(a.id);
+    if (!o || o.kind !== 'bird' || !o.bird) return fail('It flew away.');
+    if (!near(ctx, o, config.reach + 0.4)) return fail('Too far away.');
+    const net = inv.toolPower(ctx.p, 'net');
+    if (!net) return fail('You need a bird net.');
+    if (ctx.now - ctx.s.lastActAt < HARVEST_COOLDOWN_MS) return fail('Slow down!');
+    ctx.s.lastActAt = ctx.now;
+    const def = BIRD_BY_ID[o.bird];
+    if (!def) return fail('It flew away.');
+    if (!inv.canAdd(ctx.p, def.id, 1)) return fail('Your pockets are full of those.');
+    const rng = rngFor(ctx);
+    if (!rng.chance(birdCatchChance(def, net))) {
+      ctx.room.removeObject(o.id, 'fly');
+      return { ok: true, msg: `The ${def.name} flew off!` };
+    }
+    ctx.room.removeObject(o.id);
+    const gained: Record<string, number> = {};
+    give(ctx, gained, def.id, 1);
+    const first = recordCatch(ctx, 'birds', def.id);
+    log.debug('bird caught', { player: ctx.p.id, bird: def.id });
+    return { ok: true, gained, msg: `You caught a ${def.name}!${first ? ' 📖 New album entry!' : ''}` };
   },
 
   demolish(ctx, a) {
@@ -545,9 +595,8 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     const grid = room.grid;
     if (!grid.inBounds(a.x, a.z)) return fail('Out of bounds.');
     if (distToTile(ctx.s.x, ctx.s.z, a.x, a.z) > TERRA_REACH) return fail('Too far away.');
-    const tool = TERRA_TOOL[a.op];
-    if (!inv.toolPower(ctx.p, tool)) return fail(tool === 'pick' ? 'You need a Landscaping Pick.' : 'You need a Waterscaping Spade.');
-    if (!config.devFast && room.completedCount('town_hall', ctx.now) < 1) return fail('Your island needs a Town Hall before you can reshape it.');
+    const permit = PERMIT_BY_ID[TERRA_PERMIT[a.op]];
+    if (!(ctx.p.permits ?? []).includes(permit.id)) return fail(`You need a ${permit.name} – buy one at the Town Hall.`);
     if (ctx.now - ctx.s.lastPaveAt < 120) return fail('Slow down!');
     ctx.s.lastPaveAt = ctx.now;
     const err = terraformError(grid, a.op, a.x, a.z, a.dir ?? -1);
@@ -576,6 +625,37 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     return { ok: true, gained };
   },
 };
+
+/** Where a building of this size may not go (null = fine). Shared by building and moving. */
+function placementError(ctx: Ctx, type: BuildingType, x: number, z: number, w: number, h: number): string | null {
+  const grid = ctx.room.grid;
+  if (!grid.canPlace(x, z, w, h)) return 'Not enough free space there.';
+  if (ENTERABLE.includes(type)) {
+    // The door (south side) must open onto walkable ground on the same cliff level.
+    const lvl = grid.level(x, z);
+    for (let dx = 0; dx < w; dx++) {
+      const tx = x + dx, tz = z + h;
+      if (!grid.walkableTile(tx, tz) || grid.level(tx, tz) !== lvl || grid.ramp(tx, tz) >= 0) return 'The door needs open ground in front of it.';
+    }
+  }
+  // Must be close to the player and not on top of anyone.
+  if (Math.hypot(ctx.s.x - (x + w / 2), ctx.s.z - (z + h / 2)) > 6) return 'Move closer to where you want it.';
+  for (const other of ctx.room.sessions) {
+    if (other.x >= x - 0.3 && other.x <= x + w + 0.3 && other.z >= z - 0.3 && other.z <= z + h + 0.3) return 'Someone is standing there.';
+  }
+  return null;
+}
+
+/** Add a catch to the album; returns true if it's a new entry. */
+function recordCatch(ctx: Ctx, kind: 'fish' | 'birds', id: string): boolean {
+  const album = albumOf(ctx.p);
+  const e = album[kind][id];
+  if (e) e.n++;
+  else album[kind][id] = { n: 1, first: ctx.now, biome: ctx.room.biome };
+  ctx.game.store.markPlayer(ctx.p.id);
+  ctx.s.send({ t: 'album', album });
+  return !e;
+}
 
 function paveGuard(ctx: Ctx, x: number, z: number): ActionResult | null {
   if (!ctx.room.canBuild(ctx.p.id)) return fail('You can only lay paths on your own island.');

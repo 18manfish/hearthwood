@@ -4,7 +4,7 @@ import './style.css';
 import { type Action, type ServerMessage } from '@hearthwood/shared';
 import { net } from './net.ts';
 import { set, state } from './state.ts';
-import { World, type Tool } from './game/World.ts';
+import { World } from './game/World.ts';
 import { Hud } from './ui/hud.ts';
 import { showCreator } from './ui/creator.ts';
 import { h, clear } from './ui/dom.ts';
@@ -48,7 +48,9 @@ function confirmGhost() {
   const g = world?.ghost;
   if (!g || !hud) return;
   if (!g.ok) return hud.toast('You can’t place it there.', 'warn');
-  const p = g.type === 'build'
+  const p = g.type === 'build' && g.moving
+    ? hud.act({ k: 'relocate', id: g.moving, x: g.tx, z: g.tz })
+    : g.type === 'build'
     ? hud.act({ k: 'build', type: g.building, x: g.tx, z: g.tz })
     : hud.act({ k: 'place', item: g.item, x: g.tx, z: g.tz, rot: g.rot });
   const keep = g.type === 'place';
@@ -99,6 +101,12 @@ async function interact() {
       if (o.kind === 'stump') { world.swing(); return hud.act({ k: 'dig', id: o.id }); }
       if (o.kind === 'rock') { world.swing(); return hud.act({ k: 'hit', id: o.id }); }
       if (o.kind === 'furniture') return;
+      if (o.kind === 'bird') {
+        if (!(state.inv.bird_net || state.inv.silk_net)) return hud.toast('You need a bird net – craft one from wood and fiber.', 'warn');
+        if (world.tool !== 'net') return hud.toast('Select the bird net in your hotbar first.', 'warn');
+        world.swing();
+        return hud.act({ k: 'catch', id: o.id });
+      }
       return hud.act({ k: 'forage', id: o.id });
     }
     case 'villager':
@@ -131,8 +139,10 @@ async function interact() {
 /** Escape / Ⓑ: cancel placement, close dialog or menu (shared by keyboard and controller). */
 function back() {
   if (!world || !hud) return;
-  if (world.paint) world.stopPaint();
-  else if (world.ghost) world.cancelGhost();
+  if (world.paint) {
+    world.stopPaint();
+    if (world.tool === 'pick' || world.tool === 'spade') hud.selectTool('hand');
+  } else if (world.ghost) world.cancelGhost();
   else if (hud.talkingTo) hud.closeDialog();
   else hud.close();
   clearPadFocus();
@@ -140,7 +150,7 @@ function back() {
 }
 
 function bindKeys() {
-  const toolKeys: Record<string, Tool> = { Digit1: 'hand', Digit2: 'axe', Digit3: 'shovel', Digit4: 'rod', Digit5: 'sapling' };
+  const slotKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'];
   window.addEventListener('keydown', (e) => {
     if (!world || !hud) return;
     if (hud.isTyping()) return;
@@ -156,16 +166,20 @@ function bindKeys() {
     hud.setPadMode(false);
     if (world) world.padAim = false;
     if (e.code === 'Escape') return back();
-    const panelKeys: Record<string, Parameters<Hud['toggle']>[0]> = { KeyG: 'goals', KeyI: 'bag', KeyC: 'craft', KeyB: 'build', KeyM: 'map', KeyO: 'friends', KeyL: 'mail', KeyV: 'island' };
+    const panelKeys: Record<string, Parameters<Hud['toggle']>[0]> = { KeyG: 'goals', KeyI: 'bag', KeyC: 'craft', KeyB: 'build', KeyM: 'map', KeyO: 'friends', KeyL: 'mail', KeyV: 'island', KeyK: 'album' };
     if (panelKeys[e.code]) return hud.toggle(panelKeys[e.code]);
     if (hud.panel) return; // menus open: no world input
-    if (toolKeys[e.code]) return hud.selectTool(toolKeys[e.code]);
+    const slot = slotKeys.indexOf(e.code);
+    if (slot >= 0) return hud.selectSlot(slot);
     if (e.code === 'KeyE' || e.code === 'Space') {
       e.preventDefault();
       if (!e.repeat) interact();
       return;
     }
-    if (e.code === 'KeyR') return world.rotateGhost();
+    if (e.code === 'KeyR') {
+      if (world.paint?.terra) return hud.cycleTerra();
+      return world.rotateGhost();
+    }
     if (e.code === 'KeyF' && world.target?.kind === 'object' && world.target.o.kind === 'furniture') {
       hud.act({ k: 'pickup', id: world.target.o.id });
       return;
@@ -183,7 +197,6 @@ function bindKeys() {
 //   Ⓧ pockets   Ⓨ pick up furniture / rotate while placing
 //   LB / RB cycle tools   LT build menu   RT craft menu
 //   START goals   SELECT world map   R3 debug menu   Right stick zoom / scroll menus
-const TOOLS: Tool[] = ['hand', 'axe', 'shovel', 'rod', 'sapling'];
 let bMoved = false;
 const menuOpen = () => !world || !!document.querySelector('.panel-back') || !!hud?.talkingTo;
 
@@ -230,15 +243,14 @@ new GamepadInput({
         break;
       case 'X': hud.toggle('bag'); break;
       case 'Y':
-        if (world.ghost?.type === 'place') world.rotateGhost();
+        if (world.paint?.terra) hud.cycleTerra();
+        else if (world.ghost?.type === 'place') world.rotateGhost();
         else if (world.target?.kind === 'object' && world.target.o.kind === 'furniture') hud.act({ k: 'pickup', id: world.target.o.id });
         break;
       case 'LB':
-      case 'RB': {
-        const i = TOOLS.indexOf(world.tool);
-        hud.selectTool(TOOLS[(i + (b === 'RB' ? 1 : TOOLS.length - 1)) % TOOLS.length]);
+      case 'RB':
+        hud.cycleSlot(b === 'RB' ? 1 : -1);
         break;
-      }
       case 'LT': hud.toggle('build'); break;
       case 'RT': hud.toggle('craft'); break;
       case 'START': hud.toggle('goals'); break;
@@ -287,10 +299,15 @@ net.on((m: ServerMessage) => {
       set('self', m.you);
       set('inv', m.you.inv);
       set('coins', m.you.coins);
+      set('album', m.you.album);
       startGame();
       return;
     case 'self':
       set('self', m.you);
+      set('coins', m.you.coins);
+      return;
+    case 'album':
+      set('album', m.album);
       return;
     case 'inv':
       set('coins', m.coins);

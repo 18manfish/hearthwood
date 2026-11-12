@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile,
+  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 
@@ -21,6 +21,8 @@ let failures = 0;
 /** Terraformed tile (and its island) – checked in the save file at the end. */
 let terraSpot: [number, number] | null = null;
 let terraIsland = '';
+let hotbarPlayer = '';
+let hotbarExpected: unknown[] = [];
 function check(cond: unknown, label: string) {
   if (cond) console.log(`  ✔ ${label}`);
   else {
@@ -41,6 +43,7 @@ class Bot {
   seq = 0;
   inv: Record<string, number> = {};
   self: any;
+  coins = 0;
   constructor(readonly name: string) {}
 
   async connect() {
@@ -79,12 +82,17 @@ class Bot {
       this.objects.delete(id);
     }
     if (m.t === 'bAdd') for (const b of m.b) {
-      if (!this.room.buildings.find((x) => x.id === b.id)) {
-        this.room.buildings.push(b);
-        this.grid.addBuilding(b);
-      }
+      const i = this.room.buildings.findIndex((x) => x.id === b.id);
+      if (i >= 0) {
+        this.grid.removeBuilding(this.room.buildings[i]);
+        this.room.buildings[i] = b;
+      } else this.room.buildings.push(b);
+      this.grid.addBuilding(b);
     }
-    if (m.t === 'inv') this.inv = m.inv;
+    if (m.t === 'inv') {
+      this.inv = m.inv;
+      this.coins = m.coins;
+    }
     if (m.t === 'paths') for (const [x, z, t] of m.l) this.grid.paths[z * this.grid.size + x] = t;
     if (m.t === 'terrain') applyTerrain(this.grid, m.l);
     if (m.t === 'welcome' || m.t === 'self') this.self = m.you;
@@ -203,10 +211,16 @@ class Bot {
 
 async function main() {
   const server = spawn(process.execPath, ['--import', 'tsx', path.join(here, '../src/index.ts')], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, DEV_FAST: '1' },
+    env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, DEV_FAST: '1', LOG_LEVEL: process.env.LOG_LEVEL ?? 'error' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
-  await new Promise<void>((res) => server.stdout!.on('data', (d) => String(d).includes('listening') && res()));
+  server.stdout!.resume(); // logs go to stdout; we don't need them
+  // Wait until the server answers.
+  for (let i = 0; i < 100; i++) {
+    const ok = await fetch(`${BASE}/api/health`).then((r) => r.ok).catch(() => false);
+    if (ok) break;
+    await sleep(100);
+  }
 
   try {
     console.log('Accounts & character creation');
@@ -354,23 +368,30 @@ async function main() {
       const g = A.grid;
       const flat = (x: number, z: number) => g.tile(x, z) === Tile.Ground && g.level(x, z) === 0 && g.occupied[z * g.size + x] === 0 && !g.reserved[z * g.size + x] && !g.path(x, z);
       let spot: [number, number] | null = null;
-      for (let r = 2; r <= 5 && !spot; r++)
-        for (let dz = -r; dz <= r && !spot; dz++)
-          for (let dx = -r; dx <= r && !spot; dx++) {
-            const x = Math.floor(A.x) + dx, z = Math.floor(A.z) + dz;
-            let ok = true;
-            for (let zz = z - 2; zz <= z + 3 && ok; zz++) for (let xx = x - 2; xx <= x + 2 && ok; xx++) ok = flat(xx, zz);
-            const away = (tx: number, tz: number) => Math.hypot(tx + 0.5 - A.x, tz + 0.5 - A.z) > 1.3;
-            if (ok && away(x, z) && away(x, z + 1) && distToTile(A.x, A.z, x, z) <= TERRA_REACH - 0.5 && distToTile(A.x, A.z, x, z + 1) <= TERRA_REACH - 0.5) spot = [x, z];
-          }
+      // Any flat patch on the island, nearest first; then walk up beside it.
+      const patches: [number, number][] = [];
+      for (let z = 3; z < g.size - 4; z++)
+        for (let x = 3; x < g.size - 4; x++) {
+          let ok = true;
+          for (let zz = z - 2; zz <= z + 3 && ok; zz++) for (let xx = x - 2; xx <= x + 2 && ok; xx++) ok = flat(xx, zz);
+          if (ok) patches.push([x, z]);
+        }
+      patches.sort((p, q) => Math.hypot(p[0] - A.x, p[1] - A.z) - Math.hypot(q[0] - A.x, q[1] - A.z));
+      for (const [x, z] of patches.slice(0, 15)) {
+        if (!(await A.walkTo(x + 3, z, false).catch(() => false))) continue;
+        const away = (tx: number, tz: number) => Math.hypot(tx + 0.5 - A.x, tz + 0.5 - A.z) > 1.3;
+        if (away(x, z) && away(x, z + 1) && distToTile(A.x, A.z, x, z) <= TERRA_REACH - 0.5 && distToTile(A.x, A.z, x, z + 1) <= TERRA_REACH - 0.5) {
+          spot = [x, z];
+          break;
+        }
+      }
       check(!!spot, 'found a flat spot to terraform');
       if (spot) {
         const [tx, tz] = spot;
         const noTool = await A.act({ k: 'terra', op: 'raise', x: tx, z: tz });
-        check(!noTool.ok && /Pick/.test(noTool.err ?? ''), 'terraforming needs a Landscaping Pick');
-        A.send({ t: 'dev', cmd: 'give', args: ['landscaping_pick', '1'] });
-        A.send({ t: 'dev', cmd: 'give', args: ['water_spade', '1'] });
-        await sleep(300);
+        check(!noTool.ok && /Permit/.test(noTool.err ?? ''), 'terraforming needs a Town Hall permit');
+        A.send({ t: 'dev', cmd: 'permits', args: [] });
+        await A.wait('self', (m) => m.you.permits.length === 2);
         const me = await A.act({ k: 'terra', op: 'raise', x: Math.floor(A.x), z: Math.floor(A.z) });
         check(!me.ok, 'cannot raise the ground you stand on');
         const up = await A.act({ k: 'terra', op: 'raise', x: tx, z: tz });
@@ -397,6 +418,78 @@ async function main() {
         terraSpot = spot;
         terraIsland = A.room.id;
       }
+    }
+
+    console.log('Birds & album');
+    {
+      const birdsSeen = () => [...A.objects.values()].filter((o) => o.kind === 'bird');
+      A.send({ t: 'dev', cmd: 'birds', args: ['5'] });
+      await A.wait('oAdd', (m) => m.o.some((o) => o.kind === 'bird')).catch(() => null);
+      await sleep(200);
+      check(birdsSeen().length > 0, `birds landed (${birdsSeen().length})`);
+      const first = birdsSeen()[0];
+      if (first) {
+        await A.walkTo(first.x + 1, first.z, false).catch(() => false);
+        const noNet = await A.act({ k: 'catch', id: first.id });
+        check(!noNet.ok && /net/.test(noNet.err ?? ''), 'catching birds needs a net');
+      }
+      A.send({ t: 'dev', cmd: 'give', args: ['bird_net', '1'] });
+      await sleep(300);
+      let caught: string | null = null;
+      for (let tries = 0; tries < 12 && !caught; tries++) {
+        let b = birdsSeen()[0];
+        if (!b) {
+          A.send({ t: 'dev', cmd: 'birds', args: ['4'] });
+          await A.wait('oAdd', (m) => m.o.some((o) => o.kind === 'bird')).catch(() => null);
+          await sleep(150);
+          b = birdsSeen()[0];
+          if (!b) continue;
+        }
+        let reached = false;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!reached) reached = await A.walkTo(b.x + dx, b.z + dz, false).catch(() => false);
+        const r = await A.act({ k: 'catch', id: b.id });
+        if (r.ok && r.gained && Object.keys(r.gained).some((k) => k.startsWith('bird_'))) caught = Object.keys(r.gained)[0];
+        else await sleep(200);
+      }
+      check(!!caught, `caught a bird (${caught})`);
+      const album = A.inbox.filter((m) => m.t === 'album').pop() as Extract<ServerMessage, { t: 'album' }> | undefined;
+      check(!!caught && !!album?.album.birds[caught], 'the bird is in the album');
+      check(!birdsSeen().some((o) => o.id === caught), 'caught bird is gone from the island');
+    }
+
+    console.log('Hotbar');
+    {
+      const slots = ['net', 'hand', 'axe', null, 'rod', 'shovel', 'sapling', 'pick', 'spade', null];
+      A.send({ t: 'hotbar', slots });
+      A.send({ t: 'hotbar', slots: ['axe', 'axe', 'bogus'] }); // duplicates / unknown tools are cleaned
+      await sleep(200);
+      A.send({ t: 'hotbar', slots });
+      await sleep(200);
+      hotbarPlayer = A.self.id;
+      hotbarExpected = slots;
+    }
+
+    console.log('Moving buildings');
+    {
+      const fire = A.room.buildings.find((b) => b.type === 'campfire')!;
+      A.send({ t: 'dev', cmd: 'coins', args: ['2000'] });
+      await sleep(300);
+      const coins0 = A.coins;
+      let moved = false;
+      for (const [x, z] of A.freeSpots('campfire').filter(([x, z]) => Math.hypot(x - fire.x, z - fire.z) > 3).slice(0, 30)) {
+        if (!(await A.walkTo(x - 1, z, false))) continue;
+        const r = await A.act({ k: 'relocate', id: fire.id, x, z });
+        if (!r.ok) continue;
+        await sleep(200);
+        const now = A.room.buildings.find((b) => b.id === fire.id)!;
+        check(now.x === x && now.z === z, 'campfire moved to its new spot');
+        check(A.coins === coins0 - relocationCost(fire.w, fire.h), 'moving cost coins');
+        moved = true;
+        break;
+      }
+      check(moved, 'a building can be moved');
+      const dock = A.room.buildings.find((b) => b.type === 'dock')!;
+      check(!(await A.act({ k: 'relocate', id: dock.id, x: 5, z: 5 })).ok, 'the dock cannot be moved');
     }
 
     console.log('Tent interior');
@@ -450,8 +543,11 @@ async function main() {
     if (counter) {
       await A.walkTo(counter.x, counter.z + 1, false);
       check((await A.act({ k: 'sell', item: 'stone', n: 1 })).ok, 'selling works at the Town Hall counter');
+      const again = await A.act({ k: 'permit', id: 'permit_cliff' });
+      check(!again.ok && /already/.test(again.err ?? ''), 'permits are sold at the Town Hall counter (no double purchase)');
     }
     await exitTo(A);
+    check(/Town Hall/.test((await A.act({ k: 'permit', id: 'permit_water' })).err ?? ''), 'permits can only be bought at the counter');
     const vHouse = A.room.buildings.find((b) => b.type === 'villager_house' && b.villagerId);
     if (vHouse) {
       const vIn = await enterAndBack(A, vHouse);
@@ -659,6 +755,12 @@ async function main() {
       const rec = JSON.parse(fs.readFileSync(path.join(dataDir, 'islands', `${terraIsland}.json`), 'utf8'));
       const lv = rec.terrain ? decodeTiles(rec.terrain.levels)[terraSpot[1] * (rec.size ?? 48) + terraSpot[0]] : -1;
       check(rec.size === 72 && lv === 1, 'terraformed terrain is saved with the island');
+      check(!rec.objects.some((o: { kind: string }) => o.kind === 'bird'), 'birds are not saved with the island');
+    }
+    if (hotbarPlayer) {
+      const pl = JSON.parse(fs.readFileSync(path.join(dataDir, 'players', `${hotbarPlayer}.json`), 'utf8'));
+      check(JSON.stringify(pl.hotbar) === JSON.stringify(hotbarExpected), 'hotbar layout is saved');
+      check(Object.keys(pl.album?.birds ?? {}).length > 0, 'album is saved');
     }
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

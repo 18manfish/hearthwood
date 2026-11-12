@@ -6,6 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { IslandRecord, PlayerRecord } from './types.ts';
 import type { BoardPost } from '@hearthwood/shared';
+import { logger } from './log.ts';
+
+const log = logger('store');
 
 export class Store {
   readonly players = new Map<string, PlayerRecord>();
@@ -29,7 +32,7 @@ export class Store {
         const p = JSON.parse(fs.readFileSync(path.join(this.dir, 'players', f), 'utf8')) as PlayerRecord;
         this.indexPlayer(p);
       } catch (e) {
-        console.error('[store] failed to load player', f, e);
+        log.error('failed to load player', { file: f, err: e });
       }
     }
     for (const f of fs.readdirSync(path.join(this.dir, 'islands'))) {
@@ -39,16 +42,16 @@ export class Store {
         this.islands.set(i.id, i);
         this.byInvite.set(i.inviteCode, i.id);
       } catch (e) {
-        console.error('[store] failed to load island', f, e);
+        log.error('failed to load island', { file: f, err: e });
       }
     }
     try {
       const f = path.join(this.dir, 'boards.json');
       if (fs.existsSync(f)) this.boards = JSON.parse(fs.readFileSync(f, 'utf8'));
     } catch (e) {
-      console.error('[store] failed to load boards', e);
+      log.error('failed to load boards', { err: e });
     }
-    console.log(`[store] loaded ${this.players.size} players, ${this.islands.size} islands from ${this.dir}`);
+    log.info('loaded saves', { players: this.players.size, islands: this.islands.size, dir: this.dir });
   }
 
   private indexPlayer(p: PlayerRecord) {
@@ -102,6 +105,8 @@ export class Store {
   }
 
   flush() {
+    const t0 = Date.now();
+    const np = this.dirtyPlayers.size, ni = this.dirtyIslands.size;
     for (const id of this.dirtyPlayers) {
       const p = this.players.get(id);
       if (p) this.writeAtomic(path.join(this.dir, 'players', `${id}.json`), p);
@@ -114,11 +119,16 @@ export class Store {
     this.boardsDirty = false;
     this.dirtyPlayers.clear();
     this.dirtyIslands.clear();
+    if (np || ni) log.debug('saved', { players: np, islands: ni, ms: Date.now() - t0 });
   }
 
   private writeAtomic(file: string, data: unknown) {
     const tmp = `${file}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(data));
-    fs.renameSync(tmp, file);
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(data));
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      log.error('save failed', { file, err: e });
+    }
   }
 }

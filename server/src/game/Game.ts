@@ -4,13 +4,16 @@
 import crypto from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
-  BIOMES, BUILDINGS, ISLAND_SIZE, LEGACY_ISLAND_SIZE, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
+  BIOMES, BUILDINGS, ISLAND_SIZE, LEGACY_ISLAND_SIZE, DEFAULT_HOTBAR, normalizeHotbar, PERMITS, type Album, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
   ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, interiorSpecFor, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
   type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
+import { logger } from '../log.ts';
+
+const log = logger('game');
 import type { Store } from '../store.ts';
 import type { Friendship, IslandRecord, PlayerRecord } from '../types.ts';
 import { Room } from './Room.ts';
@@ -71,6 +74,7 @@ export class Game {
       if (r.sessions.size === 0 && r.kind !== 'shared' && now - r.emptySince > 60000) {
         if (r.syncRecord()) this.store.markIsland(r.id);
         this.rooms.delete(id);
+        log.debug('room unloaded', { room: id });
       }
     }
   }
@@ -104,13 +108,20 @@ export class Game {
   // ── Connections ─────────────────────────────────────────────────────────
   handleConnection(ws: WebSocket, ip: string) {
     const s = new Session(ws, ip);
+    log.debug('socket opened', { ip });
     const helloTimer = setTimeout(() => {
-      if (!s.player) ws.close(4001, 'hello timeout');
+      if (!s.player) {
+        log.info('hello timeout', { ip });
+        ws.close(4001, 'hello timeout');
+      }
     }, config.helloTimeoutMs);
 
     ws.on('pong', () => (s.alive = true));
     const hb = setInterval(() => {
-      if (!s.alive) return ws.terminate();
+      if (!s.alive) {
+        log.info('heartbeat lost', { player: s.player?.id, ip });
+        return ws.terminate();
+      }
       s.alive = false;
       ws.ping();
     }, config.heartbeatMs);
@@ -123,18 +134,20 @@ export class Game {
         msg = parse(clientMessageParser, JSON.parse(data.toString()));
       } catch (e) {
         s.strike();
+        log.warn('rejected message', { player: s.player?.id, ip, reason: e instanceof SchemaError ? e.message : 'malformed JSON' });
         s.send({ t: 'err', code: 'bad_message', msg: e instanceof SchemaError ? e.message : 'Malformed message' });
         return;
       }
       try {
         this.onMessage(s, msg);
       } catch (e) {
-        console.error('[game] handler error', e);
+        log.error('handler error', { player: s.player?.id, type: msg.t, err: e });
         s.send({ t: 'err', code: 'server', msg: 'Something went wrong.' });
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      log.info('disconnected', { player: s.player?.id, name: s.player?.name, ip, code, reason: reason.toString() || undefined });
       clearTimeout(helloTimer);
       clearInterval(hb);
       this.disconnect(s);
@@ -164,6 +177,7 @@ export class Game {
       case 'move': return this.move(s, m.x, m.z, m.r);
       case 'act': {
         const res = runAction(this, s, m.a);
+        if (!res.ok) log.debug('action refused', { player: p.id, action: m.a.k, err: res.err });
         s.send({ t: 'res', seq: m.seq, ...res });
         if (res.ok) this.afterAction(s, m.a.k);
         return;
@@ -191,11 +205,16 @@ export class Game {
         const room = s.room;
         const target = this.online.get(m.id);
         if (!room || !room.ownsHere(p.id) || !target || target.room !== room || target === s) return;
+        log.info('visitor sent home', { owner: p.id, visitor: m.id, room: room.id });
         target.send({ t: 'toast', text: `${p.name} sent you home.`, kind: 'warn' });
         this.travel(target, { kind: 'home' });
         return;
       }
       case 'map': return s.send({ t: 'map', islands: this.mapFor(p) });
+      case 'hotbar':
+        p.hotbar = normalizeHotbar(m.slots);
+        this.store.markPlayer(p.id);
+        return;
       case 'board': return this.boardOp(s, m.op, m.text, m.id);
       case 'dev': {
         if (!config.devFast) return s.send({ t: 'toast', text: 'Dev commands need the server in dev mode (npm run dev:fast).', kind: 'warn' });
@@ -206,23 +225,27 @@ export class Game {
 
   private hello(s: Session, token: string, v: number) {
     if (v !== PROTOCOL_VERSION) {
+      log.info('outdated client', { ip: s.ip, version: v });
       s.send({ t: 'err', code: 'version', msg: 'Your game client is out of date – please refresh.' });
       return s.ws.close(4002, 'version');
     }
     if (s.player) return;
     const p = this.store.playerByToken(hashToken(token));
     if (!p) {
+      log.warn('login with unknown token', { ip: s.ip });
       s.send({ t: 'err', code: 'auth', msg: 'Unknown account.' });
       return s.ws.close(4003, 'auth');
     }
     const prev = this.online.get(p.id);
     if (prev) {
+      log.info('session replaced by new login', { player: p.id });
       prev.send({ t: 'err', code: 'replaced', msg: 'You logged in somewhere else.' });
       prev.ws.close(4004, 'replaced');
       this.disconnect(prev);
     }
     s.player = p;
     this.online.set(p.id, s);
+    log.info('player connected', { player: p.id, name: p.name, ip: s.ip, online: this.online.size });
     p.lastSeen = Date.now();
     s.send({ t: 'welcome', you: p.created ? this.selfView(p) : null, serverTime: Date.now(), dev: config.devFast });
     if (p.created) {
@@ -273,6 +296,7 @@ export class Game {
     island.objects = [...tmp.objects.values()];
     island.buildings = [...tmp.buildings.values()];
     this.store.addIsland(island);
+    log.info('character created', { player: p.id, name: p.name, island: island.id, biome: island.biome });
     p.homeIslandId = island.id;
     this.store.markPlayer(p.id);
     s.send({ t: 'welcome', you: this.selfView(p), serverTime: now, dev: config.devFast });
@@ -395,6 +419,7 @@ export class Game {
     const from = s.room;
     s.room?.leave(s);
     room.join(s, at);
+    log.debug('entered room', { player: s.player!.id, room: room.id, from: from?.id });
     if (room.kind === 'island' && room.ownerId !== s.player!.id && from?.interior?.parentId !== room.id) {
       room.broadcast({ t: 'chat', from: '', name: '', text: `${s.player!.name} is visiting!`, sys: true }, s);
     }
@@ -520,6 +545,7 @@ export class Game {
   }
 
   private buildingCompleted(room: Room, b: Building) {
+    log.info('building completed', { island: room.id, building: b.type, id: b.id });
     const owner = room.ownerId ? this.online.get(room.ownerId) : undefined;
     if (b.type === 'villager_house' && !b.villagerId && room.record) {
       const taken = new Set(room.record.villagers.map((v) => v.defId));
@@ -598,6 +624,7 @@ export class Game {
       id: p.id, name: p.name, code: p.code, gender: p.gender, look: p.look, hat: p.hat,
       homeIslandId: p.homeIslandId, islandName: isl?.name ?? null, biome: isl?.biome ?? null,
       access: isl?.access ?? 'friends', inviteCode: isl?.inviteCode ?? null, coins: p.coins, inv: p.inv,
+      permits: p.permits ?? [], hotbar: normalizeHotbar(p.hotbar ?? DEFAULT_HOTBAR), album: albumOf(p),
     };
   }
 
@@ -761,6 +788,7 @@ export class Game {
   /** Developer helpers – only active with DEV_FAST=1 (validated by the protocol schema). */
   devCommand(s: Session, cmd: DevCommand, args: string[]) {
     const p = s.player!;
+    log.info('dev command', { player: p.id, cmd, args });
     const room = s.room;
     const reply = (t: string) => s.send({ t: 'chat', from: '', name: '', text: `[dev] ${t}`, sys: true });
     const n = (i: number, d: number) => (Number.isFinite(Number(args[i])) && args[i] !== '' && args[i] !== undefined ? Number(args[i]) : d);
@@ -777,6 +805,18 @@ export class Game {
       case 'coins':
         p.coins = Math.max(0, p.coins + n(0, 1000));
         break;
+      case 'permits':
+        p.permits = PERMITS.map((x) => x.id);
+        this.sendSelf(s);
+        reply('All Town Hall permits granted.');
+        break;
+      case 'birds': {
+        // Land a few birds right around you.
+        if (!room || room.interior) return reply('Go outside first.');
+        const landed = room.landBirdsNear(s.x, s.z, Math.max(1, Math.min(6, n(0, 3))));
+        reply(`${landed} bird(s) landed nearby.`);
+        break;
+      }
       case 'clearinv':
         p.inv = {};
         p.hat = null;
@@ -848,6 +888,11 @@ export class Game {
     this.store.markPlayer(p.id);
     this.sendInv(s);
   }
+}
+
+/** The player's album (created on first use). */
+export function albumOf(p: PlayerRecord): Album {
+  return (p.album ??= { fish: {}, birds: {} });
 }
 
 /** One-off upgrades for islands saved by older versions. */

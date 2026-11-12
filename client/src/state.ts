@@ -1,6 +1,6 @@
 // Client-side mirror of what the server has told us. Never authoritative.
 
-import type { EnvView, FriendView, MailView, MapIsland, QuestView, RoomView, SelfView } from '@hearthwood/shared';
+import type { Album, EnvView, FriendView, MailView, MapIsland, QuestView, RoomView, SelfView } from '@hearthwood/shared';
 
 export interface ClientState {
   self: SelfView | null;
@@ -15,13 +15,14 @@ export interface ClientState {
   room: RoomView | null;
   env: EnvView | null;
   dev: boolean;
+  album: Album;
 }
 
 type Key = keyof ClientState;
 const listeners = new Map<Key | '*', Set<() => void>>();
 
 export const state: ClientState = {
-  self: null, inv: {}, coins: 0, friends: [], incoming: [], outgoing: [], mail: [], quest: null, map: [], room: null, env: null, dev: false,
+  self: null, inv: {}, coins: 0, friends: [], incoming: [], outgoing: [], mail: [], quest: null, map: [], room: null, env: null, dev: false, album: { fish: {}, birds: {} },
 };
 
 export function set<K extends Key>(key: K, value: ClientState[K]) {

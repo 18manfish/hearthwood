@@ -13,3 +13,6 @@ export * from './data/recipes.ts';
 export * from './data/villagers.ts';
 export * from './data/quests.ts';
 export * from './data/paths.ts';
+export * from './data/birds.ts';
+export * from './data/permits.ts';
+export * from './data/hotbar.ts';

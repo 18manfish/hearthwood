@@ -1,4 +1,4 @@
-import type { Access, BiomeId, Building, Gender, Look, WorldObject, GeoInfo } from '@hearthwood/shared';
+import type { Access, Album, BiomeId, Building, Gender, Look, WorldObject, GeoInfo } from '@hearthwood/shared';
 
 export interface MailRecord {
   id: string;
@@ -33,6 +33,12 @@ export interface PlayerRecord {
   mail: MailRecord[];
   /** Highest chapter whose reward was paid. */
   chapterRewarded: number;
+  /** Town Hall permits owned (terraforming). */
+  permits?: string[];
+  /** Tools in the ten hotbar slots. */
+  hotbar?: (string | null)[];
+  /** Caught fish and birds. */
+  album?: Album;
 }
 
 export interface Friendship {

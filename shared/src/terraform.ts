@@ -9,9 +9,9 @@ export type TerraOp = (typeof TERRA_OPS)[number];
 /** How far from the player a tile can be reshaped. */
 export const TERRA_REACH = 6;
 
-/** Which tool each operation needs. */
-export const TERRA_TOOL: Record<TerraOp, 'pick' | 'spade'> = {
-  raise: 'pick', lower: 'pick', ramp: 'pick', unramp: 'pick', water: 'spade', land: 'spade',
+/** Which permit (bought at the Town Hall) each operation needs. */
+export const TERRA_PERMIT: Record<TerraOp, 'permit_cliff' | 'permit_water'> = {
+  raise: 'permit_cliff', lower: 'permit_cliff', ramp: 'permit_cliff', unramp: 'permit_cliff', water: 'permit_water', land: 'permit_water',
 };
 
 export const TERRA_INFO: Record<TerraOp, { name: string; icon: string; color: string; hint: string }> = {

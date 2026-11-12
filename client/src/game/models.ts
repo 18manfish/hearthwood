@@ -2,7 +2,7 @@
 // needs no external assets.
 
 import * as THREE from 'three';
-import { BUILDINGS, ITEMS, TREES, hashString, type Building, type Season, type WorldObject } from '@hearthwood/shared';
+import { BIRD_BY_ID, BUILDINGS, ITEMS, TREES, hashString, type Building, type Season, type WorldObject } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 import { decorModel } from './decor.ts';
 
@@ -221,7 +221,60 @@ export function objectModel(o: WorldObject, season: Season, visual: 'spring' | '
       return furnitureModel(o.item ?? 'bench', o.rot ?? 0);
     case 'decor':
       return decorModel(o.item ?? 'none', o.rot ?? 0);
+    case 'bird':
+      return birdModel(o.bird ?? 'bird_sparrow', o.rot ?? 0);
   }
+}
+
+/**
+ * A little bird, facing +z inside its `body` group so it can be animated:
+ * `body` (hop/peck), `head` (look around), `wingL`/`wingR` (flap).
+ */
+export function birdModel(id: string, rot = 0): THREE.Object3D {
+  const def = BIRD_BY_ID[id] ?? BIRD_BY_ID.bird_sparrow;
+  const [body, wing, belly, beak] = def.colors;
+  const root = new THREE.Group();
+  const g = new THREE.Group();
+  g.name = 'body';
+  const s = 0.32 * def.size;
+  const tall = id === 'bird_flamingo';
+  const legH = tall ? 0.9 * s : 0.18 * s;
+  // Legs.
+  for (const x of [-0.12, 0.12]) g.add(part('cyl', '#d18b47', 0.02 * def.size, legH, 0.02 * def.size, x * s, legH / 2, 0, false));
+  const by = legH + 0.32 * s;
+  g.add(part('sphere', body, 0.42 * s, 0.36 * s, 0.55 * s, 0, by, 0));
+  g.add(part('sphere', belly, 0.34 * s, 0.28 * s, 0.4 * s, 0, by - 0.08 * s, 0.1 * s, false));
+  // Tail.
+  const tail = part('box', wing, 0.22 * s, 0.05 * s, 0.4 * s, 0, by + 0.06 * s, -0.55 * s);
+  tail.rotation.x = -0.45;
+  g.add(tail);
+  // Wings.
+  for (const side of [-1, 1]) {
+    const w = part('sphere', wing, 0.1 * s, 0.26 * s, 0.42 * s, 0, 0, 0);
+    const pivot = new THREE.Group();
+    pivot.name = side < 0 ? 'wingL' : 'wingR';
+    pivot.position.set(side * 0.38 * s, by + 0.05 * s, -0.02 * s);
+    pivot.add(w);
+    g.add(pivot);
+  }
+  // Head with eyes and beak.
+  const head = new THREE.Group();
+  head.name = 'head';
+  head.position.set(0, by + (tall ? 0.75 : 0.32) * s, 0.36 * s);
+  if (tall) g.add(part('cyl', body, 0.05 * s, 0.75 * s, 0.05 * s, 0, by + 0.38 * s, 0.32 * s, false));
+  head.add(part('sphere', body, 0.26 * s, 0.25 * s, 0.26 * s, 0, 0, 0));
+  for (const x of [-0.14, 0.14]) head.add(part('sphere', '#111111', 0.045 * s, 0.045 * s, 0.045 * s, x * s, 0.05 * s, 0.17 * s, false));
+  const bl = id === 'bird_toucan' ? 0.55 : id === 'bird_kingfisher' || id === 'bird_hummingbird' ? 0.4 : 0.18;
+  const bk = part('cone', beak, 0.07 * s, bl * s, 0.07 * s, 0, -0.02 * s, (0.22 + bl / 2) * s, false);
+  bk.rotation.x = Math.PI / 2;
+  head.add(bk);
+  if (id === 'bird_hoopoe' || id === 'bird_pheasant') head.add(part('cone', belly, 0.08 * s, 0.3 * s, 0.14 * s, 0, 0.26 * s, -0.04 * s, false));
+  if (id === 'bird_owl') for (const x of [-0.12, 0.12]) head.add(part('cone', wing, 0.06 * s, 0.14 * s, 0.06 * s, x * s, 0.24 * s, 0, false));
+  g.add(head);
+  root.add(g);
+  root.rotation.y = (rot * Math.PI) / 2 + (rand(id, rot) - 0.5) * 0.8;
+  root.userData.bird = true;
+  return root;
 }
 
 export function furnitureModel(item: string, rot = 0): THREE.Object3D {

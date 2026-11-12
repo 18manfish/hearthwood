@@ -6,7 +6,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import {
   BIOMES, BUILDINGS, ITEMS, Grid, Tile, TREES, CLIFF, ENTERABLE, daylight, decodeTiles, distToTile, isWaterTile, nearBuilding,
   slideMove, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
-  TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, terraformError, type TerraOp,
+  TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, terraformError, BIRD_BY_ID, type TerraOp, type HotbarTool,
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season,
 } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
@@ -37,7 +37,7 @@ import { state, watch } from '../state.ts';
 
 export const PLAYER_SPEED = 4.2;
 
-export type Tool = 'hand' | 'axe' | 'shovel' | 'rod' | 'sapling';
+export type Tool = HotbarTool;
 
 export type Target =
   | { kind: 'object'; o: WorldObject; label: string }
@@ -113,7 +113,7 @@ export class World {
   private clock = new THREE.Clock();
   private bobber: THREE.Mesh;
   cast: { id: string | null; x: number; z: number; bite: boolean; window: number; at: number } | null = null;
-  ghost: { group: THREE.Group; type: 'build'; building: BuildingType; tx: number; tz: number; ok: boolean } | { group: THREE.Group; type: 'place'; item: string; rot: number; tx: number; tz: number; ok: boolean } | null = null;
+  ghost: { group: THREE.Group; type: 'build'; building: BuildingType; tx: number; tz: number; ok: boolean; moving?: string } | { group: THREE.Group; type: 'place'; item: string; rot: number; tx: number; tz: number; ok: boolean } | null = null;
   /** Path painting: type 1..5, or 0 for the eraser. */
   paint: { type: number; terra?: TerraOp; dir: number; group: THREE.Group; tx: number; tz: number; ok: boolean; down: boolean; last: string } | null = null;
   onPaint: (x: number, z: number, type: number) => void = () => {};
@@ -307,6 +307,8 @@ export class World {
   }
 
   private clearRoom() {
+    for (const f of this.flying) this.world.remove(f.mesh);
+    this.flying = [];
     for (const m of this.objMeshes.values()) this.world.remove(m);
     for (const m of this.bldMeshes.values()) this.world.remove(m);
     for (const p of this.players.values()) this.removeMover(p);
@@ -708,13 +710,15 @@ export class World {
           if (prev) this.grid!.removeObject(prev);
           this.objects.delete(id);
           const mesh = this.objMeshes.get(id);
-          if (mesh) this.world.remove(mesh);
+          if (mesh && m.fx === 'fly') this.flying.push({ mesh, t0: this.clock.elapsedTime, dir: Math.random() * Math.PI * 2 });
+          else if (mesh) this.world.remove(mesh);
           this.objMeshes.delete(id);
         }
         break;
       case 'bAdd':
         this.scheduleFoliage();
         for (const b of m.b) {
+          if (this.ghost?.type === 'build' && this.ghost.moving === b.id) this.cancelGhost(); // our move went through
           const prev = this.buildings.get(b.id);
           if (prev) this.grid!.removeBuilding(prev);
           this.buildings.set(b.id, b);
@@ -822,6 +826,27 @@ export class World {
     this.ghost = { group, type: 'build', building: type, tx: 0, tz: 0, ok: false };
   }
 
+  /** Pick a building up to move it: its footprint is freed while you choose the new spot. */
+  startMoveGhost(b: Building) {
+    this.startBuildGhost(b.type);
+    const g = this.ghost as { moving?: string };
+    g.moving = b.id;
+    this.grid?.removeBuilding(b);
+    const mesh = this.bldMeshes.get(b.id);
+    if (mesh) mesh.visible = false;
+  }
+
+  /** Put a building that was being moved back (in the grid and on screen). */
+  private endMove() {
+    const id = this.ghost?.type === 'build' ? this.ghost.moving : undefined;
+    if (!id) return;
+    const b = this.buildings.get(id);
+    if (b) this.grid?.addBuilding(b);
+    const mesh = this.bldMeshes.get(id);
+    if (mesh) mesh.visible = true;
+    (this.ghost as { moving?: string }).moving = undefined;
+  }
+
   startPlaceGhost(item: string) {
     this.cancelGhost();
     this.stopPaint();
@@ -845,6 +870,7 @@ export class World {
   }
 
   cancelGhost() {
+    this.endMove();
     if (this.ghost) this.scene.remove(this.ghost.group);
     this.ghost = null;
   }
@@ -971,6 +997,11 @@ export class World {
       case 'flower': return owner ? 'Pick flower' : null;
       case 'furniture': return this.room!.canDecorate ? `Pick up ${ITEMS[o.item!]?.name ?? 'item'} (F)` : null;
       case 'decor': return null;
+      case 'bird': {
+        const name = BIRD_BY_ID[o.bird ?? '']?.name ?? 'bird';
+        const net = state.inv.bird_net || state.inv.silk_net;
+        return this.tool === 'net' && net ? `Catch ${name}` : net ? `${name} (select the net)` : `${name} (craft a bird net)`;
+      }
     }
   }
 
@@ -1119,7 +1150,43 @@ export class World {
     if (this.me) this.me.swing = 1;
   }
 
+  /** Birds that took off: they flap up and away, then disappear. */
+  private flying: { mesh: THREE.Object3D; t0: number; dir: number }[] = [];
+
+  private animateBirds(t: number) {
+    for (const [id, mesh] of this.objMeshes) {
+      if (!mesh.userData.bird) continue;
+      const ph = (id.charCodeAt(id.length - 1) % 9) * 0.7;
+      const body = mesh.getObjectByName('body');
+      const head = mesh.getObjectByName('head');
+      if (!body) continue;
+      // Little hops every few seconds, pecking in between.
+      const cyc = (t * 0.6 + ph) % 3;
+      body.position.y = cyc < 0.35 ? Math.sin((cyc / 0.35) * Math.PI) * 0.08 : 0;
+      body.rotation.x = cyc > 1.4 && cyc < 1.8 ? Math.sin(((cyc - 1.4) / 0.4) * Math.PI) * 0.5 : 0;
+      if (head) head.rotation.y = Math.sin(t * 0.9 + ph) * 0.6;
+    }
+    for (let i = this.flying.length - 1; i >= 0; i--) {
+      const f = this.flying[i];
+      const k = this.clock.elapsedTime - f.t0;
+      if (k > 1.6) {
+        this.world.remove(f.mesh);
+        this.flying.splice(i, 1);
+        continue;
+      }
+      f.mesh.position.x += Math.sin(f.dir) * 0.08;
+      f.mesh.position.z += Math.cos(f.dir) * 0.08;
+      f.mesh.position.y += 0.06 + k * 0.04;
+      f.mesh.rotation.y = f.dir;
+      const flap = Math.sin(t * 40) * 0.9;
+      const l = f.mesh.getObjectByName('wingL'), r = f.mesh.getObjectByName('wingR');
+      if (l) l.rotation.z = flap;
+      if (r) r.rotation.z = -flap;
+    }
+  }
+
   private animateProps(t: number) {
+    this.animateBirds(t);
     const night = 1 - this.day;
     for (const mesh of this.bldMeshes.values()) {
       const beam = mesh.getObjectByName('beam');

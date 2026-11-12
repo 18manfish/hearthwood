@@ -8,8 +8,10 @@ import { isBuildingType, type BuildingType } from './data/buildings.ts';
 import type { Building, WorldObject } from './world.ts';
 import type { InteriorStyle, InteriorTheme } from './interiors.ts';
 import { TERRA_OPS, type TerrainChange } from './terraform.ts';
+import { isPermit } from './data/permits.ts';
+import { HOTBAR_SIZE, HOTBAR_TOOLS, type Hotbar } from './data/hotbar.ts';
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -37,7 +39,7 @@ export interface Look {
 
 export type Access = 'private' | 'friends' | 'invite' | 'public';
 
-export const DEV_COMMANDS = ['kit', 'give', 'coins', 'day', 'finish', 'respawn', 'weather', 'season', 'tp', 'clearinv'] as const;
+export const DEV_COMMANDS = ['kit', 'give', 'coins', 'day', 'finish', 'respawn', 'weather', 'season', 'tp', 'clearinv', 'permits', 'birds'] as const;
 export type DevCommand = (typeof DEV_COMMANDS)[number];
 export const ACCESS_LEVELS: Access[] = ['private', 'friends', 'invite', 'public'];
 
@@ -78,6 +80,9 @@ export const actionParser = s.union('k', {
   takeMail: s.obj({ k: s.lit('takeMail'), mailId: id }),
   pave: s.obj({ k: s.lit('pave'), x: tileCoord, z: tileCoord, path: s.int(1, 5) }),
   unpave: s.obj({ k: s.lit('unpave'), x: tileCoord, z: tileCoord }),
+  catch: s.obj({ k: s.lit('catch'), id }),
+  permit: s.obj({ k: s.lit('permit'), id: s.guard(isPermit, 'permit') }),
+  relocate: s.obj({ k: s.lit('relocate'), id, x: tileCoord, z: tileCoord }),
   terra: s.obj({ k: s.lit('terra'), op: s.oneOf(TERRA_OPS), x: tileCoord, z: tileCoord, dir: s.opt(s.int(-1, 3)) }),
 });
 export type Action = ReturnType<typeof actionParser>;
@@ -120,6 +125,7 @@ export const clientMessageParser = s.union('t', {
   newInvite: s.obj({ t: s.lit('newInvite') }),
   kick: s.obj({ t: s.lit('kick'), id }),
   map: s.obj({ t: s.lit('map') }),
+  hotbar: s.obj({ t: s.lit('hotbar'), slots: s.arr(s.nullable(s.oneOf(HOTBAR_TOOLS)), HOTBAR_SIZE) }),
   ping: s.obj({ t: s.lit('ping'), ct: s.num() }),
   /** Billboard: pin a note / take down one of your own. */
   board: s.obj({ t: s.lit('board'), op: s.oneOf(['post', 'delete'] as const), text: s.opt(s.str(1, 140)), id: s.opt(id) }),
@@ -220,6 +226,20 @@ export interface FriendView {
   islandId: string | null;
 }
 
+export interface AlbumEntry {
+  /** How many caught. */
+  n: number;
+  /** First catch (ms epoch). */
+  first: number;
+  /** Biome of the first catch. */
+  biome: string;
+}
+
+export interface Album {
+  fish: Record<string, AlbumEntry>;
+  birds: Record<string, AlbumEntry>;
+}
+
 export interface SelfView {
   id: string;
   name: string;
@@ -234,6 +254,9 @@ export interface SelfView {
   inviteCode: string | null;
   coins: number;
   inv: Record<string, number>;
+  permits: string[];
+  hotbar: Hotbar;
+  album: Album;
 }
 
 export interface QuestView {
@@ -280,7 +303,7 @@ export type ServerMessage =
   | { t: 'ps'; l: [string, number, number, number][] }
   | { t: 'vs'; l: [string, number, number, number, 0 | 1][] }
   | { t: 'oAdd'; o: WorldObject[] }
-  | { t: 'oDel'; ids: string[] }
+  | { t: 'oDel'; ids: string[]; fx?: 'fly' }
   | { t: 'bAdd'; b: Building[] }
   | { t: 'bDel'; ids: string[] }
   | { t: 'vAdd'; v: VillagerView[] }
@@ -299,6 +322,7 @@ export type ServerMessage =
   | { t: 'quest'; q: QuestView }
   | { t: 'talk'; v: TalkView }
   | { t: 'mail'; list: MailView[] }
+  | { t: 'album'; album: Album }
   | { t: 'toast'; text: string; kind?: 'info' | 'good' | 'warn' }
   | { t: 'pong'; ct: number; st: number };
 

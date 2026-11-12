@@ -4,6 +4,10 @@ import type { PlayerRecord } from '../types.ts';
 import type { Room } from './Room.ts';
 import { config } from '../config.ts';
 
+import { logger } from '../log.ts';
+
+const log = logger('session');
+
 export interface PendingCast {
   id: string;
   biteAt: number;
@@ -64,7 +68,11 @@ export class Session {
   /** Repeated protocol abuse disconnects the client. */
   strike() {
     this.strikes++;
-    if (this.strikes > 50) this.ws.close(4008, 'Too many invalid or excessive messages');
+    if (this.strikes === 10) log.warn('client is misbehaving', { player: this.player?.id, ip: this.ip, strikes: this.strikes });
+    if (this.strikes > 50) {
+      log.warn('disconnected for abuse', { player: this.player?.id, ip: this.ip });
+      this.ws.close(4008, 'Too many invalid or excessive messages');
+    }
   }
 
   clearCast() {

@@ -159,7 +159,7 @@ export function isBuildingType(v: unknown): v is BuildingType {
 
 /** Shop inventories (coins). */
 export const SHOP_STOCK: Partial<Record<BuildingType, string[]>> = {
-  tool_store: ['iron_axe', 'iron_shovel', 'pro_rod', 'sapling'],
+  tool_store: ['iron_axe', 'iron_shovel', 'pro_rod', 'silk_net', 'sapling'],
   furniture_store: ['bench', 'lamp', 'flower_pot', 'fence', 'picnic_table', 'barrel', 'crate', 'gnome'],
   clothing_shop: ['straw_hat', 'beanie', 'cap', 'flower_crown'],
 };

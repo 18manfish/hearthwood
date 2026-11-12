@@ -6,6 +6,13 @@ import { PROTOCOL_VERSION } from '@hearthwood/shared';
 import { config } from './config.ts';
 import { Store } from './store.ts';
 import { Game } from './game/Game.ts';
+import { logger, logLevel } from './log.ts';
+
+const log = logger('server');
+const httpLog = logger('http');
+
+process.on('uncaughtException', (e) => log.error('uncaught exception', { err: e }));
+process.on('unhandledRejection', (e) => log.error('unhandled rejection', { err: e }));
 
 const store = new Store(config.dataDir);
 store.load();
@@ -47,8 +54,12 @@ const server = http.createServer((req, res) => {
 
   if (url.pathname === '/api/register') {
     if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
-    if (!allowRegister(clientIp(req))) return json(res, 429, { error: 'Too many new accounts from this address. Try later.' });
+    if (!allowRegister(clientIp(req))) {
+      httpLog.warn('registration rate limit hit', { ip: clientIp(req) });
+      return json(res, 429, { error: 'Too many new accounts from this address. Try later.' });
+    }
     const out = game.register();
+    httpLog.info('account registered', { player: out.playerId, ip: clientIp(req) });
     return json(res, 200, out);
   }
 
@@ -56,7 +67,10 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && fs.existsSync(config.clientDist)) {
     const rel = path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
     let file = path.join(config.clientDist, rel);
-    if (!file.startsWith(config.clientDist)) return json(res, 403, { error: 'forbidden' });
+    if (!file.startsWith(config.clientDist)) {
+      httpLog.warn('path traversal attempt', { ip: clientIp(req), path: url.pathname });
+      return json(res, 403, { error: 'forbidden' });
+    }
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(config.clientDist, 'index.html');
     res.writeHead(200, {
       'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
@@ -75,6 +89,7 @@ server.on('upgrade', (req, socket, head) => {
   if (url.pathname !== '/ws') return socket.destroy();
   const origin = req.headers.origin;
   if (config.allowedOrigins.length && (!origin || !config.allowedOrigins.includes(origin))) {
+    httpLog.warn('websocket origin refused', { ip: clientIp(req), origin });
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
@@ -82,11 +97,11 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 server.listen(config.port, config.host, () => {
-  console.log(`[hearthwood] server listening on http://localhost:${config.port}  (protocol v${PROTOCOL_VERSION}${config.devFast ? ', DEV_FAST' : ''})`);
+  log.info(`listening on http://localhost:${config.port}`, { protocol: PROTOCOL_VERSION, devFast: config.devFast || undefined, logLevel, data: config.dataDir });
 });
 
 function shutdown() {
-  console.log('\n[hearthwood] saving & shutting down…');
+  log.info('saving & shutting down');
   game.stop();
   wss.close();
   server.close(() => process.exit(0));

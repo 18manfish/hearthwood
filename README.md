@@ -34,7 +34,7 @@ In VS Code, press **Ctrl+Shift+B** to run the dev task. Use **F5 → "Debug game
 - **Client-only visual controls:** world-bend strength, a time-of-day shift, a weather preview, and shadows, labels and collision-grid overlay on or off.
 - **Server buttons (need `dev:fast`):** material kit, coins, day +1/+7/+30, finish construction and growth, respawn resources now, give any item, set the island's weather, teleport to spawn.
 
-The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /season /tp /clearinv`.
+The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /season /tp /clearinv /permits /birds`. `/permits` grants both Town Hall permits, and `/birds [n]` lands a few birds next to you.
 
 ---
 
@@ -44,11 +44,11 @@ The server buttons are sent as a schema-checked `dev` message, and the server re
 |---|---|
 | WASD / arrows | Walk (hold **Shift** to run) |
 | **E** / Space | Use whatever is in front of you: shake or chop a tree, break a rock, pick, talk, use a building, cast or reel |
-| 1–5 | Hands · Axe · Shovel · Rod · Sapling |
+| 1–9, 0 | Hotbar slots (right-click a slot to change it, drag slots to rearrange) |
 | F | Pick up placed furniture |
-| G · I · C · B · M · O · L · V | Goals · Pockets · Craft · Build · Map · Friends · Mail · Island & visitors |
+| G · I · C · B · M · O · L · K · V | Goals · Pockets · Craft · Build · Map · Friends · Mail · Album · Island & visitors |
 | Enter | Chat |
-| R / Esc | Rotate / cancel placement |
+| R / Esc | Rotate placement or switch terraforming tool / cancel |
 | F3 or ` | Developer debug menu |
 
 ### Controller
@@ -61,8 +61,8 @@ The game works with any controller the browser supports, including Xbox, PlaySta
 | **Ⓐ** | Use / talk / reel in / confirm placement; hold while walking to paint a path |
 | **Ⓑ** (tap) | Back: close a menu or dialog, cancel placement or painting |
 | **Ⓧ** | Pockets |
-| **Ⓨ** | Pick up furniture / rotate while placing |
-| LB / RB | Previous / next tool |
+| **Ⓨ** | Pick up furniture / rotate while placing / next terraforming tool |
+| LB / RB | Previous / next hotbar slot |
 | LT / RT | Build menu / craft menu |
 | START / SELECT | Goals / world map |
 | Right stick | Zoom the camera (scrolls when a menu is open) |
@@ -98,7 +98,13 @@ Mushrooms (and rare glowing *glowcaps*) appear under trees, and flowers pop up i
 
 Adjacent tiles of the same path join up, and open edges get soft, bevelled borders. You can walk on paths and place furniture on them, but trees, flowers and respawning resources never appear on a path.
 
-**Terraforming.** Once your island has a Town Hall, craft a **Landscaping Pick** (3 iron ore, 8 stone, 4 wood) and a **Waterscaping Spade** (a shovel, 2 iron ore, 4 clay) at the workbench. Then open the Build menu (B), go to ⛰️ Terraforming, and click or drag tiles just like paths:
+**Hotbar.** The hotbar has ten slots. Right-click a slot to choose the tool in it, drag a slot onto another to swap them, or use the dropdowns at the top of Pockets (I), which also works with a controller. Your layout is saved with your account.
+
+**Birds & the album.** Birds land on islands, hop around for a few minutes and then fly off. Which birds appear depends on the biome, the time of day and the season; owls and nightjars only come out at night. Craft a **Bird Net** by hand (4 wood, 5 fiber), or buy the better **Silk Bird Net** at the Tool Store. Select the net in your hotbar, walk up to a bird and press **E**. Rare birds are warier and fly off more often. Every fish and bird you catch goes into the **Album (K)**. Entries you haven't caught yet show where and when to look.
+
+**Moving buildings.** In the Build menu under 🚚 Move a building, pick a building up and click its new spot. This costs coins depending on its size. Villagers and everything inside move along with it. The dock stays where it is.
+
+**Terraforming.** Buy permits at your **Town Hall** counter: the **Cliff Construction Permit** (2000 coins) lets you raise and lower cliffs and build ramps, and the **Waterscaping Permit** (1500 coins) lets you dig and fill ponds. Then pick ⛰️ or 💧 in your hotbar, or use the Build menu (B) under ⛰️ Terraforming, and click or drag tiles just like paths. Press **R** (or **Ⓨ**) to switch between the permit's tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -217,7 +223,9 @@ hearthwood/
 - **Versioned protocol:** if the versions don't match, the server asks the client to refresh.
 
 ### Configuration (environment variables)
-`PORT` (8787), `HOST`, `DATA_DIR` (server/data), `CLIENT_DIST`, `ALLOWED_ORIGINS`, `DEV_FAST=1`. Gameplay constants are in `server/src/config.ts`, for example `treeStageMinutes` and the fishing window.
+`PORT` (8787), `HOST`, `DATA_DIR` (server/data), `CLIENT_DIST`, `ALLOWED_ORIGINS`, `DEV_FAST=1`.
+
+Logging: `LOG_LEVEL` (`debug` · `info` · `warn` · `error`; the default is `info`, or `debug` with `DEV_FAST`), `LOG_FORMAT` (`pretty` in a terminal, otherwise `json`; one JSON object per line), and `LOG_FILE` to also append JSON lines to a file. The server logs startup, registrations, connections and disconnects (with IP), refused or malformed messages, abuse disconnects, character creation, building completions, moves, permit purchases, dev commands, save timings (debug) and all errors. Tokens are never logged. Gameplay constants are in `server/src/config.ts`, for example `treeStageMinutes` and the fishing window.
 
 ### Going further
 - Swap `Store` for SQLite or Postgres; the interface is small.

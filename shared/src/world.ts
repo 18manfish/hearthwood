@@ -29,7 +29,7 @@ export enum Tile {
 /** Ramp directions point uphill: 0 = north (−z), 1 = east (+x), 2 = south (+z), 3 = west (−x). */
 export const DIRS: readonly [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
-export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor';
+export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor' | 'bird';
 
 export interface WorldObject {
   id: string;
@@ -55,6 +55,9 @@ export interface WorldObject {
   shook?: string;
   /** Stumps rot away (and a sapling sprouts) at this time. */
   decayAt?: number;
+  /** Birds: species id (see data/birds.ts) and when it flies off on its own. */
+  bird?: string;
+  leaveAt?: number;
 }
 
 export interface Building {
@@ -193,7 +196,8 @@ export class Grid {
   }
 
   addObject(o: WorldObject, sign = 1) {
-    if (!this.inBounds(o.x, o.z)) return;
+    // Birds hop about freely and never get in the way.
+    if (!this.inBounds(o.x, o.z) || o.kind === 'bird') return;
     const i = this.idx(o.x, o.z);
     this.occupied[i] += sign;
     if (objectBlocks(o)) this.blocked[i] += sign;

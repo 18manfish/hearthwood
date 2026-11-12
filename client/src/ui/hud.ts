@@ -9,7 +9,11 @@ import {
 import { net } from '../net.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
-import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, ENTERABLE, TERRA_INFO, TERRA_OPS, TERRA_TOOL, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
+import {
+  HOTBAR_INFO, HOTBAR_TOOLS, HOTBAR_SIZE, DEFAULT_HOTBAR, PERMITS, PERMIT_BY_ID, TERRA_PERMIT, BIRDS, FISH, relocationCost,
+  type Hotbar, type HotbarTool, type TerraOp, type PermitId,
+} from '@hearthwood/shared';
+import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, ENTERABLE, TERRA_INFO, TERRA_OPS, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
 import { lookEditor, Preview } from './creator.ts';
@@ -17,10 +21,21 @@ import { lookEditor, Preview } from './creator.ts';
 const WEATHER_ICON: Record<string, string> = { clear: '☀️', cloudy: '☁️', rain: '🌧️', storm: '⛈️', snow: '❄️', fog: '🌫️', sandstorm: '🌪️', heatwave: '🔥' };
 const SEASON_ICON: Record<string, string> = { spring: '🌸', summer: '🌻', autumn: '🍂', winter: '⛄', wet: '🌧️', dry: '🌞', hot: '🔆', cool: '🌙' };
 
-type PanelId = 'goals' | 'bag' | 'craft' | 'build' | 'map' | 'friends' | 'mail' | 'island' | 'debug';
+type PanelId = 'goals' | 'bag' | 'craft' | 'build' | 'map' | 'friends' | 'mail' | 'island' | 'debug' | 'album';
 
 function have(id: string) {
   return state.inv[id] ?? 0;
+}
+
+function hasPermit(id: string) {
+  return !!state.self?.permits.includes(id);
+}
+
+/** Does the player have what this hotbar tool needs? */
+function toolOwned(t: HotbarTool) {
+  const info = HOTBAR_INFO[t];
+  if (info.permit) return hasPermit(info.permit);
+  return !info.items.length || info.items.some((id) => have(id) > 0);
 }
 
 function tagCount(tag: string) {
@@ -64,7 +79,7 @@ export class Hud {
       h('div', { class: 'topbar' }, this.coins,
         btn('📜', 'G', 'goals', 'Goals'), btn('🎒', 'I', 'bag', 'Pockets'), btn('🔨', 'C', 'craft', 'Craft'),
         btn('🏗️', 'B', 'build', 'Build'), btn('🗺️', 'M', 'map', 'World map'), btn('💌', 'O', 'friends', 'Friends'),
-        btn('📬', 'L', 'mail', 'Mail'), btn('⚙️', 'V', 'island', 'Island & visitors'), btn('🐞', 'F3', 'debug', 'Developer debug')),
+        btn('📬', 'L', 'mail', 'Mail'), btn('📖', 'K', 'album', 'Album'), btn('⚙️', 'V', 'island', 'Island & visitors'), btn('🐞', 'F3', 'debug', 'Developer debug')),
       this.hotbar,
       this.prompt,
       h('div', { class: 'chat' }, this.log, this.chatInput),
@@ -127,6 +142,7 @@ export class Hud {
       const op = this.world.paint.terra;
       const what = op ? TERRA_INFO[op].name.toLowerCase() : t ? `lay ${PATHS[t - 1].name}` : 'remove paths';
       text = pad ? `Hold Ⓐ and walk to ${what} · Ⓑ to stop` : t ? `Click & drag to ${what} (or E in front of you) · Esc to stop` : `Click & drag to ${what} · Esc to stop`;
+      if (op) text += pad ? ' · Ⓨ next tool' : ' · R next tool';
     } else if (this.world.ghost) {
       text = this.world.ghost.type === 'build'
         ? pad ? 'Ⓐ build in front of you · Ⓑ cancel' : 'Click to build here · Esc to cancel'
@@ -179,24 +195,122 @@ export class Hud {
     );
   }
 
+  // ── Hotbar ──────────────────────────────────────────────────────────────
+  /** The ten slots (synced to the server so they follow you between devices). */
+  get slots(): Hotbar {
+    return state.self?.hotbar ?? DEFAULT_HOTBAR;
+  }
+
+  private setSlots(slots: Hotbar) {
+    if (state.self) state.self.hotbar = slots;
+    net.send({ t: 'hotbar', slots });
+    this.renderHotbar();
+    this.panelRefresh?.();
+  }
+
+  /** Put a tool into a slot; if it already sits elsewhere, the two slots swap. */
+  assignSlot(i: number, t: HotbarTool | null) {
+    const s = [...this.slots];
+    const j = t ? s.indexOf(t) : -1;
+    if (j >= 0) s[j] = s[i];
+    s[i] = t;
+    this.setSlots(s);
+  }
+
+  swapSlots(i: number, j: number) {
+    const s = [...this.slots];
+    [s[i], s[j]] = [s[j], s[i]];
+    this.setSlots(s);
+  }
+
+  private dragFrom = -1;
   renderHotbar() {
     clear(this.hotbar);
-    const slots: [Tool, string, boolean, number?][] = [
-      ['hand', '✋', true],
-      ['axe', '🪓', have('stone_axe') + have('iron_axe') > 0],
-      ['shovel', '⛏️', have('shovel') + have('iron_shovel') > 0],
-      ['rod', '🎣', have('fishing_rod') + have('pro_rod') > 0],
-      ['sapling', '🌱', have('sapling') > 0, have('sapling')],
-    ];
-    slots.forEach(([tool, icon, owned, n], i) => {
-      this.hotbar.appendChild(h('button', { class: `slot${this.world.tool === tool ? ' sel' : ''}${owned ? '' : ' off'}`, title: tool, onclick: () => this.selectTool(tool) },
-        h('span', { class: 'k' }, String(i + 1)), icon, n ? h('span', { class: 'n' }, String(n)) : null));
+    this.slots.forEach((tool, i) => {
+      const info = tool ? HOTBAR_INFO[tool] : null;
+      const owned = tool ? toolOwned(tool) : false;
+      const n = tool === 'sapling' ? have('sapling') : 0;
+      const el = h('button', {
+        class: `slot${tool && this.world.tool === tool ? ' sel' : ''}${tool && !owned ? ' off' : ''}${tool ? '' : ' empty'}`,
+        title: `${info ? info.name : 'Empty slot'} – right-click to change, drag to rearrange`,
+        draggable: 'true',
+        onclick: () => this.selectSlot(i),
+        oncontextmenu: (e: Event) => { e.preventDefault(); this.slotPicker(i, el); },
+        ondragstart: () => (this.dragFrom = i),
+        ondragover: (e: Event) => e.preventDefault(),
+        ondrop: (e: Event) => { e.preventDefault(); if (this.dragFrom >= 0 && this.dragFrom !== i) this.swapSlots(this.dragFrom, i); this.dragFrom = -1; },
+      }, h('span', { class: 'k' }, String((i + 1) % 10)), info ? info.icon : '', n ? h('span', { class: 'n' }, String(n)) : null);
+      this.hotbar.appendChild(el);
     });
   }
 
+  /** Small pop-up above a slot to choose what goes in it. */
+  private slotPicker(i: number, anchor: HTMLElement) {
+    document.querySelector('.slot-picker')?.remove();
+    const box = h('div', { class: 'slot-picker' });
+    const close = () => { box.remove(); window.removeEventListener('pointerdown', outside, true); };
+    const outside = (e: Event) => { if (!box.contains(e.target as Node)) close(); };
+    for (const t of HOTBAR_TOOLS) {
+      const info = HOTBAR_INFO[t];
+      box.append(h('button', { class: `btn small${this.slots[i] === t ? '' : ' ghost'}${toolOwned(t) ? '' : ' off'}`, title: info.name, onclick: () => { this.assignSlot(i, t); close(); } }, `${info.icon} ${info.name}`));
+    }
+    box.append(h('button', { class: 'btn ghost small', onclick: () => { this.assignSlot(i, null); close(); } }, '⬜ Empty'));
+    const r = anchor.getBoundingClientRect();
+    box.style.left = `${Math.max(8, r.left + r.width / 2 - 90)}px`;
+    box.style.bottom = `${window.innerHeight - r.top + 8}px`;
+    this.root.appendChild(box);
+    setTimeout(() => window.addEventListener('pointerdown', outside, true));
+  }
+
+  selectSlot(i: number) {
+    const t = this.slots[i];
+    if (t) this.selectTool(t);
+  }
+
+  /** LB / RB: step through the filled slots. */
+  cycleSlot(dir: 1 | -1) {
+    const s = this.slots;
+    let i = Math.max(0, s.indexOf(this.world.tool));
+    for (let k = 0; k < HOTBAR_SIZE; k++) {
+      i = (i + dir + HOTBAR_SIZE) % HOTBAR_SIZE;
+      if (s[i]) return this.selectTool(s[i]!);
+    }
+  }
+
+  /** Last terraforming operation used with each tool. */
+  private terraOp: Record<'pick' | 'spade', TerraOp> = { pick: 'raise', spade: 'water' };
+
   selectTool(t: Tool) {
-    this.world.tool = t;
+    const wasTerra = !!this.world.paint?.terra;
+    if (t === 'pick' || t === 'spade') {
+      const permit = PERMIT_BY_ID[HOTBAR_INFO[t].permit as PermitId];
+      if (!hasPermit(permit.id)) return this.toast(`You need a ${permit.name} – buy it at the Town Hall.`, 'warn');
+      if (!state.room?.canBuild) return this.toast('You can only reshape your own island.', 'warn');
+      this.world.tool = t;
+      this.world.startTerra(this.terraOp[t]);
+      this.setPrompt('');
+    } else {
+      this.world.tool = t;
+      if (wasTerra) {
+        this.world.stopPaint();
+        this.setPrompt(this.world.target?.label ?? null);
+      }
+    }
     this.renderHotbar();
+  }
+
+  /** R / Ⓨ while terraforming: next operation of the same tool. */
+  cycleTerra() {
+    const op = this.world.paint?.terra;
+    if (!op) return;
+    const permit = TERRA_PERMIT[op];
+    const ops = PERMIT_BY_ID[permit].ops;
+    const next = ops[(ops.indexOf(op) + 1) % ops.length];
+    const tool = permit === 'permit_cliff' ? 'pick' : 'spade';
+    this.terraOp[tool] = next;
+    this.world.startTerra(next);
+    this.setPrompt('');
+    this.toast(`${TERRA_INFO[next].icon} ${TERRA_INFO[next].name}`);
   }
 
   private renderBadges() {
@@ -260,7 +374,7 @@ export class Hud {
     this.closeDialog();
     switch (id) {
       case 'goals': return this.live('Goals', id, (b) => this.goals(b));
-      case 'bag': return this.live('Pockets', id, (b) => this.bag(b));
+      case 'bag': return this.live('Pockets', id, (b) => this.bag(b, true));
       case 'craft': return this.live('Crafting', id, (b) => this.craft(b, ['hand', 'workbench']));
       case 'build': return this.live('Build', id, (b) => this.build(b));
       case 'map':
@@ -272,8 +386,36 @@ export class Hud {
         this.mail(b, false);
       });
       case 'island': return this.live('Island & visitors', id, (b) => this.island(b));
+      case 'album': return this.live('📖 Album', id, (b) => this.album(b));
       case 'debug': return this.debugPanel();
     }
+  }
+
+  // ── Album ───────────────────────────────────────────────────────────────
+  private albumTab: 'fish' | 'birds' = 'fish';
+  private album(b: HTMLElement) {
+    const a = state.album;
+    const fishN = FISH.filter((f) => a.fish[f.id]).length;
+    const birdN = BIRDS.filter((x) => a.birds[x.id]).length;
+    const tab = (id: 'fish' | 'birds', label: string) =>
+      h('button', { class: `btn small${this.albumTab === id ? '' : ' ghost'}`, onclick: () => { this.albumTab = id; this.panelRefresh?.(); } }, label);
+    b.append(h('div', { class: 'row', style: 'margin-bottom:10px' }, tab('fish', `🐟 Fish ${fishN}/${FISH.length}`), tab('birds', `🐦 Birds ${birdN}/${BIRDS.length}`)));
+    const hours = (hr?: [number, number]) => (hr ? `${String(hr[0]).padStart(2, '0')}:00–${String(hr[1]).padStart(2, '0')}:00` : 'all day');
+    const when = (s?: string[]) => (s ? s.map((x) => SEASON_ICON[x] ?? '').join('') + ' ' + s.join(', ') : 'all year');
+    const grid = h('div', { class: 'grid album' });
+    const entries = this.albumTab === 'fish'
+      ? FISH.map((f) => ({ id: f.id, name: f.name, icon: f.icon, sell: f.sell, e: a.fish[f.id], hint: `${f.water === 'sea' ? '🌊 Sea' : '🏞️ Rivers & ponds'} · ${hours(f.hours)} · ${when(f.seasons)}` }))
+      : BIRDS.map((x) => ({ id: x.id, name: x.name, icon: x.icon, sell: x.sell, e: a.birds[x.id], hint: `${x.biomes.map((bi) => BIOME_ICON[bi]).join('')} ${x.perch === 'shore' ? '· on beaches ' : ''}· ${hours(x.hours)} · ${when(x.seasons)}` }));
+    for (const en of entries) {
+      const got = !!en.e;
+      grid.append(h('div', { class: `tile${got ? '' : ' unknown'}` },
+        h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'ico' }, got ? en.icon : '❔'), got ? h('b', {}, `×${en.e!.n}`) : null),
+        h('div', { class: 'nm' }, got ? en.name : '???'),
+        h('div', { class: 'muted' }, got ? `First caught ${new Date(en.e!.first).toLocaleDateString()} ${BIOME_ICON[en.e!.biome as keyof typeof BIOME_ICON] ?? ''} · sells for ${en.sell}` : en.hint)));
+    }
+    b.append(grid);
+    const total = fishN + birdN, all = FISH.length + BIRDS.length;
+    b.append(h('p', { class: 'muted', style: 'margin-top:10px' }, total === all ? '🏆 Album complete – amazing!' : `${total}/${all} discovered. Uncaught entries show where and when to look.`));
   }
 
   // ── Developer debug menu (F3 / `) ───────────────────────────────────────
@@ -349,7 +491,7 @@ export class Hud {
     body.append(
       h('h3', { style: 'margin-top:6px' }, 'Server (dev mode)'),
       state.dev ? '' : h('p', { class: 'muted' }, 'These need the server running with DEV_FAST=1 (npm run dev:fast).'),
-      h('div', { class: 'row' }, b('🧰 Material kit', () => dev('kit')), b('🪙 +1000', () => dev('coins', 1000)), b('🪙 +10000', () => dev('coins', 10000)), b('🗑️ Empty pockets', () => dev('clearinv'))),
+      h('div', { class: 'row' }, b('🧰 Material kit', () => dev('kit')), b('🪙 +1000', () => dev('coins', 1000)), b('🪙 +10000', () => dev('coins', 10000)), b('🗑️ Empty pockets', () => dev('clearinv')), b('📜 All permits', () => dev('permits')), b('🐦 Land birds', () => dev('birds', 4))),
       h('div', { class: 'row' }, b('📅 Day +1', () => dev('day', 1)), b('Day +7', () => dev('day', 7)), b('Day +30', () => dev('day', 30)), b('⏩ Finish building & growth', () => dev('finish')), b('♻️ Respawn resources', () => dev('respawn'))),
       h('div', { class: 'row' }, give, qty, b('Give', () => dev('give', give.value, Math.max(1, Math.min(999, Number(qty.value) || 1))))),
       h('div', { class: 'row' }, h('b', {}, 'Island weather'), srvWeather, b('Set (30 min)', () => dev('weather', srvWeather.value))),
@@ -382,7 +524,23 @@ export class Hud {
       h('p', { class: 'muted' }, 'Tips: shake trees for branches, pick up loose stones by hand, pick bushes for fibre. Buildings unlock as your island ages – time follows the real calendar.'));
   }
 
-  private bag(b: HTMLElement) {
+  /** Hotbar editor (works with mouse and controller): one dropdown per slot. */
+  private hotbarEditor(b: HTMLElement) {
+    const row = h('div', { class: 'hotbar-edit' });
+    this.slots.forEach((cur, i) => {
+      const sel = h('select', { title: `Slot ${(i + 1) % 10}`, onchange: () => this.assignSlot(i, (sel.value || null) as HotbarTool | null) },
+        h('option', { value: '' }, `${(i + 1) % 10}: –`),
+        HOTBAR_TOOLS.map((t) => h('option', { value: t, selected: cur === t }, `${(i + 1) % 10}: ${HOTBAR_INFO[t].icon} ${HOTBAR_INFO[t].name}${toolOwned(t) ? '' : ' (not owned)'}`))) as HTMLSelectElement;
+      row.append(sel);
+    });
+    b.append(h('h3', {}, '🧰 Hotbar'), h('p', { class: 'muted' }, 'Choose a tool for each slot (picking one already in use swaps them). You can also right-click or drag slots on the hotbar.'), row);
+  }
+
+  private bag(b: HTMLElement, pockets = false) {
+    if (pockets) {
+      this.hotbarEditor(b);
+      b.append(h('div', { class: 'row', style: 'margin:8px 0 12px' }, h('button', { class: 'btn ghost small', onclick: () => this.open('album') }, '📖 Open album (K)')), h('h3', {}, '🎒 Items'));
+    }
     const items = Object.entries(state.inv).filter(([, n]) => n > 0).sort((a, c) => ITEMS[a[0]].category.localeCompare(ITEMS[c[0]].category) || a[0].localeCompare(c[0]));
     if (!items.length) return b.append(h('p', { class: 'muted' }, 'Your pockets are empty. Shake some trees!'));
     const canBuild = state.room?.canDecorate;
@@ -439,16 +597,33 @@ export class Hud {
       h('button', { class: 'btn ghost small', onclick: () => { this.close(); this.world.startPaint(0); this.setPrompt(''); } }, 'Eraser')));
     // Terraforming – needs the tools and a Town Hall.
     const terraGrid = h('div', { class: 'grid' });
-    const hall = done('town_hall') > 0 || state.dev;
     for (const op of TERRA_OPS) {
       const info = TERRA_INFO[op];
-      const tool = TERRA_TOOL[op] === 'pick' ? 'landscaping_pick' : 'water_spade';
-      const lock = !hall ? 'Needs a Town Hall' : have(tool) < 1 ? `Needs a ${ITEMS[tool].name} (workbench)` : null;
+      const permit = PERMIT_BY_ID[TERRA_PERMIT[op]];
+      const lock = hasPermit(permit.id) ? null : `Needs the ${permit.name} (Town Hall)`;
       terraGrid.append(h('div', { class: `tile${lock ? ' locked' : ''}` },
         h('div', { class: 'row' }, h('span', { class: 'ico' }, info.icon), h('div', {}, h('div', { class: 'nm' }, info.name), h('div', { class: 'muted' }, lock ?? info.hint))),
-        h('button', { class: 'btn small', disabled: !!lock, onclick: () => { this.close(); this.world.startTerra(op); this.setPrompt(''); } }, 'Use')));
+        h('button', { class: 'btn small', disabled: !!lock, onclick: () => {
+          this.close();
+          const tool = permit.id === 'permit_cliff' ? 'pick' : 'spade';
+          this.terraOp[tool] = op;
+          this.selectTool(tool);
+        } }, 'Use')));
     }
-    b.append(h('h3', {}, '🛤️ Paths'), pathGrid, h('h3', { style: 'margin-top:14px' }, '⛰️ Terraforming'), terraGrid, h('h3', { style: 'margin-top:14px' }, '🏗️ Buildings'));
+    // Moving buildings.
+    const moveGrid = h('div', { class: 'grid' });
+    for (const bl of blds) {
+      const d = BUILDINGS[bl.type];
+      if (d.fixed || bl.type === 'dock') continue;
+      const cost = relocationCost(bl.w, bl.h);
+      const afford = state.coins >= cost;
+      moveGrid.append(h('div', { class: `tile${afford ? '' : ' locked'}` },
+        h('div', { class: 'row' }, h('span', { class: 'ico' }, d.icon), h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'muted' }, `🪙 ${cost} to move`))),
+        h('button', { class: 'btn small', disabled: !afford, onclick: () => { this.close(); this.world.startMoveGhost(bl); this.setPrompt(''); } }, 'Move')));
+    }
+    b.append(h('h3', {}, '🛤️ Paths'), pathGrid, h('h3', { style: 'margin-top:14px' }, '⛰️ Terraforming'), terraGrid);
+    if (moveGrid.childElementCount) b.append(h('h3', { style: 'margin-top:14px' }, '🚚 Move a building'), h('p', { class: 'muted' }, 'Pick it up, then click its new spot (walk close first). Villagers and furniture inside move along.'), moveGrid);
+    b.append(h('h3', { style: 'margin-top:14px' }, '🏗️ Buildings'));
 
     const grid = h('div', { class: 'grid' });
     for (const t of BUILDABLE) {
@@ -654,7 +829,15 @@ export class Hud {
         return this.live('🏛️ Town Hall', null, (b) => {
           if (own) {
             const vs = state.quest?.villagers ?? 0;
-            b.append(h('p', {}, `Welcome, mayor! ${vs}/7 villagers live here.`), h('h3', {}, 'Sell goods'));
+            b.append(h('p', {}, `Welcome, mayor! ${vs}/7 villagers live here.`), h('h3', {}, '📜 Permits'));
+            const pg = h('div', { class: 'grid' });
+            for (const pm of PERMITS) {
+              const owned = hasPermit(pm.id);
+              pg.append(h('div', { class: `tile${owned ? '' : state.coins < pm.price ? ' locked' : ''}` },
+                h('div', { class: 'row' }, h('span', { class: 'ico' }, pm.icon), h('div', {}, h('div', { class: 'nm' }, pm.name), h('div', { class: 'muted' }, pm.desc))),
+                h('button', { class: 'btn small', disabled: owned || state.coins < pm.price, onclick: () => this.act({ k: 'permit', id: pm.id }) }, owned ? 'Owned ✓' : `🪙 ${pm.price}`)));
+            }
+            b.append(pg, h('h3', {}, 'Sell goods'));
             this.bag(b);
             b.append(h('hr'));
             this.island(b);

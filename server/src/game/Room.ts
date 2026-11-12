@@ -3,7 +3,7 @@
 // receive each other's updates (interest management).
 
 import {
-  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot, applyTerrain, type TerrainChange,
+  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot, applyTerrain, type TerrainChange, DIRS, BIRDS, BIRD_BY_ID, birdsFor,
   Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
   type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
 } from '@hearthwood/shared';
@@ -265,17 +265,27 @@ export class Room {
     this.updateObject(o);
   }
 
-  removeObject(id: string) {
+  removeObject(id: string, fx?: 'fly') {
     const o = this.objects.get(id);
     if (!o) return;
     this.objects.delete(id);
     this.grid.removeObject(o);
-    this.broadcast({ t: 'oDel', ids: [id] });
+    this.broadcast(fx ? { t: 'oDel', ids: [id], fx } : { t: 'oDel', ids: [id] });
     this.touch();
   }
 
   addBuilding(b: Building) {
     this.buildings.set(b.id, b);
+    this.grid.addBuilding(b);
+    this.broadcast({ t: 'bAdd', b: [b] });
+    this.touch();
+  }
+
+  /** Move a building to a new spot (already validated) and tell everyone. */
+  moveBuilding(b: Building, x: number, z: number) {
+    this.grid.removeBuilding(b);
+    b.x = x;
+    b.z = z;
     this.grid.addBuilding(b);
     this.broadcast({ t: 'bAdd', b: [b] });
     this.touch();
@@ -327,7 +337,7 @@ export class Room {
     if (this.interior) {
       if (this.isHome()) (this.record.interiors ??= {})[this.interior.buildingId] = [...this.objects.values()].filter((x) => x.kind !== 'decor');
     } else {
-      this.record.objects = [...this.objects.values()];
+      this.record.objects = [...this.objects.values()].filter((o) => o.kind !== 'bird');
       this.record.buildings = [...this.buildings.values()];
       this.record.nextId = Math.max(this.record.nextId, this.nextId);
       this.record.lastDayKey = this.dayKey;
@@ -460,6 +470,7 @@ export class Room {
     }
     if (this.interior) return;
     if (env.dayKey !== this.dayKey) this.dailyRefresh(env.dayKey, now);
+    this.birdTick(now, env);
     if (this.kind === 'shared') return;
 
     for (const o of [...this.objects.values()]) {
@@ -485,6 +496,66 @@ export class Room {
         if (b.completeAt > 0) this.onBuildingComplete?.(this, b); // must be idempotent (also runs after a restart)
       }
     }
+  }
+
+  // ── Birds ──────────────────────────────────────────────────────────────
+  private birdRng = new Rng(Math.floor(Math.random() * 2 ** 31));
+
+  /** Birds land, hop around for a few minutes and fly off. They are never saved. */
+  private birdTick(now: number, env: EnvView) {
+    const birds = [...this.objects.values()].filter((o) => o.kind === 'bird');
+    const here = birdsFor(this.biome, env.hour, env.season);
+    for (const b of birds) {
+      const def = BIRD_BY_ID[b.bird ?? ''];
+      if (!def || (b.leaveAt ?? 0) <= now || (!here.includes(def) && this.birdRng.chance(0.04))) this.removeObject(b.id, 'fly');
+      else if (this.birdRng.chance(0.12)) {
+        // Hop to a neighbouring free tile.
+        const [dx, dz] = DIRS[this.birdRng.int(0, 3)];
+        if (this.birdSpot(b.x + dx, b.z + dz, def.perch ?? 'ground')) this.replaceObject(b, (t) => { t.x += dx; t.z += dz; t.rot = this.birdRng.int(0, 3); });
+      }
+    }
+    // Only bother landing new birds while someone is around to see them.
+    if (!this.sessions.size || !here.length) return;
+    const max = Math.max(2, Math.round((this.layout.size * this.layout.size) / 700));
+    if (birds.length >= max || !this.birdRng.chance(0.15)) return;
+    const def = this.birdRng.weighted(here, (b) => b.rarity)!;
+    for (let tries = 0; tries < 30; tries++) {
+      const x = this.birdRng.int(1, this.layout.size - 2);
+      const z = this.birdRng.int(1, this.layout.size - 2);
+      if (!this.birdSpot(x, z, def.perch ?? 'ground')) continue;
+      if ([...this.sessions].some((s) => Math.hypot(s.x - x - 0.5, s.z - z - 0.5) < 5)) continue;
+      this.addObject({ id: this.newId('w'), kind: 'bird', bird: def.id, x, z, rot: this.birdRng.int(0, 3), leaveAt: now + this.birdRng.range(3, 7) * 60000 });
+      return;
+    }
+  }
+
+  /** Dev helper: land birds within a few tiles of a point (any species of the biome). */
+  landBirdsNear(px: number, pz: number, count: number) {
+    const env = this.env();
+    const now = birdsFor(this.biome, env.hour, env.season);
+    const pool = now.length ? now : BIRDS.filter((b) => b.biomes.includes(this.biome));
+    let n = 0;
+    for (let tries = 0; tries < 200 && n < count; tries++) {
+      const def = pool[this.birdRng.int(0, pool.length - 1)];
+      if (!def) break;
+      const x = Math.floor(px) + this.birdRng.int(-5, 5), z = Math.floor(pz) + this.birdRng.int(-5, 5);
+      if (Math.hypot(x + 0.5 - px, z + 0.5 - pz) < 1.2) continue;
+      // Dev only: if the spot suits another perch, let the bird land anyway.
+      if (!this.birdSpot(x, z, 'ground') && !this.birdSpot(x, z, 'shore')) continue;
+      this.addObject({ id: this.newId('w'), kind: 'bird', bird: def.id, x, z, rot: 0, leaveAt: Date.now() + 10 * 60000 });
+      n++;
+    }
+    return n;
+  }
+
+  private birdSpot(x: number, z: number, perch: 'ground' | 'shore') {
+    const g = this.grid;
+    if (!g.inBounds(x, z) || g.ramp(x, z) >= 0) return false;
+    const t = g.tile(x, z);
+    if (perch === 'shore' ? t !== Tile.Shore : t !== Tile.Ground) return false;
+    if (g.occupied[z * g.size + x]) return false;
+    for (const o of this.objects.values()) if (o.kind === 'bird' && o.x === x && o.z === z) return false;
+    return true;
   }
 
   // ── Depletion & respawning ─────────────────────────────────────────────

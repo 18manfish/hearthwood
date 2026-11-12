@@ -1,7 +1,7 @@
 // Terrain mesh builder shared by the game world and the island previews.
 
 import * as THREE from 'three';
-import { BIOMES, Tile, baseHeight, hashString, type BiomeId, type Grid, type Season } from '@hearthwood/shared';
+import { BIOMES, Tile, baseHeight, hashString, type BiomeId, type Grid, type Season, type InteriorTheme } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 
 export interface TerrainOptions {
@@ -9,7 +9,8 @@ export interface TerrainOptions {
   season: Season;
   vs: 'spring' | 'summer' | 'autumn' | 'winter';
   snowy: boolean;
-  interior?: 'tent' | 'cabin';
+  interior?: string;
+  theme?: InteriorTheme;
   /** Extra sea-floor tiles around the island. */
   pad?: number;
 }
@@ -28,8 +29,8 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
       [Tile.Sea]: new THREE.Color('#d9c9a0'),
       [Tile.Dock]: new THREE.Color('#d9c9a0'),
       [Tile.Pond]: new THREE.Color('#6d8f6a'),
-      [Tile.Floor]: new THREE.Color(tent ? '#c9b27a' : '#b98a5a'),
-      [Tile.Wall]: new THREE.Color(tent ? '#e0a94a' : '#efe3cf'),
+      [Tile.Floor]: new THREE.Color(o.theme?.floor ?? (tent ? '#c9b27a' : '#b98a5a')),
+      [Tile.Wall]: new THREE.Color(o.theme?.wall ?? (tent ? '#e0a94a' : '#efe3cf')),
     };
     // Cliff faces: earthy, with a little banding.
     const cliff = new THREE.Color(groundHex).lerp(new THREE.Color(def.seasonModel === 'arid' ? '#b8874f' : '#8a7356'), 0.7);
@@ -61,7 +62,12 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
         const h = corners(x, z);
         const n = ((hashString(`${x},${z}`) % 100) / 100 - 0.5) * 0.06;
         c.copy(colors[t] ?? colors[Tile.Ground]!).offsetHSL(0, 0, n);
-        if (t === Tile.Floor && !tent && (x + z) % 2) c.offsetHSL(0, 0, -0.03); // planks
+        if (t === Tile.Floor) {
+          // Floor pattern: planks (rows), tiles (checker) or carpet (plain).
+          const pat = o.theme?.pattern ?? (tent ? 'carpet' : 'planks');
+          const alt = pat === 'planks' ? z % 2 === 1 : pat === 'tiles' ? (x + z) % 2 === 1 : false;
+          if (alt) c.set(o.theme?.floorAlt ?? '#a87b4f');
+        }
         // Top surface: [x0z0, x1z0, x1z1, x0z1]
         quad([x, h[0], z], [x, h[3], z + 1], [x + 1, h[2], z + 1], [x + 1, h[1], z], c);
         // Vertical faces down to lower neighbours, per edge.

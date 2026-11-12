@@ -109,7 +109,22 @@ In snowy winters everyone who walks leaves footprints in the snow, and on beache
 
 **Cliffs & ramps.** New islands have up to two cliff levels. You can only go up or down using the ramps; you can't climb or drop off a cliff edge. Each building has to sit on one level. Ramp landings are kept clear so that a plateau can never be cut off.
 
-**Homes you can enter.** Walk up to your tent (or your starter house) and press **E** to go inside. Each has a bed and a storage chest, which is your sell box. You can place furniture inside, and the door takes you back out.
+**Every building has an inside.** Walk up to a door and press **E** (or **Ⓐ**) to go in, and use the doormat to leave.
+- **Your tent and starter house:** a bed and a storage chest (your sell box). You can place furniture inside, and it's saved.
+- **Town Hall:** a clerk's counter where you sell items and manage visitors. Also benches, banners, the island map and a red runner carpet.
+- **Shops:** every shop has a shopkeeper behind the counter, and that's where you buy, cook, change your look or book a mystery tour. Shops no longer serve you through the wall.
+  - **Tool Store:** tool racks and crates.
+  - **Furniture Store:** a showroom.
+  - **Clothing Shop:** clothes racks, mannequins and a mirror.
+  - **Restaurant:** a kitchen and dining tables.
+  - **Travel Agent:** a globe, maps and posters.
+- **Villager houses** are themed after the villager who lives there:
+  - **Colours:** taken from the villager's own colours.
+  - **Floor:** set by their personality: warm planks for cheerful villagers, carpet for lazy ones, dark wood for grumpy ones, gym tiles for sporty ones, a checkerboard for artsy ones and pastel carpet for shy ones.
+  - **Furniture by personality:** a sofa and TV, an armchair by the fireplace, dumbbells and a punching bag, an easel and paintings, a teddy bear, and so on.
+  - **Furniture by what they like:** an aquarium for fish lovers, a fruit bowl, a wardrobe and mirror, mushroom lamps, a telescope and globe for collectors of rare things, and more.
+  - **Visiting hours:** villagers are home from **19:00 to 07:00**. Visit them then to chat and give gifts in their living room; the rest of the time they're out on the island.
+- **Harbor Town:** the fishermen's cottages and the lighthouse can be explored too.
 
 **The rolling-log world.** The whole world curves away from the camera, like in Animal Crossing. This is a vertex-shader bend that is applied to every mesh, sprite and shadow. You can tune it in the debug menu.
 

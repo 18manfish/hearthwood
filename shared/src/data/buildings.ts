@@ -24,7 +24,8 @@ export type BuildingType =
   | 'stall'
   | 'lighthouse'
   | 'fountain'
-  | 'billboard';
+  | 'billboard'
+  | 'counter';
 
 export interface BuildingDef {
   type: BuildingType;
@@ -120,11 +121,12 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   exit: fixture('exit', 'Door', '🚪', 1, 1, 'Head back outside.'),
   bed: fixture('bed', 'Bed', '🛏️', 1, 2, 'Have a little rest.'),
   chest: fixture('chest', 'Storage Chest', '🧰', 1, 1, 'Your sell box.'),
-  shack: { ...fixture('shack', 'Harbour House', '🏠', 2, 2, 'A colourful fisher’s house.'), decor: true },
+  shack: fixture('shack', 'Fisher’s Cottage', '🏠', 2, 2, 'A colourful fisher’s house.'),
   stall: { ...fixture('stall', 'Market Stall', '🏪', 2, 1, 'Fresh fish and fruit, every morning.'), decor: true },
-  lighthouse: { ...fixture('lighthouse', 'Lighthouse', '🗼', 2, 2, 'Guides boats home at night.'), decor: true },
+  lighthouse: fixture('lighthouse', 'Lighthouse', '🗼', 2, 2, 'Guides boats home at night.'),
   fountain: { ...fixture('fountain', 'Fountain', '⛲', 2, 2, 'Toss in a coin for luck.'), decor: true },
   billboard: fixture('billboard', 'Billboard', '📌', 2, 1, 'Pin a note for everyone to read.'),
+  counter: fixture('counter', 'Counter', '🛎️', 2, 1, 'Ring the bell for service.'),
 };
 
 function fixture(type: BuildingType, name: string, icon: string, w: number, h: number, description: string): BuildingDef {
@@ -132,7 +134,9 @@ function fixture(type: BuildingType, name: string, icon: string, w: number, h: n
 }
 
 /** Buildings you can walk into. */
-export const ENTERABLE: BuildingType[] = ['tent', 'cabin'];
+export const ENTERABLE: BuildingType[] = [
+  'tent', 'cabin', 'town_hall', 'villager_house', 'travel_agent', 'clothing_shop', 'restaurant', 'tool_store', 'furniture_store', 'shack', 'lighthouse',
+];
 /** Fixtures that do not block movement. */
 export const NON_BLOCKING: BuildingType[] = ['dock', 'exit'];
 

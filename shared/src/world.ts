@@ -24,7 +24,7 @@ export enum Tile {
 /** Ramp directions point uphill: 0 = north (−z), 1 = east (+x), 2 = south (+z), 3 = west (−x). */
 export const DIRS: readonly [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
-export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture';
+export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor';
 
 export interface WorldObject {
   id: string;
@@ -62,6 +62,8 @@ export interface Building {
   /** ms epoch when construction completes (<= now means done). */
   completeAt: number;
   villagerId?: string;
+  /** For interior counters: which service it provides (a shop type, town_hall…). */
+  role?: BuildingType;
 }
 
 export interface IslandLayout {
@@ -101,7 +103,13 @@ export function decodeTiles(s: string): Uint8Array {
 /** Objects that stop movement. Saplings, mushrooms and flowers can be walked over. */
 export function objectBlocks(o: WorldObject): boolean {
   if (o.kind === 'tree') return (o.stage ?? 2) >= 1;
+  if (o.kind === 'decor') return !isFlatDecor(o.item ?? '');
   return o.kind === 'stump' || o.kind === 'rock' || o.kind === 'bush' || o.kind === 'furniture';
+}
+
+/** Rugs and wall-mounted decor don't block movement. */
+export function isFlatDecor(item: string) {
+  return item.startsWith('rug') || item.startsWith('w_');
 }
 
 const WALKABLE = new Set<Tile>([Tile.Ground, Tile.Shore, Tile.Dock, Tile.Ramp, Tile.Floor]);
@@ -693,29 +701,6 @@ export function connectPlateaus(seed: number, size: number, tiles: Uint8Array, l
     if (!region) break;
     if (!tryRamp(region)) for (const j of region) levels[j] -= 1; // flatten if no ramp fits
   }
-}
-
-// ── Interiors ──────────────────────────────────────────────────────────────
-
-export type InteriorStyle = 'tent' | 'cabin';
-
-/** A small walled room. The bottom row has a doorway with an exit fixture. */
-export function generateInterior(style: InteriorStyle): IslandLayout {
-  const size = style === 'tent' ? 7 : 9;
-  const tiles = new Uint8Array(size * size);
-  for (let z = 0; z < size; z++)
-    for (let x = 0; x < size; x++) tiles[z * size + x] = x === 0 || z === 0 || x === size - 1 || z === size - 1 ? Tile.Wall : Tile.Floor;
-  const mid = Math.floor(size / 2);
-  tiles[(size - 1) * size + mid] = Tile.Floor;
-  const buildings: Building[] = [
-    { id: 'b_exit', type: 'exit', x: mid, z: size - 1, w: 1, h: 1, completeAt: 0 },
-    { id: 'b_bed', type: 'bed', x: 1, z: 1, w: 1, h: 2, completeAt: 0 },
-    { id: 'b_chest', type: 'chest', x: size - 2, z: 1, w: 1, h: 1, completeAt: 0 },
-  ];
-  return {
-    size, tiles, levels: new Uint8Array(size * size), ramps: new Uint8Array(size * size),
-    objects: [], buildings, spawn: { x: mid + 0.5, z: size - 2 + 0.3 },
-  };
 }
 
 /** Is a building's footprint adjacent to (or under) point px,pz within `reach`? */

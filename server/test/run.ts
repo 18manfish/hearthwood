@@ -376,6 +376,55 @@ async function main() {
     const vid = vAdd.v[0].id;
     check(!!vid, `a villager moved in (${vid})`);
 
+    console.log('Interiors');
+    const enterAndBack = async (bot: Bot, b: { id: string; x: number; z: number; w: number; h: number }) => {
+      await bot.walkTo(b.x + Math.floor(b.w / 2), b.z + b.h, false);
+      bot.send({ t: 'travel', to: { kind: 'enter', id: b.id } });
+      const r = await bot.wait('room', (m) => m.room.kind === 'interior').catch(() => null);
+      return r?.room ?? null;
+    };
+    const exitTo = async (bot: Bot) => {
+      bot.send({ t: 'travel', to: { kind: 'exit' } });
+      await bot.wait('room', (m) => m.room.kind !== 'interior');
+    };
+    const hall = A.room.buildings.find((b) => b.type === 'town_hall')!;
+    const thIn = await enterAndBack(A, hall);
+    const counter = thIn?.buildings.find((b) => b.type === 'counter');
+    check(thIn?.interior === 'town_hall' && counter?.role === 'town_hall', 'entered the Town Hall, which has a service counter');
+    if (counter) {
+      await A.walkTo(counter.x, counter.z + 1, false);
+      check((await A.act({ k: 'sell', item: 'stone', n: 1 })).ok, 'selling works at the Town Hall counter');
+    }
+    await exitTo(A);
+    const vHouse = A.room.buildings.find((b) => b.type === 'villager_house' && b.villagerId);
+    if (vHouse) {
+      const vIn = await enterAndBack(A, vHouse);
+      check(vIn?.interior === 'villager' && !!vIn.theme && vIn.objects.filter((o) => o.kind === 'decor').length >= 6, `villager house is furnished & themed (${vIn?.name})`);
+      check(!vIn?.canDecorate, 'you cannot rearrange a villager’s furniture');
+      await exitTo(A);
+    }
+
+    // Shops: services live at the counter inside.
+    await A.chat('/kit');
+    const ts = await A.build('tool_store');
+    check(ts.ok, `tool store construction started ${ts.err ?? ''}`);
+    await A.chat('/finish');
+    await sleep(300);
+    const store = A.room.buildings.find((b) => b.type === 'tool_store');
+    if (store) {
+      const outside = await A.act({ k: 'buy', shop: 'tool_store', item: 'sapling', n: 1 });
+      check(!outside.ok, 'shops no longer serve you from outside');
+      const sIn2 = await enterAndBack(A, store);
+      const ctr = sIn2?.buildings.find((b) => b.type === 'counter');
+      check(sIn2?.interior === 'shop' && ctr?.role === 'tool_store', 'tool store interior has a shop counter');
+      if (ctr) {
+        await A.walkTo(ctr.x, ctr.z + 1, false);
+        const bought = await A.act({ k: 'buy', shop: 'tool_store', item: 'sapling', n: 1 });
+        check(bought.ok, `bought a sapling at the counter ${bought.err ?? ''}`);
+      }
+      await exitTo(A);
+    }
+
     console.log('Villagers');
     const vs = vAdd.v[0];
     await A.walkTo(Math.floor(vs.x), Math.floor(vs.z));
@@ -518,6 +567,12 @@ async function main() {
     await B.walkTo(hm.x, hm.z + 1, false);
     const pub = await B.act({ k: 'mail', to: A.self.id, text: 'Greetings from the harbour!' });
     check(pub.ok, `public mailbox sends to a friend ${pub.err ?? ''}`);
+
+    const shackB = C.room.buildings.find((b) => b.type === 'shack')!;
+    const sIn = await enterAndBack(C, shackB);
+    check(sIn?.interior === 'shack' && (sIn?.objects.length ?? 0) > 5, 'harbor cottages can be entered');
+    await exitTo(C);
+    check(C.room.id === 'shared_harbor', 'leaving a cottage returns to the harbour');
 
     C.send({ t: 'map' });
     const map = await C.wait('map');

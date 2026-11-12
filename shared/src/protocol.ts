@@ -6,8 +6,9 @@ import { isBiome, type BiomeId, type Season, type Weather } from './data/biomes.
 import { isItem } from './data/items.ts';
 import { isBuildingType, type BuildingType } from './data/buildings.ts';
 import type { Building, WorldObject } from './world.ts';
+import type { InteriorStyle, InteriorTheme } from './interiors.ts';
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -162,8 +163,9 @@ export interface EnvView {
 export interface RoomView {
   id: string;
   kind: 'island' | 'shared' | 'tour' | 'interior';
-  /** For interiors: which building style. */
-  interior?: 'tent' | 'cabin';
+  /** For interiors: which style, and its colours. */
+  interior?: InteriorStyle;
+  theme?: InteriorTheme;
   name: string;
   biome: BiomeId;
   ownerId: string | null;

@@ -3,7 +3,7 @@
 // inventory, cooldowns and world state before mutating anything.
 
 import {
-  BIOMES, BUILDINGS, ENTERABLE, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
+  BIOMES, BUILDINGS, ENTERABLE, SHOP_TYPES, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
   VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE,
   FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_TALK, FRIENDSHIP_MAX, FRIENDSHIP_BIRTHDAY_BONUS, HAIR_STYLES,
   Rng, Tile, PATH_REACH, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
@@ -63,9 +63,13 @@ function give(ctx: Ctx, gained: Record<string, number>, id: string, n: number) {
   return k;
 }
 
+/** A finished building of one of these types nearby – or, indoors, a counter offering that service. */
 function nearCompleted(ctx: Ctx, types: BuildingType[]): Building | undefined {
   for (const b of ctx.room.buildings.values()) {
-    if (types.includes(b.type) && b.completeAt <= ctx.now && nearBuilding(b, ctx.s.x, ctx.s.z, config.buildingReach)) return b;
+    // Shops and the Town Hall serve you at the counter inside, not through the wall.
+    const servedInside = SHOP_TYPES.includes(b.type) || b.type === 'town_hall';
+    const matches = (types.includes(b.type) && !servedInside) || (b.type === 'counter' && !!b.role && types.includes(b.role));
+    if (matches && b.completeAt <= ctx.now && nearBuilding(b, ctx.s.x, ctx.s.z, config.buildingReach)) return b;
   }
   return undefined;
 }
@@ -278,7 +282,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     if (!r) return fail('Unknown recipe.');
     const times = a.n ?? 1;
     if (r.station !== 'hand') {
-      if (ctx.room.kind !== 'island' || !ctx.room.isOwner(ctx.p.id)) return fail(`Use your own ${BUILDINGS[r.station].name}.`);
+      if (!ctx.room.ownsHere(ctx.p.id)) return fail(`Use your own ${BUILDINGS[r.station].name}.`);
       if (!nearCompleted(ctx, [r.station])) return fail(`Stand next to your ${BUILDINGS[r.station].name}.`);
     }
     const outDef = ITEMS[r.output];
@@ -441,8 +445,8 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
   buy(ctx, a) {
     const stock = SHOP_STOCK[a.shop];
     if (!stock || !stock.includes(a.item)) return fail('Not sold here.');
-    if (ctx.room.kind !== 'island') return fail('No shop here.');
-    if (!nearCompleted(ctx, [a.shop])) return fail(`Visit the ${BUILDINGS[a.shop].name}.`);
+    if (ctx.room.kind !== 'island' && ctx.room.kind !== 'interior') return fail('No shop here.');
+    if (!nearCompleted(ctx, [a.shop])) return fail(`Go to the counter inside the ${BUILDINGS[a.shop].name}.`);
     const price = ITEMS[a.item].buy!;
     if (!inv.canAdd(ctx.p, a.item, a.n)) return fail('You can’t carry that many.');
     if (ctx.p.coins < price * a.n) return fail('Not enough coins.');
@@ -453,8 +457,8 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
   },
 
   sell(ctx, a) {
-    if (!ctx.room.canDecorate(ctx.p.id)) return fail('Sell items at home.');
-    if (!nearCompleted(ctx, ['tent', 'cabin', 'town_hall', 'chest'])) return fail('Sell at your storage chest, house or town hall.');
+    if (!ctx.room.ownsHere(ctx.p.id)) return fail('Sell items at home.');
+    if (!nearCompleted(ctx, ['tent', 'cabin', 'town_hall', 'chest'])) return fail('Sell at your storage chest or the Town Hall counter.');
     if (inv.count(ctx.p, a.item) < a.n) return fail('You don’t have that many.');
     if (ctx.p.hat === a.item && inv.count(ctx.p, a.item) <= a.n) ctx.p.hat = null;
     const price = ITEMS[a.item].sell * a.n;
@@ -471,7 +475,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
   },
 
   restyle(ctx, a) {
-    if (!nearCompleted(ctx, ['clothing_shop'])) return fail('Visit a Clothing Shop.');
+    if (!nearCompleted(ctx, ['clothing_shop'])) return fail('Visit the counter in a Clothing Shop.');
     if (!(HAIR_STYLES[ctx.p.gender] as readonly string[]).includes(a.look.hair)) return fail('Invalid hairstyle.');
     const cost = 200;
     if (ctx.p.coins < cost) return fail(`A makeover costs ${cost} coins.`);

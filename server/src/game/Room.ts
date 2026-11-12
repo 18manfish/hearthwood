@@ -3,9 +3,9 @@
 // receive each other's updates (interest management).
 
 import {
-  BIOMES, TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot,
+  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot,
   Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
-  type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type InteriorStyle, type Season, type BoardPost,
+  type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
@@ -39,7 +39,7 @@ export interface RoomOptions {
   /** Cliffs & ramps. */
   elevation?: boolean;
   /** For interiors: the building we're inside and the room we came from. */
-  interior?: { style: InteriorStyle; buildingId: string; parentId: string };
+  interior?: { spec: InteriorSpec; buildingId: string; parentId: string };
   /** Hand-designed shared locations. */
   design?: 'harbor' | 'aurora';
 }
@@ -56,6 +56,8 @@ export class Room {
   readonly record?: IslandRecord;
   readonly interior?: RoomOptions['interior'];
   readonly design?: RoomOptions['design'];
+  /** Interior colours. */
+  theme?: InteriorTheme;
   /** Billboard notes (shared with the store, so they persist). */
   board: BoardPost[] | null = null;
   readonly layout: IslandLayout;
@@ -91,7 +93,9 @@ export class Room {
     this.interior = o.interior;
     this.design = o.design;
     if (o.interior) {
-      this.layout = generateInterior(o.interior.style);
+      const il = generateInterior(o.interior.spec);
+      this.theme = il.theme;
+      this.layout = il;
     } else if (o.design === 'harbor') {
       this.layout = generateHarbor();
     } else {
@@ -104,7 +108,9 @@ export class Room {
     let objs: WorldObject[];
     let blds: Building[];
     if (o.interior) {
-      objs = o.record?.interiors?.[o.interior.buildingId] ?? [];
+      // Generated decor, plus (in your own tent / house) the furniture you placed.
+      const saved = this.isHome() ? o.record?.interiors?.[o.interior.buildingId] ?? [] : [];
+      objs = [...this.layout.objects, ...saved.filter((x) => x.kind !== 'decor')];
       blds = this.layout.buildings;
     } else {
       objs = o.record ? o.record.objects : this.layout.objects;
@@ -143,8 +149,18 @@ export class Room {
     return this.kind === 'island' && this.isOwner(playerId);
   }
 
+  /** Your own tent / starter house: furniture can be rearranged and is saved. */
+  isHome() {
+    return !!this.interior && HOME_STYLES.includes(this.interior.spec.style);
+  }
+
   canDecorate(playerId: string) {
-    return (this.kind === 'island' || this.kind === 'interior') && this.isOwner(playerId);
+    return (this.kind === 'island' || this.isHome()) && this.isOwner(playerId);
+  }
+
+  /** Owner-only services (selling, cooking…) are available on the island and inside its buildings. */
+  ownsHere(playerId: string) {
+    return (this.kind === 'island' || (this.kind === 'interior' && !this.interior!.parentId.startsWith('shared_'))) && this.isOwner(playerId);
   }
 
   islandDay(now = Date.now()): number {
@@ -163,7 +179,8 @@ export class Room {
     return {
       id: this.id,
       kind: this.kind,
-      interior: this.interior?.style,
+      interior: this.interior?.spec.style,
+      theme: this.theme,
       name: this.name,
       biome: this.biome,
       ownerId: this.ownerId,
@@ -288,7 +305,7 @@ export class Room {
   syncRecord() {
     if (!this.record || !this.dirty) return false;
     if (this.interior) {
-      (this.record.interiors ??= {})[this.interior.buildingId] = [...this.objects.values()];
+      if (this.isHome()) (this.record.interiors ??= {})[this.interior.buildingId] = [...this.objects.values()].filter((x) => x.kind !== 'decor');
     } else {
       this.record.objects = [...this.objects.values()];
       this.record.buildings = [...this.buildings.values()];
@@ -345,7 +362,7 @@ export class Room {
   villagerTick(dt: number, now: number) {
     if (this.sessions.size === 0 || this.villagers.size === 0) return;
     const env = this.env(now);
-    const night = env.hour >= 22 || env.hour < 6;
+    const night = villagerAtHome(env.hour);
     const updates: [string, number, number, number, 0 | 1][] = [];
     const rng = Math.random;
     for (const v of this.villagers.values()) {

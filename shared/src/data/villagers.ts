@@ -41,6 +41,11 @@ export const VILLAGERS: VillagerDef[] = [
   { id: 'v_barley', name: 'Barley', species: 'bear', personality: 'artsy', color: '#c9a36b', accent: '#fff0d4', catchphrase: 'grand', likes: ['furniture', 'wood'], loves: ['bench', 'prickly_pear'], dislikes: ['fish'], birthday: '09-01' },
 ];
 
+/** Villagers spend the evening and night at home (19:00–07:00). */
+export function villagerAtHome(hour: number) {
+  return hour >= 19 || hour < 7;
+}
+
 export function villagerDef(id: string): VillagerDef | undefined {
   return VILLAGERS.find((v) => v.id === id);
 }

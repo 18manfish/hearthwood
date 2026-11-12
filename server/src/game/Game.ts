@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   BIOMES, BUILDINGS, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
-  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
+  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, interiorSpecFor, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
   type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
@@ -61,6 +61,12 @@ export class Game {
     const now = Date.now();
     for (const [id, r] of this.rooms) {
       r.slowTick(now);
+      // Villagers come home in the evening (and head out in the morning) while you visit.
+      if (r.interior?.spec.style === 'villager') {
+        const parent = this.rooms.get(r.interior.parentId);
+        const b = parent?.buildings.get(r.interior.buildingId);
+        if (parent && b) this.syncVillagerAtHome(parent, r, b);
+      }
       // Unload idle rooms (islands are lazily caught up when they load again).
       if (r.sessions.size === 0 && r.kind !== 'shared' && now - r.emptySince > 60000) {
         if (r.syncRecord()) this.store.markIsland(r.id);
@@ -184,7 +190,7 @@ export class Game {
       case 'kick': {
         const room = s.room;
         const target = this.online.get(m.id);
-        if (!room || !room.canDecorate(p.id) || !target || target.room !== room || target === s) return;
+        if (!room || !room.ownsHere(p.id) || !target || target.room !== room || target === s) return;
         target.send({ t: 'toast', text: `${p.name} sent you home.`, kind: 'warn' });
         this.travel(target, { kind: 'home' });
         return;
@@ -314,19 +320,54 @@ export class Game {
     return room;
   }
 
-  /** The inside of a tent / house. Shares the island record for persistence. */
-  interiorRoom(parent: Room, b: Building): Room {
+  /** The inside of a building. Shares the island record (villagers, furniture in your home). */
+  interiorRoom(parent: Room, b: Building): Room | null {
     const id = `${parent.id}~${b.id}`;
     const existing = this.rooms.get(id);
-    if (existing) return existing;
-    const style = b.type === 'tent' ? 'tent' : 'cabin';
+    const villager = b.villagerId ? villagerDef(b.villagerId) : undefined;
+    if (existing) {
+      this.syncVillagerAtHome(parent, existing, b);
+      return existing;
+    }
+    const spec = interiorSpecFor(b.type, b.id, villager);
+    if (!spec) return null;
+    const owner = parent.ownerName ?? 'Someone';
+    const name =
+      spec.style === 'tent' ? `${owner}\u2019s tent`
+      : spec.style === 'cabin' ? `${owner}\u2019s house`
+      : spec.style === 'villager' ? `${villager?.name ?? 'A villager'}\u2019s house`
+      : spec.style === 'shack' ? 'Fisher\u2019s cottage'
+      : BUILDINGS[b.type].name;
     const room = new Room({
-      id, kind: 'interior', name: `${parent.ownerName ?? 'Someone'}\u2019s ${style === 'tent' ? 'tent' : 'house'}`, biome: parent.biome,
+      id, kind: 'interior', name, biome: parent.biome,
       ownerId: parent.ownerId, ownerName: parent.ownerName, geo: parent.geo, seed: parent.seed, record: parent.record,
-      interior: { style, buildingId: b.id, parentId: parent.id },
+      interior: { spec, buildingId: b.id, parentId: parent.id },
     });
     this.rooms.set(id, room);
+    this.syncVillagerAtHome(parent, room, b);
     return room;
+  }
+
+  /** Villagers are at home (inside) at night – you can visit them there. */
+  private syncVillagerAtHome(parent: Room, inside: Room, b: Building) {
+    if (!b.villagerId) return;
+    const outside = parent.villagers.get(b.villagerId);
+    const home = !!outside?.home;
+    const present = inside.villagers.has(b.villagerId);
+    if (home && !present) {
+      const v = inside.spawnVillager(b.villagerId, b.id);
+      const mid = inside.layout.size / 2;
+      v.x = v.tx = mid + 1.2;
+      v.z = v.tz = mid - 0.5;
+      v.r = 0;
+      inside.broadcast({ t: 'vAdd', v: [inside.villagerView(v)] });
+      if (inside.sessions.size) inside.broadcast({ t: 'chat', from: '', name: '', text: `${villagerDef(b.villagerId)?.name ?? 'Someone'} came home.`, sys: true });
+    } else if (!home && present) {
+      const v = inside.villagers.get(b.villagerId)!;
+      inside.broadcast({ t: 'vs', l: [[v.id, v.x, v.z, v.r, 1]] }); // hides them on clients
+      inside.removeVillager(b.villagerId);
+      inside.broadcast({ t: 'chat', from: '', name: '', text: `${villagerDef(b.villagerId)?.name ?? 'They'} headed out for the day.`, sys: true });
+    }
   }
 
   sharedRoom(id: string): Room | null {
@@ -376,15 +417,19 @@ export class Game {
       case 'enter': {
         const room = s.room;
         const b = room?.buildings.get(to.id);
-        if (!room || room.kind !== 'island' || !b || !ENTERABLE.includes(b.type)) return s.send({ t: 'toast', text: 'You can\u2019t go in there.', kind: 'warn' });
+        if (!room || (room.kind !== 'island' && room.kind !== 'shared') || !b || !ENTERABLE.includes(b.type)) return s.send({ t: 'toast', text: 'You can\u2019t go in there.', kind: 'warn' });
         if (b.completeAt > Date.now()) return s.send({ t: 'toast', text: 'It\u2019s still being built.', kind: 'warn' });
         if (!nearBuilding(b, s.x, s.z, config.buildingReach)) return s.send({ t: 'toast', text: 'Walk up to the door first.', kind: 'warn' });
-        return this.moveToRoom(s, this.interiorRoom(room, b));
+        const inside = this.interiorRoom(room, b);
+        if (!inside) return s.send({ t: 'toast', text: 'It\u2019s locked.', kind: 'warn' });
+        if (b.villagerId && !inside.villagers.has(b.villagerId)) s.send({ t: 'toast', text: `${villagerDef(b.villagerId)?.name ?? 'They'} is out and about – they’re home from 19:00 to 07:00.`, kind: 'info' });
+        return this.moveToRoom(s, inside);
       }
       case 'exit': {
         const room = s.room;
         if (!room?.interior) return;
-        const parent = this.islandRoom(room.interior.parentId);
+        const pid = room.interior.parentId;
+        const parent = this.rooms.get(pid) ?? (pid.startsWith('shared_') ? this.sharedRoom(pid.slice(7)) : this.islandRoom(pid));
         if (!parent) return this.travel(s, { kind: 'home' });
         const b = parent.buildings.get(room.interior.buildingId);
         const at = b ? { x: b.x + b.w / 2, z: b.z + b.h + 0.45, r: 0 } : undefined;
@@ -408,8 +453,9 @@ export class Game {
       case 'tour': {
         const home = this.islandRoom(p.homeIslandId!);
         if (!home || home.completedCount('travel_agent') < 1) return s.send({ t: 'toast', text: 'Build a Travel Agent to book mystery tours.', kind: 'warn' });
-        if (s.room !== home || ![...home.buildings.values()].some((b) => b.type === 'travel_agent' && Math.hypot(b.x + b.w / 2 - s.x, b.z + b.h / 2 - s.z) < 4))
-          return s.send({ t: 'toast', text: 'Book tours at your Travel Agent.', kind: 'warn' });
+        const here = s.room;
+        const atAgent = here?.interior?.parentId === home.id && [...here.buildings.values()].some((b) => b.role === 'travel_agent' && nearBuilding(b, s.x, s.z, config.buildingReach));
+        if (!atAgent) return s.send({ t: 'toast', text: 'Book tours at the counter inside your Travel Agent.', kind: 'warn' });
         if (p.coins < MYSTERY_TOUR_COST) return s.send({ t: 'toast', text: `A tour costs ${MYSTERY_TOUR_COST} coins.`, kind: 'warn' });
         p.coins -= MYSTERY_TOUR_COST;
         this.sendInv(s);

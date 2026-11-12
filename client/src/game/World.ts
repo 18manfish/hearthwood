@@ -15,6 +15,21 @@ import { buildFoliage, disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
 import { windTime } from './bend.ts';
 import { animateRig, makePlayer, makeVillager, setHat, setTool, type Rig } from './characters.ts';
+import type { VillagerDef, BuildingType as BT } from '@hearthwood/shared';
+
+/** Who works the counter in each kind of building. */
+function shopkeeper(role?: BT): VillagerDef {
+  const base = { id: 'keeper', catchphrase: '', likes: [], loves: [], dislikes: [], birthday: '01-01', personality: 'cheerful' as const };
+  switch (role) {
+    case 'town_hall': return { ...base, name: 'Clerk', species: 'owl', color: '#8c6a4a', accent: '#efe0c4' };
+    case 'tool_store': return { ...base, name: 'Smith', species: 'bear', color: '#8a5a3c', accent: '#d9b48f' };
+    case 'furniture_store': return { ...base, name: 'Carpenter', species: 'squirrel', color: '#c46a2b', accent: '#f3d3a2' };
+    case 'clothing_shop': return { ...base, name: 'Tailor', species: 'rabbit', color: '#f2efe8', accent: '#f6b6c4' };
+    case 'restaurant': return { ...base, name: 'Chef', species: 'cat', color: '#e07b39', accent: '#fff1e2' };
+    case 'travel_agent': return { ...base, name: 'Agent', species: 'penguin', color: '#2c3e50', accent: '#ffffff' };
+    default: return { ...base, name: 'Keeper', species: 'dog', color: '#d9a35b', accent: '#fff3dc' };
+  }
+}
 import { buildingModel, furnitureModel, mat, objectModel, part } from './models.ts';
 import { net } from '../net.ts';
 import { state, watch } from '../state.ts';
@@ -279,7 +294,7 @@ export class World {
       this.lastSent = { x: this.me.x, z: this.me.z, r: this.me.r, at: 0 };
       this.camera.position.set(this.me.x, 12, this.me.z + 11);
     }
-    this.camDist = room.kind === 'interior' ? 9 : Math.max(this.camDist, 11);
+    this.camDist = room.kind === 'interior' ? Math.max(8, room.size + 1) : Math.max(this.camDist, 11);
     this.water.visible = room.kind !== 'interior';
     if (debug.grid) this.toggleGridOverlay(true);
     this.cast = null;
@@ -472,7 +487,7 @@ export class World {
       this.world.remove(this.terrain);
       this.terrain.geometry.dispose();
     }
-    const m = buildTerrainMesh(this.grid, { biome: this.room.biome, ...this.visual(), interior: this.room.interior });
+    const m = buildTerrainMesh(this.grid, { biome: this.room.biome, ...this.visual(), interior: this.room.interior, theme: this.room.theme });
     m.add(buildDocks(this.grid)); // boardwalks & piers ride along with the terrain mesh
     this.terrain = m;
     this.world.add(m);
@@ -516,7 +531,9 @@ export class World {
     const def = BIOMES[this.room.biome];
     const { season, vs, snowy } = this.visual();
     const mesh = objectModel(o, season, vs, snowy, def.bushColor, def.bushItem);
-    mesh.position.set(o.x + 0.5, this.grid!.surfaceY(o.x + 0.5, o.z + 0.5), o.z + 0.5);
+    // Wall-mounted decor sits on the wall tile but is placed from floor level.
+    const wallDecor = o.kind === 'decor' && o.item?.startsWith('w_');
+    mesh.position.set(o.x + 0.5, wallDecor ? baseHeight(Tile.Floor) : this.grid!.surfaceY(o.x + 0.5, o.z + 0.5), o.z + 0.5);
     mesh.traverse((c: THREE.Object3D) => (c.userData.objId = o.id));
     this.world.add(mesh);
     this.objMeshes.set(o.id, mesh);
@@ -527,10 +544,18 @@ export class World {
     if (prev) this.world.remove(prev);
     const flagUp = b.type === 'mailbox' && this.room?.ownerId === state.self?.id && state.mail.length > 0;
     const notes = b.type === 'billboard' ? state.room?.board?.length ?? 0 : 0;
-    const mesh = buildingModel(b, net.serverNow(), this.room?.interior ?? 'cabin', { flagUp, notes });
+    const mesh = buildingModel(b, net.serverNow(), this.room?.interior === 'tent' ? 'tent' : 'cabin', { flagUp, notes });
     const y = b.type === 'dock' ? 0 : this.room?.kind === 'interior' ? baseHeight(Tile.Floor) : baseHeight(Tile.Ground) + (this.grid?.level(b.x, b.z) ?? 0) * CLIFF;
     mesh.position.set(b.x + b.w / 2, y, b.z + b.h / 2);
     mesh.userData.done = b.completeAt <= net.serverNow();
+    // Someone to serve you behind every counter.
+    if (b.type === 'counter') {
+      const keeper = makeVillager(shopkeeper(b.role));
+      keeper.root.position.set(0, 0, -0.85);
+      keeper.root.name = 'keeper';
+      mesh.add(keeper.root);
+      mesh.userData.keeper = keeper;
+    }
     this.world.add(mesh);
     this.bldMeshes.set(b.id, mesh);
   }
@@ -850,7 +875,9 @@ export class World {
       const def = BUILDINGS[b.type];
       const label = !done ? `${def.name} (under construction)`
         : b.type === 'dock' ? (this.room.kind === 'tour' ? 'Sail home' : 'Travel')
+        : b.type === 'villager_house' && b.villagerId ? `Visit ${villagerDef(b.villagerId)?.name ?? 'their'}’s house`
         : ENTERABLE.includes(b.type) ? `Enter ${def.name}`
+        : b.type === 'counter' ? (b.role === 'town_hall' ? 'Talk to the mayor’s desk' : b.role === 'restaurant' ? 'Use the kitchen' : b.role === 'travel_agent' ? 'Plan a trip' : 'Ring the bell')
         : b.type === 'exit' ? 'Go outside'
         : b.type === 'bed' ? 'Rest'
         : b.type === 'chest' ? 'Open storage chest'
@@ -889,6 +916,7 @@ export class World {
       case 'mushroom': return owner ? `Pick ${o.rare ? 'Glowcap' : 'mushroom'}` : null;
       case 'flower': return owner ? 'Pick flower' : null;
       case 'furniture': return this.room!.canDecorate ? `Pick up ${ITEMS[o.item!]?.name ?? 'item'} (F)` : null;
+      case 'decor': return null;
     }
   }
 
@@ -1048,6 +1076,8 @@ export class World {
         const ll = mesh.getObjectByName('lighthouse-light') as THREE.PointLight | undefined;
         if (ll) ll.intensity = night * 6;
       }
+      const keeper = mesh.userData.keeper as Rig | undefined;
+      if (keeper) animateRig(keeper, 0.016, 0, 0);
       const spout = mesh.getObjectByName('spout');
       if (spout) spout.scale.y = 0.35 + Math.sin(t * 6) * 0.05;
       const flame = mesh.getObjectByName('flame');

@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { BUILDINGS, ITEMS, TREES, hashString, type Building, type Season, type WorldObject } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
+import { decorModel } from './decor.ts';
 
 const matCache = new Map<string, THREE.MeshStandardMaterial>();
 export function mat(color: string, opts: { emissive?: string; ei?: number; opacity?: number; rough?: number } = {}) {
@@ -218,6 +219,8 @@ export function objectModel(o: WorldObject, season: Season, visual: 'spring' | '
     }
     case 'furniture':
       return furnitureModel(o.item ?? 'bench', o.rot ?? 0);
+    case 'decor':
+      return decorModel(o.item ?? 'none', o.rot ?? 0);
   }
 }
 
@@ -478,6 +481,18 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       const spout = part('cone', mat('#bfe6ff', { opacity: 0.6 }), 0.08, 0.35, 0.08, 0, 1.25, 0, false);
       spout.name = 'spout';
       g.add(spout);
+      break;
+    }
+    case 'counter': {
+      // Service counter with a bell and a sign showing what it's for.
+      g.add(part('box', '#8b5e34', b.w - 0.1, 0.9, 0.7, 0, 0.45, 0));
+      g.add(part('box', '#c49a62', b.w + 0.05, 0.08, 0.8, 0, 0.94, 0));
+      g.add(part('cyl', '#f6c445', 0.08, 0.06, 0.08, 0.5, 1.0, 0.15));
+      g.add(part('sphere', '#f6c445', 0.03, 0.03, 0.03, 0.5, 1.05, 0.15, false));
+      const role = b.role ? BUILDINGS[b.role] : null;
+      const s = emojiSprite(role?.icon ?? '🛎️', 0.6);
+      s.position.set(0, 1.75, -0.1);
+      g.add(s);
       break;
     }
     case 'billboard': {

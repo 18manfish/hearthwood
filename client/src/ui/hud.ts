@@ -9,7 +9,7 @@ import {
 import { net } from '../net.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
-import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
+import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, ENTERABLE, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
 import { lookEditor, Preview } from './creator.ts';
@@ -612,7 +612,10 @@ export class Hud {
     }
     const room = state.room!;
     const own = room.ownerId === state.self?.id;
-    switch (bld.type) {
+    // Every enterable building opens its interior; services are at the counter inside.
+    if (ENTERABLE.includes(bld.type)) return this.travel({ kind: 'enter', id: bld.id });
+    const service: BuildingType = bld.type === 'counter' && bld.role ? bld.role : bld.type;
+    switch (service) {
       case 'dock':
         if (room.kind === 'tour') return this.travel({ kind: 'home' });
         return this.open('map');
@@ -623,10 +626,8 @@ export class Hud {
         if (!own) return this.toast('A sturdy workbench.');
         return this.live('🛠️ Workbench', null, (b) => this.craft(b, ['hand', 'workbench']));
       case 'restaurant':
+        if (!own) return this.toast('“Sorry, the kitchen is for the chef only!”');
         return this.live('🍽️ Restaurant kitchen', null, (b) => this.craft(b, ['restaurant', 'campfire']));
-      case 'tent':
-      case 'cabin':
-        return this.travel({ kind: 'enter', id: bld.id });
       case 'exit':
         return this.travel({ kind: 'exit' });
       case 'bed':
@@ -645,20 +646,16 @@ export class Hud {
             this.bag(b);
             b.append(h('hr'));
             this.island(b);
-          } else b.append(h('p', {}, `Welcome to ${room.name}! The mayor is ${room.ownerName}.`));
+          } else b.append(h('p', {}, `Welcome to the Town Hall! The mayor is ${room.ownerName}.`));
         });
-      case 'villager_house': {
-        const v = bld.villagerId ? villagerDef(bld.villagerId) : null;
-        return this.toast(v ? `${v.name}’s house.` : 'An empty house – someone will move in soon!');
-      }
       case 'tool_store':
       case 'furniture_store':
-        return this.live(`${def.icon} ${def.name}`, null, (b) => this.shop(b, bld.type));
+        return this.live(`${BUILDINGS[service].icon} ${BUILDINGS[service].name}`, null, (b) => this.shop(b, service));
       case 'clothing_shop': {
         // Rendered once (it hosts a live 3D preview).
         const body = h('div');
-        this.shop(body, bld.type);
-        return this.frame(`${def.icon} ${def.name}`, body);
+        this.shop(body, service);
+        return this.frame(`${BUILDINGS[service].icon} ${BUILDINGS[service].name}`, body);
       }
       case 'billboard':
         return this.live('📌 Billboard', null, (b) => this.billboard(b));

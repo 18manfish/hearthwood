@@ -1,10 +1,12 @@
-// Procedural low-poly models. Everything is built from primitives so the game
-// needs no external assets.
+// Low-poly models. Most are built from primitives; trees use the Blender models
+// in public/models/trees.glb when they load (see treeAssets.ts) and fall back
+// to the procedural ones here.
 
 import * as THREE from 'three';
 import { BIRD_BY_ID, BUILDINGS, ITEMS, TREES, hashString, type Building, type Season, type WorldObject } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 import { decorModel } from './decor.ts';
+import { gltfTree } from './treeAssets.ts';
 
 const matCache = new Map<string, THREE.MeshStandardMaterial>();
 export function mat(color: string, opts: { emissive?: string; ei?: number; opacity?: number; rough?: number } = {}) {
@@ -79,6 +81,21 @@ export function treeModel(o: WorldObject, season: Season, visual: 'spring' | 'su
   const bare = def.deciduous && visual === 'winter';
   const fruitColor = def.fruit ? FRUIT_COLORS[def.fruit] : undefined;
   const fruits: [number, number, number][] = [];
+
+  // Prefer the Blender models when they are loaded (saplings stay procedural).
+  if (stage > 0) {
+    const m = gltfTree(
+      o,
+      { trunk: def.trunk, foliage, bare: !!bare, snowy, fruitColor: stage === 2 ? fruitColor : undefined, fruitCount: o.fruit ?? 0 },
+      (c) => mat(c),
+      (c, x, y, z) => part('sphere', c, 0.11, 0.11, 0.11, x, y, z),
+    );
+    if (m) {
+      m.scale.setScalar(scale);
+      m.rotation.y = rand(o.id) * Math.PI * 2;
+      return m;
+    }
+  }
 
   switch (def.shape) {
     case 'round':

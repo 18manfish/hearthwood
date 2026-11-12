@@ -8,6 +8,7 @@ import { World } from './game/World.ts';
 import { Hud } from './ui/hud.ts';
 import { showCreator } from './ui/creator.ts';
 import { showLogin } from './ui/login.ts';
+import { loadTreeAssets } from './game/treeAssets.ts';
 import { api, clearToken, health, loadGameData, token, type Health } from './auth.ts';
 import { showStart } from './ui/start.ts';
 import { h, clear } from './ui/dom.ts';
@@ -393,6 +394,7 @@ net.onAuth = async (kind, msg) => {
 
 async function boot() {
   statusScreen('Connecting to the islands…');
+  const models = loadTreeAssets(); // in parallel with login; never rejects
   try {
     serverInfo = await health();
     await loadGameData();
@@ -416,6 +418,7 @@ async function boot() {
     }
   }
   await showStart(app, me.username ?? 'a guest');
+  await models;
   net.connect();
 }
 boot();

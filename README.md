@@ -208,6 +208,10 @@ Visitors can walk around, chat, fish and befriend your villagers, but only the o
 
 ---
 
+## 3D models
+
+Trees are low-poly models made in Blender: the source is `art/trees.blend`, and the game loads `client/public/models/trees.glb`. Each species has a root node `tree_<species>` with child meshes named by role (`_trunk`, `_foliage`, `_branches` for bare winter trees, `_snow`, `_marks`, `_ribs`) and empties `_fruit0…` where fruit hangs. Colours come from the game data, so seasons and the game creation tool still apply. If the file is missing, or a species isn't in it, the game draws the old procedural tree. To change a tree, edit the .blend and re-export it as glTF Binary (+Y up) over `trees.glb`.
+
 ## Architecture
 
 Full guide with diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

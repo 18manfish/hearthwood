@@ -58,9 +58,18 @@ const SWAY = `
   }
 `;
 
-export function bend<T extends THREE.Material>(material: T, opts: { sway?: boolean } = {}): T {
+export function bend<T extends THREE.Material>(material: T, opts: { sway?: boolean; twoSidedLight?: boolean } = {}): T {
   const m = material as THREE.Material;
-  m.onBeforeCompile = (shader: { uniforms: Record<string, unknown>; vertexShader: string }) => {
+  m.onBeforeCompile = (shader: { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string }) => {
+    if (opts.twoSidedLight) {
+      // Three.js flips the normal on back faces of double-sided materials,
+      // which makes thin blades seen from behind render almost black.
+      // Undo the flip so both sides are lit like the ground they grow from.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <normal_fragment_begin>',
+        '#include <normal_fragment_begin>\n#ifdef DOUBLE_SIDED\n  normal *= faceDirection;\n#endif',
+      );
+    }
     // (uniform objects are shared, so changing .value updates every material)
     shader.uniforms.uBend = bendStrength;
     shader.uniforms.uBendZ = bendFocusZ;
@@ -73,7 +82,7 @@ export function bend<T extends THREE.Material>(material: T, opts: { sway?: boole
       shader.vertexShader = shader.vertexShader.replace('gl_Position = projectionMatrix * mvPosition;', SPRITE_BEND);
     }
   };
-  m.customProgramCacheKey = () => (opts.sway ? 'hw-bend-sway' : 'hw-bend');
+  m.customProgramCacheKey = () => `hw-bend${opts.sway ? '-sway' : ''}${opts.twoSidedLight ? '-2s' : ''}`;
   return material;
 }
 

@@ -32,6 +32,8 @@ const G = {
   cyl6: new THREE.CylinderGeometry(1, 1, 1, 6),
   cone: new THREE.ConeGeometry(1, 1, 8),
   cone4: new THREE.ConeGeometry(1, 1, 4),
+  /** Square pyramid with its base edges aligned to x/z, half-width 1. */
+  roof: new THREE.ConeGeometry(Math.SQRT2, 1, 4).rotateY(Math.PI / 4),
   sphere: new THREE.SphereGeometry(1, 10, 8),
   ico: new THREE.IcosahedronGeometry(1, 0),
   dodeca: new THREE.DodecahedronGeometry(1, 0),
@@ -292,10 +294,8 @@ function houseBody(g: THREE.Group, w: number, d: number, wallH: number, wall: st
   const dd = d - 0.4;
   g.add(part('box', '#c9b79c', ww + 0.15, 0.15, dd + 0.15, 0, 0.075, 0));
   g.add(part('box', wall, ww, wallH, dd, 0, 0.15 + wallH / 2, 0));
-  const r = part('cone4', roof, Math.max(ww, dd) * 0.78, 1.1, Math.max(ww, dd) * 0.78, 0, 0.15 + wallH + 0.55, 0);
-  r.rotation.y = Math.PI / 4;
-  r.scale.set(ww * 0.78, 1.1, dd * 0.78);
-  g.add(r);
+  // Roof overhangs the walls a little on every side.
+  g.add(part('roof', roof, ww / 2 + 0.25, 1.1, dd / 2 + 0.25, 0, 0.15 + wallH + 0.55, 0));
   // Door & windows face south (+z), towards the camera.
   g.add(part('box', door, 0.5, 0.85, 0.05, 0, 0.15 + 0.425, dd / 2 + 0.02));
   const win = mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 });
@@ -367,10 +367,7 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       break;
     }
     case 'tent': {
-      const t = part('cone4', def.color, 1.0, 1.3, 1.0, 0, 0.65, 0);
-      t.rotation.y = Math.PI / 4;
-      t.scale.set(1.15, 1.3, 1.15);
-      g.add(t);
+      g.add(part('roof', def.color, 0.85, 1.3, 0.85, 0, 0.65, 0));
       g.add(part('box', '#5d4037', 0.35, 0.6, 0.05, 0, 0.3, 0.58));
       g.add(part('box', def.roof, 0.05, 1.4, 0.05, 0, 0.7, 0));
       break;
@@ -398,15 +395,16 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       break;
     case 'town_hall': {
       houseBody(g, b.w, b.h, 1.8, def.color, def.roof);
-      g.add(part('box', def.color, 0.8, 1.2, 0.8, 0, 2.6, 0));
-      const tr = part('cone4', def.roof, 0.7, 0.7, 0.7, 0, 3.55, 0);
-      tr.rotation.y = Math.PI / 4;
-      g.add(tr);
-      g.add(part('cyl', '#ffffff', 0.25, 0.04, 0.25, 0, 2.7, 0.42));
-      g.rotation.x = 0;
-      const flag = part('box', '#e74c3c', 0.4, 0.25, 0.02, 0.2, 4.1, 0);
-      g.add(part('cyl', '#555555', 0.02, 0.6, 0.02, 0, 3.9, 0));
-      g.add(flag);
+      // Clock tower rising through the roof ridge.
+      g.add(part('box', def.color, 0.8, 1.4, 0.8, 0, 2.75, 0));
+      g.add(part('roof', def.roof, 0.5, 0.7, 0.5, 0, 3.8, 0));
+      const clock = part('cyl', '#ffffff', 0.25, 0.04, 0.25, 0, 3.05, 0.41);
+      clock.rotation.x = Math.PI / 2; // face forward
+      g.add(clock);
+      const hand = part('box', '#3b2f25', 0.03, 0.17, 0.02, 0, 3.1, 0.44, false);
+      g.add(hand);
+      g.add(part('cyl', '#555555', 0.02, 0.6, 0.02, 0, 4.4, 0));
+      g.add(part('box', '#e74c3c', 0.4, 0.25, 0.02, 0.2, 4.55, 0));
       const s = emojiSprite(def.icon, 0.7);
       s.position.set(0, 2.0, b.h / 2 + 0.1);
       g.add(s);

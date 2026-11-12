@@ -13,19 +13,15 @@ type Vis = 'spring' | 'summer' | 'autumn' | 'winter';
 // ── Geometries (local y = height above ground, used by the sway shader) ────
 function tuftGeometry(blades: number, height: number, width: number, lean = 0.12) {
   const pos: number[] = [];
-  const col: number[] = [];
   for (let i = 0; i < blades; i++) {
     const a = (i / blades) * Math.PI + (i % 2) * 0.4;
     const dx = Math.cos(a) * width, dz = Math.sin(a) * width;
     const h = height * (0.75 + ((i * 37) % 10) / 40);
     const lx = Math.cos(a + 1.57) * lean * h, lz = Math.sin(a + 1.57) * lean * h;
     pos.push(-dx, 0, -dz, dx, 0, dz, lx, h, lz);
-    // Darker roots, lighter tips (multiplied with the per-instance colour).
-    col.push(0.62, 0.62, 0.62, 0.62, 0.62, 0.62, 1.12, 1.12, 1.12);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
   // Grass normals point up so it is lit like the ground (no dark blades).
   const n = g.attributes.normal as THREE.BufferAttribute;
@@ -35,7 +31,6 @@ function tuftGeometry(blades: number, height: number, width: number, lean = 0.12
 
 function fernGeometry() {
   const pos: number[] = [];
-  const col: number[] = [];
   const fronds = 6;
   for (let i = 0; i < fronds; i++) {
     const a = (i / fronds) * Math.PI * 2;
@@ -47,11 +42,9 @@ function fernGeometry() {
     const tip = [ca * L, 0.12, sa * L];
     pos.push(0, 0.02, 0, mid[0] + px, mid[1], mid[2] + pz, mid[0] - px, mid[1], mid[2] - pz);
     pos.push(mid[0] + px, mid[1], mid[2] + pz, tip[0], tip[1], tip[2], mid[0] - px, mid[1], mid[2] - pz);
-    col.push(0.7, 0.7, 0.7, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.1, 1.1, 1.1, 1, 1, 1);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
   const n = g.attributes.normal as THREE.BufferAttribute;
   for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
@@ -75,10 +68,10 @@ function material(kind: Kind) {
   let m = MATERIALS[kind];
   if (!m) {
     const sway = kind !== 'leaf' && kind !== 'snow';
+    // Per-instance colours only (no vertex colours); both faces lit like the ground.
     m = bend(new THREE.MeshStandardMaterial({
-      color: '#ffffff', vertexColors: kind !== 'flower' && kind !== 'leaf' && kind !== 'snow',
-      roughness: 1, side: THREE.DoubleSide, flatShading: kind === 'snow',
-    }), { sway });
+      color: '#ffffff', roughness: 1, side: kind === 'snow' ? THREE.FrontSide : THREE.DoubleSide, flatShading: kind === 'snow',
+    }), { sway, twoSidedLight: kind !== 'snow' });
     MATERIALS[kind] = m;
   }
   return m;

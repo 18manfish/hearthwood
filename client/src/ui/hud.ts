@@ -7,6 +7,7 @@ import {
   type Access, type Building, type BuildingType, type Ingredient, type RecipeDef, type TalkView, type MapIsland, type Look, type TravelTarget,
 } from '@hearthwood/shared';
 import { net } from '../net.ts';
+import { logout } from '../auth.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
 import {
@@ -391,6 +392,17 @@ export class Hud {
     }
   }
 
+  /** Who you're logged in as, log-out and links to the tools. */
+  private accountBox(b: HTMLElement) {
+    const self = state.self!;
+    b.append(h('div', { class: 'row', style: 'justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px' },
+      h('div', {}, h('b', {}, self.username ? `👤 ${self.username}` : '👤 Guest (dev mode)'), h('div', { class: 'muted' }, `Friend code ${self.code}`)),
+      h('div', { class: 'row', style: 'gap:6px' },
+        self.admin ? h('a', { class: 'btn ghost small', href: '/admin.html', target: '_blank' }, '🛡️ Admin tool') : null,
+        state.dev ? h('a', { class: 'btn ghost small', href: '/editor.html', target: '_blank' }, '🛠️ Game creation tool') : null,
+        h('button', { class: 'btn ghost small', onclick: async () => { await logout(); location.reload(); } }, 'Log out'))));
+  }
+
   // ── Album ───────────────────────────────────────────────────────────────
   private albumTab: 'fish' | 'birds' = 'fish';
   private album(b: HTMLElement) {
@@ -767,6 +779,7 @@ export class Hud {
   private island(b: HTMLElement) {
     const self = state.self;
     if (!self) return;
+    this.accountBox(b);
     const opts: [Access, string, string][] = [
       ['private', '🔒 Nobody', 'Only you.'],
       ['friends', '💌 Friends', 'Everyone on your friend list.'],

@@ -55,7 +55,12 @@ export const BIRDS: BirdDef[] = [
   { id: 'bird_nightjar', name: 'Nightjar', icon: '🐦', sell: 650, rarity: 1.5, biomes: [...DRY, ...WARM], hours: [20, 4], colors: ['#7a6450', '#5a4838', '#b8a07e', '#2b2b2b'], size: 1.1 },
 ];
 
-export const BIRD_BY_ID: Record<string, BirdDef> = Object.fromEntries(BIRDS.map((b) => [b.id, b]));
+export const BIRD_BY_ID: Record<string, BirdDef> = {};
+export function rebuildBirds() {
+  for (const k of Object.keys(BIRD_BY_ID)) delete BIRD_BY_ID[k];
+  for (const b of BIRDS) BIRD_BY_ID[b.id] = b;
+}
+rebuildBirds();
 
 export function hourIn(hour: number, h?: [number, number]) {
   if (!h) return true;

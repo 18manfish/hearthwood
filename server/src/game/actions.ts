@@ -229,8 +229,12 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     ctx.s.clearCast();
     const env = ctx.room.env(ctx.now);
     const def = BIOMES[ctx.room.biome];
-    const pool = (t === Tile.Pond ? def.freshFish : def.seaFish)
-      .map((id) => FISH.find((f) => f.id === id)!)
+    const water = t === Tile.Pond ? 'fresh' : 'sea';
+    const ids = new Set(t === Tile.Pond ? def.freshFish : def.seaFish);
+    for (const f of FISH) if (f.water === water && f.biomes?.includes(ctx.room.biome)) ids.add(f.id);
+    const pool = [...ids]
+      .map((id) => FISH.find((f) => f.id === id))
+      .filter((f): f is (typeof FISH)[number] => !!f)
       .filter((f) => {
         if (f.seasons && !f.seasons.includes(env.season)) return false;
         if (f.hours) {

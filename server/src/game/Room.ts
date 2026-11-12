@@ -332,8 +332,8 @@ export class Room {
   }
 
   /** Copy runtime state back into the persisted record. */
-  syncRecord() {
-    if (!this.record || !this.dirty) return false;
+  syncRecord(force = false) {
+    if (!this.record || (!this.dirty && !force)) return false;
     if (this.interior) {
       if (this.isHome()) (this.record.interiors ??= {})[this.interior.buildingId] = [...this.objects.values()].filter((x) => x.kind !== 'decor');
     } else {

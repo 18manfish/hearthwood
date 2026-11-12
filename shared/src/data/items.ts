@@ -35,6 +35,12 @@ export type ItemTag =
 
 export type ToolKind = 'axe' | 'shovel' | 'rod' | 'net';
 
+/** Furniture models the client knows how to draw. */
+export const FURNITURE_MODELS = ['bench', 'lamp', 'flower_pot', 'fence', 'picnic_table', 'gnome', 'signpost', 'barrel', 'crate', 'rowboat'] as const;
+
+export const ITEM_CATEGORIES: ItemCategory[] = ['material', 'tool', 'food', 'fish', 'meal', 'furniture', 'clothing', 'plant', 'bird'];
+export const ITEM_TAGS: ItemTag[] = ['wood', 'mineral', 'fiber', 'fruit', 'berry', 'herb', 'mushroom', 'rare', 'fish', 'meal', 'sweet', 'furniture', 'cozy', 'clothing', 'plant', 'bird', 'tool'];
+
 export interface ItemDef {
   id: string;
   name: string;
@@ -49,10 +55,13 @@ export interface ItemDef {
   placeable?: boolean;
   /** Clothing slot. */
   wear?: 'hat';
+  /** 3D model used for furniture (see FURNITURE_MODELS); defaults to the item id. */
+  model?: string;
   color?: string;
 }
 
-const list: ItemDef[] = [
+/** Regular items (fish and birds are added from their own tables). Editable in the game creation tool. */
+export const BASE_ITEMS: ItemDef[] = [
   // ── Materials ────────────────────────────────────────────
   { id: 'wood', name: 'Wood', icon: '🪵', category: 'material', tags: ['wood'], sell: 5 },
   { id: 'stone', name: 'Stone', icon: '🪨', category: 'material', tags: ['mineral'], sell: 5 },
@@ -123,6 +132,8 @@ export interface FishDef {
   hours?: [number, number];
   /** Seasons in which the fish appears (undefined = all). */
   seasons?: string[];
+  /** Extra biomes this fish lives in (on top of each biome's own fish list). */
+  biomes?: string[];
 }
 
 // Fish live in their own table so biomes can reference them; they are
@@ -154,15 +165,19 @@ export const FISH: FishDef[] = [
   { id: 'fish_oarfish', name: 'Oarfish', icon: '🐉', sell: 1500, rarity: 0.5, water: 'sea', hours: [21, 5] },
 ];
 
-for (const f of FISH) {
-  list.push({ id: f.id, name: f.name, icon: f.icon, category: 'fish', tags: ['fish'], sell: f.sell });
-}
-for (const b of BIRDS) {
-  list.push({ id: b.id, name: b.name, icon: b.icon, category: 'bird', tags: ['bird'], sell: b.sell });
-}
+export const ITEMS: Record<string, ItemDef> = {};
+export const ITEM_LIST: ItemDef[] = [];
 
-export const ITEMS: Record<string, ItemDef> = Object.fromEntries(list.map((i) => [i.id, i]));
-export const ITEM_LIST = list;
+/** Rebuild ITEMS / ITEM_LIST from BASE_ITEMS, FISH and BIRDS (after game data changes). */
+export function rebuildItems() {
+  ITEM_LIST.length = 0;
+  ITEM_LIST.push(...BASE_ITEMS);
+  for (const f of FISH) ITEM_LIST.push({ id: f.id, name: f.name, icon: f.icon, category: 'fish', tags: ['fish'], sell: f.sell });
+  for (const b of BIRDS) ITEM_LIST.push({ id: b.id, name: b.name, icon: b.icon, category: 'bird', tags: ['bird'], sell: b.sell });
+  for (const k of Object.keys(ITEMS)) delete ITEMS[k];
+  for (const i of ITEM_LIST) ITEMS[i.id] = i;
+}
+rebuildItems();
 
 export function item(id: string): ItemDef {
   const def = ITEMS[id];

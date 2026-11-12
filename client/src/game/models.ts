@@ -280,7 +280,8 @@ export function birdModel(id: string, rot = 0): THREE.Object3D {
 export function furnitureModel(item: string, rot = 0): THREE.Object3D {
   const g = new THREE.Group();
   const wood = '#a0703f';
-  switch (item) {
+  // Items can borrow another model (set in the game creation tool).
+  switch (ITEMS[item]?.model ?? item) {
     case 'bench':
       g.add(part('box', wood, 0.9, 0.07, 0.35, 0, 0.32, 0));
       g.add(part('box', wood, 0.9, 0.3, 0.06, 0, 0.5, -0.16));

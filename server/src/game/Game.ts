@@ -8,9 +8,11 @@ import {
   ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, interiorSpecFor, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
-  type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
+  GAME_TABLES, DEFAULT_GAME_DATA, applyGameData, snapshotGameData, validateGameData, encodeTiles,
+  type GameData, type GameTable, type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
+import { hashToken, hashPassword, newToken, verifyPassword } from '../auth.ts';
 import { logger } from '../log.ts';
 
 const log = logger('game');
@@ -23,9 +25,7 @@ import * as inv from './inventory.ts';
 
 const DEFAULT_LOOK: Look = { skin: '#f1c27d', hair: 'short', hairColor: '#5a3a1e', eyes: '#2b1d14', shirt: '#3498db', pants: '#34495e', shoes: '#8d6e63' };
 
-export function hashToken(token: string) {
-  return crypto.createHash('sha256').update(token).digest('hex');
-}
+export { hashToken };
 
 export class Game {
   readonly rooms = new Map<string, Room>();
@@ -92,17 +92,74 @@ export class Game {
     }
   }
 
-  register(): { token: string; playerId: string } {
-    const token = crypto.randomBytes(32).toString('base64url');
+  /** Create an account (username + password, or a guest in dev mode) and log it in. */
+  register(username?: string, password?: string): { token: string; playerId: string } | { error: string } {
+    if (username && this.store.playerByUsername(username)) return { error: 'That username is taken.' };
     const id = `p_${crypto.randomBytes(6).toString('hex')}`;
     const now = Date.now();
     const p: PlayerRecord = {
-      id, tokenHash: hashToken(token), name: 'Newcomer', code: this.uniqueCode(), createdAt: now, lastSeen: now, created: false,
+      id, name: 'Newcomer', code: this.uniqueCode(), createdAt: now, lastSeen: now, created: false,
       gender: 'boy', look: DEFAULT_LOOK, hat: null, geo: { lat: 47, lon: 8, tz: 'UTC' }, homeIslandId: null,
       coins: 0, inv: {}, crafted: {}, friends: [], reqIn: [], reqOut: [], mail: [], chapterRewarded: 0,
     };
+    if (username && password) {
+      p.passHash = hashPassword(password);
+      p.role = config.adminUsers.includes(username.toLowerCase()) ? 'admin' : 'player';
+    }
     this.store.addPlayer(p);
-    return { token, playerId: id };
+    if (username) this.store.setUsername(p, username);
+    return { token: this.issueToken(p), playerId: id };
+  }
+
+  issueToken(p: PlayerRecord) {
+    const token = newToken();
+    this.store.addToken(p.id, hashToken(token));
+    return token;
+  }
+
+  /** Username + password → a fresh login token. */
+  login(username: string, password: string): { token: string; playerId: string } | { error: string } {
+    const p = this.store.playerByUsername(username);
+    // Same work and message whether or not the account exists.
+    const ok = verifyPassword(password, p?.passHash ?? 'scrypt$16384$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
+    if (!p || !ok) return { error: 'Wrong username or password.' };
+    const ban = this.banReason(p);
+    if (ban) return { error: ban };
+    return { token: this.issueToken(p), playerId: p.id };
+  }
+
+  /** A guest account picks a username and password (required outside dev mode). */
+  claimAccount(p: PlayerRecord, username: string, password: string): string | null {
+    if (p.username) return 'This account already has a username.';
+    if (!this.store.setUsername(p, username)) return 'That username is taken.';
+    p.passHash = hashPassword(password);
+    p.role ??= config.adminUsers.includes(username.toLowerCase()) ? 'admin' : 'player';
+    this.store.markPlayer(p.id);
+    return null;
+  }
+
+  banReason(p: PlayerRecord): string | null {
+    const b = p.banned;
+    if (!b) return null;
+    if (b.until && b.until < Date.now()) {
+      delete p.banned;
+      this.store.markPlayer(p.id);
+      return null;
+    }
+    return `This account is banned${b.until ? ` until ${new Date(b.until).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ''}: ${b.reason || 'no reason given'}`;
+  }
+
+  isAdmin(p: PlayerRecord) {
+    return p.role === 'admin' || (!!p.username && config.adminUsers.includes(p.username.toLowerCase())) || config.devFast;
+  }
+
+  /** Disconnect a player (if online). */
+  kick(playerId: string, msg: string) {
+    const s = this.online.get(playerId);
+    if (!s) return false;
+    s.send({ t: 'err', code: 'kicked', msg });
+    s.ws.close(4009, 'kicked');
+    return true;
   }
 
   // ── Connections ─────────────────────────────────────────────────────────
@@ -230,12 +287,25 @@ export class Game {
       return s.ws.close(4002, 'version');
     }
     if (s.player) return;
-    const p = this.store.playerByToken(hashToken(token));
+    const hash = hashToken(token);
+    const p = this.store.playerByToken(hash);
     if (!p) {
       log.warn('login with unknown token', { ip: s.ip });
-      s.send({ t: 'err', code: 'auth', msg: 'Unknown account.' });
+      s.send({ t: 'err', code: 'auth', msg: 'Please log in again.' });
       return s.ws.close(4003, 'auth');
     }
+    const ban = this.banReason(p);
+    if (ban) {
+      log.info('banned player refused', { player: p.id });
+      s.send({ t: 'err', code: 'banned', msg: ban });
+      return s.ws.close(4010, 'banned');
+    }
+    if (!p.username && !config.devFast) {
+      // Guest accounts from dev mode must register before playing on a real server.
+      s.send({ t: 'err', code: 'register', msg: 'Pick a username and password to keep playing.' });
+      return s.ws.close(4011, 'register');
+    }
+    this.store.touchToken(hash);
     const prev = this.online.get(p.id);
     if (prev) {
       log.info('session replaced by new login', { player: p.id });
@@ -371,6 +441,141 @@ export class Game {
     this.rooms.set(id, room);
     this.syncVillagerAtHome(parent, room, b);
     return room;
+  }
+
+  // ── Admin tool support ──────────────────────────────────────────────────
+  /** Rooms belonging to an island: the island itself and its interiors. */
+  private islandRooms(id: string) {
+    return [...this.rooms.values()].filter((r) => r.id === id || r.id.startsWith(`${id}~`));
+  }
+
+  /** Copy the live state of a loaded island (and its interiors) into its record. */
+  syncIsland(id: string) {
+    for (const r of this.islandRooms(id)) r.syncRecord(true);
+  }
+
+  /**
+   * Throw away the loaded rooms of an island and rebuild them from the record
+   * (after an admin edit). Everyone inside lands back on the fresh island.
+   */
+  reloadIsland(id: string) {
+    const rooms = this.islandRooms(id);
+    if (!rooms.length) return;
+    const moving: { s: Session; at?: { x: number; z: number; r: number } }[] = [];
+    for (const r of rooms) {
+      for (const s of r.sessions) moving.push({ s, at: r.id === id ? { x: s.x, z: s.z, r: s.r } : undefined });
+      this.rooms.delete(r.id);
+    }
+    const fresh = this.islandRoom(id);
+    for (const { s, at } of moving) {
+      if (!fresh) {
+        this.travel(s, { kind: 'home' });
+        continue;
+      }
+      this.moveToRoom(s, fresh, at && fresh.grid.walkable(at.x, at.z) ? at : undefined);
+      s.send({ t: 'toast', text: 'This island was updated by an admin.', kind: 'info' });
+    }
+  }
+
+  /** What the admin map needs: the record plus the terrain as the game sees it. */
+  adminIslandView(rec: IslandRecord) {
+    const live = this.rooms.get(rec.id);
+    const room = live ?? new Room({
+      id: rec.id, kind: 'island', name: rec.name, biome: rec.biome, ownerId: rec.ownerId, ownerName: null,
+      geo: { lat: 47, lon: 8, tz: 'UTC' }, seed: rec.seed, record: rec, elevation: (rec.gen ?? 1) >= 2, size: rec.size ?? LEGACY_ISLAND_SIZE,
+    });
+    const g = room.grid;
+    const owner = this.store.players.get(rec.ownerId);
+    return {
+      record: { ...rec, objects: live ? [...live.objects.values()].filter((o) => o.kind !== 'bird') : rec.objects, buildings: live ? [...live.buildings.values()] : rec.buildings },
+      owner: owner ? { id: owner.id, name: owner.name, username: owner.username ?? null } : null,
+      size: g.size,
+      tiles: encodeTiles(g.tiles), levels: encodeTiles(g.levels), ramps: encodeTiles(g.ramps), paths: encodeTiles(g.paths),
+      spawn: room.layout.spawn,
+      loaded: !!live,
+      players: live ? [...live.sessions].map((s) => ({ id: s.player!.id, name: s.player!.name, x: s.x, z: s.z })) : [],
+      villagers: [...room.villagers.values()].map((v) => ({ id: v.id, x: v.x, z: v.z, home: room.villagerView(v).home })),
+      birds: live ? [...live.objects.values()].filter((o) => o.kind === 'bird') : [],
+    };
+  }
+
+  /** Re-send a player's own state after an admin edit. */
+  refreshPlayer(id: string) {
+    const s = this.online.get(id);
+    if (!s?.player) return;
+    this.sendSelf(s);
+    this.sendInv(s);
+    this.sendQuest(s);
+    s.send({ t: 'album', album: albumOf(s.player) });
+  }
+
+  /** Remove a player for good: their island goes too; friends forget them. */
+  deletePlayer(id: string) {
+    const p = this.store.players.get(id);
+    if (!p) return;
+    this.kick(id, 'Your account was deleted.');
+    for (const isl of [...this.store.islands.values()].filter((i) => i.ownerId === id)) {
+      for (const r of this.islandRooms(isl.id)) {
+        for (const s of [...r.sessions]) if (s.player?.id !== id) this.travel(s, { kind: 'shared', id: 'harbor' } as TravelTarget);
+        this.rooms.delete(r.id);
+      }
+      this.store.deleteIsland(isl.id);
+    }
+    for (const other of this.store.players.values()) {
+      const before = other.friends.length + other.reqIn.length + other.reqOut.length;
+      other.friends = other.friends.filter((f) => f !== id);
+      other.reqIn = other.reqIn.filter((f) => f !== id);
+      other.reqOut = other.reqOut.filter((f) => f !== id);
+      if (other.friends.length + other.reqIn.length + other.reqOut.length !== before) this.store.markPlayer(other.id);
+    }
+    this.store.deletePlayer(id);
+  }
+
+  // ── Game data (edited in the game creation tool) ────────────────────────
+  /** Tables that differ from the built-in data – sent to every client. */
+  gameDataOverrides: Partial<GameData> = {};
+
+  /** Apply stored overrides at startup (invalid ones are skipped and logged). */
+  loadGameData() {
+    const stored = this.store.gameData() as Partial<GameData>;
+    const tables = GAME_TABLES.filter((t) => t in stored);
+    if (!tables.length) return;
+    const merged = { ...snapshotGameData(), ...stored } as GameData;
+    const errors = validateGameData(merged);
+    if (errors.length) {
+      log.error('stored game data is invalid – using the built-in data', { errors: errors.slice(0, 10) });
+      return;
+    }
+    applyGameData(stored);
+    this.gameDataOverrides = Object.fromEntries(tables.map((t) => [t, stored[t]]));
+    log.info('game data overrides loaded', { tables });
+  }
+
+  /** Apply already-validated tables, save them and tell everyone online. */
+  setGameData(tables: Partial<GameData>, author: string) {
+    applyGameData(tables);
+    for (const [t, data] of Object.entries(tables)) {
+      this.store.setGameData(t, data, author);
+      (this.gameDataOverrides as Record<string, unknown>)[t] = data;
+    }
+    this.store.audit(author, 'gamedata.set', Object.keys(tables).join(','));
+    log.info('game data changed', { by: author, tables: Object.keys(tables) });
+    this.announceDataChange();
+  }
+
+  resetGameData(tables: GameTable[], author: string) {
+    applyGameData(Object.fromEntries(tables.map((t) => [t, DEFAULT_GAME_DATA[t]])));
+    for (const t of tables) {
+      this.store.deleteGameData(t);
+      delete this.gameDataOverrides[t];
+    }
+    this.store.audit(author, 'gamedata.reset', tables.join(','));
+    log.info('game data reset', { by: author, tables });
+    this.announceDataChange();
+  }
+
+  private announceDataChange() {
+    for (const s of this.online.values()) s.send({ t: 'toast', text: '🛠️ Game data was updated – reload the page to see every change.', kind: 'info' });
   }
 
   /** Villagers are at home (inside) at night – you can visit them there. */
@@ -625,6 +830,7 @@ export class Game {
       homeIslandId: p.homeIslandId, islandName: isl?.name ?? null, biome: isl?.biome ?? null,
       access: isl?.access ?? 'friends', inviteCode: isl?.inviteCode ?? null, coins: p.coins, inv: p.inv,
       permits: p.permits ?? [], hotbar: normalizeHotbar(p.hotbar ?? DEFAULT_HOTBAR), album: albumOf(p),
+      username: p.username ?? null, admin: this.isAdmin(p),
     };
   }
 

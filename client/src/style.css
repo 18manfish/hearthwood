@@ -160,3 +160,7 @@ h1, h2, h3 { margin: 0; }
 /* Album */
 .album .tile.unknown { background: rgba(59, 47, 37, 0.06); }
 .album .tile.unknown .ico { filter: grayscale(1); opacity: 0.6; }
+
+/* Login */
+.login input { padding: 10px 12px; border-radius: 12px; border: 2px solid var(--line); background: white; }
+.login input:focus { outline: none; border-color: var(--leaf); }

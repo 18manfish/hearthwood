@@ -10,5 +10,11 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:8787', ws: true },
     },
   },
-  build: { target: 'es2022', outDir: 'dist', chunkSizeWarningLimit: 1500 },
+  build: {
+    target: 'es2022',
+    outDir: 'dist',
+    chunkSizeWarningLimit: 1500,
+    // Three pages: the game, the admin tool and the (dev-only) game creation tool.
+    rollupOptions: { input: { main: 'index.html', admin: 'admin.html', editor: 'editor.html' } },
+  },
 });

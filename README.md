@@ -4,6 +4,20 @@ A cozy, multiplayer island-life game inspired by Animal Crossing. You can play i
 
 Each player creates a boy or girl villager and picks a starting location on the world map. Then they build their island up from a campfire to a town with seven villagers. Players can visit friends' islands and meet up in shared hubs.
 
+### Accounts, admin tool and game creation tool
+
+- **Accounts.** Players register with a username (3–20 letters, digits or `_`) and a password (8+ characters). Passwords are hashed with scrypt, and only SHA-256 hashes of login tokens are stored. Each account keeps its 5 most recent sessions, and logging in again elsewhere takes over the game session. **Outside dev mode registration is required**. Guest accounts created in dev mode are asked to pick a username and password the next time they connect to a non-dev server; they keep their island. The ⚙️ Island menu (V) shows who you're logged in as, a **Log out** button and links to the tools.
+- **🛡️ Admin tool** at **`/admin.html`** (and `/admin` on the production server). It needs an admin account: put usernames in `ADMIN_USERS=alice,bob` when starting the server, or give someone the admin role in the tool. In dev mode every account counts as an admin.
+  - **Players:** search, online status, profile (name, username, role, coins, gender, hat, look, permits, chapter, home island), inventory, hotbar, album and mail, kick, log out everywhere, set a password, ban (with reason and optional end date), unban and delete.
+  - **Islands:** name, visitor access, invite code, biome, seed, founding day and world-map position. A **top-down 2D map** shows terrain, cliff levels, ramps, paths, trees and other objects, buildings, birds, villagers and the players on the island right now. The map has tools to select, move, paint terrain (tile type, cliff level, ramp direction), paint paths, add objects and buildings, and erase. You can also edit any object or building directly, move villagers in or out, edit friendships, reset terraforming, clear respawns or regenerate the island.
+  - Saving an island that's in use rebuilds it at once; players standing on it are put back where they were. Every change is written to an **audit log**, which is viewable in the tool.
+- **🛠️ Game creation tool** at **`/editor.html`**. **It's only available while the server runs in dev mode** (`npm run dev:fast`); otherwise the page and its API answer 404.
+  - **Editable tables:** items (names, icons, categories, tags, sell and buy prices, stack size, which furniture **model** to use, hats, tools), fish and birds (prices, rarity, biomes, hours, seasons, bird colours and size), recipes, **shop stock (availability)**, buildings (costs, requirements, unlock day, build time, limits, colours), villagers (species model, personality, colours, catchphrase, likes, loves, dislikes, birthday), permit prices and path costs.
+  - Furniture, birds, villagers and buildings show a live 3D preview.
+  - Built-in rows can be edited but not deleted, because existing saves refer to them. New items, fish, birds, recipes and villagers can be added.
+  - Everything is validated, and references must exist: recipe ingredients, shop items, loved gifts. Changes are stored in the database and applied to the running server. Clients load them when the page loads, and a toast tells online players to reload.
+  - **Export / Import** moves a whole data set between servers, so you can design in dev mode and import the result into production.
+
 ---
 
 ## Quick start (Windows)
@@ -16,7 +30,9 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 npm run dev
 ```
 
-Open **http://localhost:5173**. To try multiplayer on one PC, open a second browser profile or a private window. Each browser gets its own guest account.
+Open **http://localhost:5173**. Create an account (username and password) or, while the server runs in dev mode, click **Play as guest**. To try multiplayer on one PC, open a second browser profile or a private window.
+
+Node.js **22.13 or newer** is required, because the server stores everything in Node's built-in SQLite database (`node:sqlite`). `setup.ps1` installs or updates Node for you.
 
 | Command | What it does |
 |---|---|
@@ -215,7 +231,8 @@ hearthwood/
 - **Fishing timing is server-side.** The server chooses the fish and the bite time, then checks that the reel arrives inside the bite window plus a small network grace period.
 - **Interest management:** each island, hub or tour is a `Room`, and only its members receive its updates. Idle rooms are unloaded. When an island loads again, the server catches up whatever happened meanwhile (growth, construction, the daily refresh).
 - **Abuse protection:** a per-connection token-bucket rate limiter, a chat rate limit with sanitising (control and bidi characters are stripped), a WebSocket `maxPayload`, a hello timeout, ping/pong heartbeats, per-IP account-creation limits and an optional Origin allow-list (`ALLOWED_ORIGINS`).
-- **Auth:** guest accounts. A random 256-bit token is stored in the browser, and the server keeps only its SHA-256 hash. The token is sent in the first WebSocket message rather than the URL, so it stays out of logs. A second login takes over the old session.
+- **Auth:** username and password accounts (scrypt), with guests only in dev mode. Logging in returns a random 256-bit token that the browser keeps. The server stores only its SHA-256 hash, in the `tokens` table. The token is sent in the first WebSocket message rather than the URL, so it stays out of logs. The HTTP tools send it as `Authorization: Bearer …`. Login attempts are rate-limited per IP. Banned accounts are refused at login and on connect.
+- **Database:** `DATA_DIR/hearthwood.db` (SQLite, WAL mode) has tables for `players`, `tokens`, `islands`, `boards`, `gamedata` (editor overrides) and `audit`. Players and islands are kept in memory and the changed ones are written in one transaction every 5 s and on shutdown. Saves from older versions (JSON files) are imported on first start and moved to `DATA_DIR/json-backup-<date>/`.
 - **Determinism:** island generation uses integer-only hashing and noise, and the server also sends the tiles, cliff levels and ramps it generated. Weather comes from a seeded RNG, so all observers agree.
 - **Cliffs on both sides:** `Grid.canMove` / `Grid.stepOk` define when you can move between levels: same level, or via a ramp from its bottom or sides, or from the tile directly uphill. The client uses them for prediction and the server uses the same code to validate every movement step.
 - **Interiors are rooms too:** a tent or house interior is its own `Room` with its own interest management. Furniture you place inside is saved in the island record.
@@ -223,12 +240,12 @@ hearthwood/
 - **Versioned protocol:** if the versions don't match, the server asks the client to refresh.
 
 ### Configuration (environment variables)
-`PORT` (8787), `HOST`, `DATA_DIR` (server/data), `CLIENT_DIST`, `ALLOWED_ORIGINS`, `DEV_FAST=1`.
+`PORT` (8787), `HOST`, `DATA_DIR` (server/data, which holds `hearthwood.db`), `CLIENT_DIST`, `ALLOWED_ORIGINS`, `DEV_FAST=1` (dev mode: fast time, guests, dev commands, game creation tool, everyone is an admin), `ADMIN_USERS` (comma-separated usernames that are always admins).
 
 Logging: `LOG_LEVEL` (`debug` · `info` · `warn` · `error`; the default is `info`, or `debug` with `DEV_FAST`), `LOG_FORMAT` (`pretty` in a terminal, otherwise `json`; one JSON object per line), and `LOG_FILE` to also append JSON lines to a file. The server logs startup, registrations, connections and disconnects (with IP), refused or malformed messages, abuse disconnects, character creation, building completions, moves, permit purchases, dev commands, save timings (debug) and all errors. Tokens are never logged. Gameplay constants are in `server/src/config.ts`, for example `treeStageMinutes` and the fishing window.
 
 ### Going further
-- Swap `Store` for SQLite or Postgres; the interface is small.
-- Add real accounts (OAuth or passkeys) on top of the token system.
+- Move from SQLite to Postgres if several server processes need one database; `Store` is the only module that talks to it.
+- Add OAuth or passkeys next to username and password.
 - Put it behind HTTPS (the client switches to `wss://` automatically) and set `ALLOWED_ORIGINS`.
 - If one process isn't enough, scale out by assigning rooms to worker processes.

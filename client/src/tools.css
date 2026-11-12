@@ -1,0 +1,45 @@
+/* Shared look for the admin tool and the game creation tool. */
+html, body.tool { overflow: auto; background: #f4efe4; height: auto; min-height: 100%; }
+body.tool #app { position: static; }
+.tb { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 10px; padding: 10px 18px; background: var(--paper); box-shadow: 0 2px 10px rgba(60, 40, 20, 0.12); flex-wrap: wrap; }
+.tb .brand { font-weight: 900; font-size: 18px; margin-right: 8px; }
+.tb .sp { flex: 1; }
+.tb .btn.on { background: var(--leaf-dark); }
+.wrap { padding: 16px 18px 40px; max-width: 1500px; margin: 0 auto; }
+.box { background: var(--paper); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px; }
+.box h3 { margin: 4px 0 10px; }
+table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.data th { text-align: left; font-size: 12px; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 2px solid var(--line); position: sticky; top: 0; background: var(--paper); }
+table.data td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.data tr.click { cursor: pointer; }
+table.data tr.click:hover td { background: #fff3d9; }
+table.data tr.sel td { background: #e9f6df; }
+.form { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; align-items: center; }
+.form label { font-weight: 700; font-size: 13px; }
+.form .help { grid-column: 2; margin-top: -6px; }
+.tool input, .tool select, .tool textarea { padding: 6px 9px; border-radius: 10px; border: 2px solid var(--line); background: white; min-width: 0; }
+.tool input[type='checkbox'] { width: auto; }
+.tool input[type='color'] { padding: 0; width: 46px; height: 32px; }
+.tool textarea { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 12px; min-height: 70px; width: 100%; }
+.tool input:focus, .tool select:focus, .tool textarea:focus { outline: none; border-color: var(--leaf); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; align-items: start; }
+.split3 { display: grid; grid-template-columns: 220px minmax(0, 1fr) 460px; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .split, .split3 { grid-template-columns: 1fr; } }
+.side a, .side button.tbl { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border-radius: 12px; border: 0; background: none; font-weight: 700; }
+.side button.tbl.on { background: #e9f6df; }
+.side button.tbl:hover { background: #fff3d9; }
+.badge-mod { font-size: 11px; background: var(--sun); border-radius: 999px; padding: 1px 7px; }
+.scroll { max-height: 70vh; overflow: auto; }
+.errors { background: #fde4e8; border: 2px solid #f4b6c1; color: #9b2c40; border-radius: 12px; padding: 8px 12px; white-space: pre-wrap; font-size: 13px; }
+.okmsg { background: #e3f5dc; border: 2px solid #b9e0aa; color: #2f6d22; border-radius: 12px; padding: 8px 12px; font-size: 13px; }
+.mapwrap { position: relative; overflow: auto; background: #4fb7d8; border-radius: 14px; max-height: 78vh; }
+.mapwrap canvas { display: block; image-rendering: pixelated; cursor: crosshair; }
+.maptip { position: absolute; pointer-events: none; background: rgba(59, 47, 37, 0.88); color: white; padding: 4px 8px; border-radius: 8px; font-size: 12px; white-space: nowrap; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.toolbar .btn.on { background: var(--leaf-dark); }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 6px; }
+.legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; background: var(--c); vertical-align: -1px; }
+.preview3d { width: 100%; aspect-ratio: 4 / 3; border-radius: 16px; background: radial-gradient(circle at 50% 70%, #e8f6dc, #cfe9f2); overflow: hidden; }
+.preview3d canvas { width: 100% !important; height: 100% !important; display: block; }
+.kv { display: grid; grid-template-columns: 1fr 90px 30px; gap: 4px 8px; align-items: center; }
+.toastbox { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 6px; z-index: 50; }

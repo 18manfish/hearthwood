@@ -2,10 +2,10 @@
 // clock sync and typed message dispatch.
 
 import { PROTOCOL_VERSION, type ClientMessage, type ServerMessage } from '@hearthwood/shared';
+import { clearToken, token as getToken } from './auth.ts';
 
 type Handler = (m: ServerMessage) => void;
 
-const TOKEN_KEY = 'hearthwood.token';
 
 export class Net {
   private ws: WebSocket | null = null;
@@ -18,6 +18,8 @@ export class Net {
   clockOffset = 0;
   rtt = 0;
   onStatus: (s: 'connecting' | 'online' | 'offline' | 'fatal', msg?: string) => void = () => {};
+  /** The server wants a (new) login: 'login' (token unknown), 'register' (guest account must pick a name), 'banned'. */
+  onAuth: (kind: 'login' | 'register' | 'banned', msg: string) => void = () => {};
 
   on(h: Handler) {
     this.handlers.add(h);
@@ -26,17 +28,9 @@ export class Net {
 
   async connect() {
     this.onStatus('connecting');
-    let token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      const r = await fetch('/api/register', { method: 'POST' });
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        this.onStatus('fatal', body.error ?? 'Could not create an account.');
-        return;
-      }
-      token = (await r.json()).token as string;
-      localStorage.setItem(TOKEN_KEY, token);
-    }
+    const token = getToken();
+    if (!token) return this.onAuth('login', '');
+    this.closedByServer = false;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws`);
     this.ws = ws;
@@ -57,9 +51,11 @@ export class Net {
         this.rtt = Date.now() - m.ct;
         this.clockOffset = m.st + this.rtt / 2 - Date.now();
       }
-      if (m.t === 'err' && m.code === 'auth') {
-        // Token unknown (e.g. server data wiped) – start fresh.
-        localStorage.removeItem(TOKEN_KEY);
+      if (m.t === 'err' && (m.code === 'auth' || m.code === 'register' || m.code === 'banned' || m.code === 'kicked')) {
+        this.closedByServer = true;
+        if (m.code === 'auth') clearToken(); // token unknown (e.g. logged out elsewhere)
+        if (m.code === 'kicked') this.onStatus('fatal', m.msg);
+        else this.onAuth(m.code === 'auth' ? 'login' : m.code, m.msg);
       }
       if (m.t === 'err' && (m.code === 'replaced' || m.code === 'version')) {
         this.closedByServer = true;

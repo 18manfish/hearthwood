@@ -257,6 +257,10 @@ export interface SelfView {
   permits: string[];
   hotbar: Hotbar;
   album: Album;
+  /** Login name (null for dev-mode guests). */
+  username: string | null;
+  /** May open the admin tool. */
+  admin: boolean;
 }
 
 export interface QuestView {

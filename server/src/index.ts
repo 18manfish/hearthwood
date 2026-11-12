@@ -6,6 +6,8 @@ import { PROTOCOL_VERSION } from '@hearthwood/shared';
 import { config } from './config.ts';
 import { Store } from './store.ts';
 import { Game } from './game/Game.ts';
+import { buildApi } from './api.ts';
+import { clientIp, json } from './http.ts';
 import { logger, logLevel } from './log.ts';
 
 const log = logger('server');
@@ -17,55 +19,41 @@ process.on('unhandledRejection', (e) => log.error('unhandled rejection', { err: 
 const store = new Store(config.dataDir);
 store.load();
 const game = new Game(store);
+game.loadGameData();
 game.start();
-
-// ── Tiny per-IP limiter for account creation ───────────────────────────────
-const registerLog = new Map<string, number[]>();
-function allowRegister(ip: string) {
-  const now = Date.now();
-  const list = (registerLog.get(ip) ?? []).filter((t) => now - t < 3600_000);
-  if (list.length >= config.registerPerHourPerIp) return false;
-  list.push(now);
-  registerLog.set(ip, list);
-  return true;
-}
+const api = buildApi(game, store);
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
 };
 
-function json(res: http.ServerResponse, code: number, body: unknown) {
-  res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(body));
-}
+/** Pretty URLs for the tools; the game creation tool only exists in dev mode. */
+const PAGES: Record<string, string> = { '/admin': 'admin.html', '/admin/': 'admin.html', '/editor': 'editor.html', '/editor/': 'editor.html' };
 
-function clientIp(req: http.IncomingMessage) {
-  return req.socket.remoteAddress ?? 'unknown';
-}
-
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   // Basic hardening headers.
   res.setHeader('x-content-type-options', 'nosniff');
   res.setHeader('referrer-policy', 'no-referrer');
+  res.setHeader('x-frame-options', 'DENY');
 
-  if (url.pathname === '/api/health') return json(res, 200, { ok: true, protocol: PROTOCOL_VERSION, online: game.online.size });
-
-  if (url.pathname === '/api/register') {
-    if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
-    if (!allowRegister(clientIp(req))) {
-      httpLog.warn('registration rate limit hit', { ip: clientIp(req) });
-      return json(res, 429, { error: 'Too many new accounts from this address. Try later.' });
+  if (url.pathname.startsWith('/api/')) {
+    try {
+      if (await api.handle(req, res, url)) return;
+    } catch (e) {
+      httpLog.error('api error', { path: url.pathname, err: e });
+      if (!res.headersSent) return json(res, 500, { error: 'Server error' });
+      return;
     }
-    const out = game.register();
-    httpLog.info('account registered', { player: out.playerId, ip: clientIp(req) });
-    return json(res, 200, out);
+    return json(res, 404, { error: 'not found' });
   }
 
   // Serve the built client in production (in dev, Vite serves it and proxies /api + /ws here).
   if (req.method === 'GET' && fs.existsSync(config.clientDist)) {
-    const rel = path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
+    const page = PAGES[url.pathname];
+    const rel = page ?? path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
+    if (!config.devFast && rel.startsWith('editor')) return json(res, 404, { error: 'The game creation tool is only available in dev mode.' });
     let file = path.join(config.clientDist, rel);
     if (!file.startsWith(config.clientDist)) {
       httpLog.warn('path traversal attempt', { ip: clientIp(req), path: url.pathname });
@@ -103,6 +91,7 @@ server.listen(config.port, config.host, () => {
 function shutdown() {
   log.info('saving & shutting down');
   game.stop();
+  store.close();
   wss.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();

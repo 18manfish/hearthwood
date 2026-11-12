@@ -12,7 +12,14 @@ export interface MailRecord {
 
 export interface PlayerRecord {
   id: string;
-  tokenHash: string;
+  /** Login name (registered accounts); guests (dev mode only) have none. */
+  username?: string;
+  /** scrypt hash of the password. */
+  passHash?: string;
+  /** 'admin' can use the admin tool. */
+  role?: 'admin' | 'player';
+  /** Banned accounts can't log in. */
+  banned?: { reason: string; until?: number; by?: string };
   name: string;
   /** Public friend code. */
   code: string;

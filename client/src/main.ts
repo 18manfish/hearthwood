@@ -7,6 +7,8 @@ import { set, state } from './state.ts';
 import { World } from './game/World.ts';
 import { Hud } from './ui/hud.ts';
 import { showCreator } from './ui/creator.ts';
+import { showLogin } from './ui/login.ts';
+import { health, loadGameData, type Health } from './auth.ts';
 import { h, clear } from './ui/dom.ts';
 import { GamepadInput, type PadButton } from './input/gamepad.ts';
 import { activate, clearPadFocus, focusRoot, navigate, scrollMenu } from './input/padnav.ts';
@@ -365,13 +367,39 @@ net.on((m: ServerMessage) => {
       return;
     case 'err':
       if (m.code === 'bad_message' || m.code === 'server') console.warn('[server]', m.msg);
-      if (!world && m.code !== 'auth') statusScreen(m.msg);
-      else if (world) hud?.toast(m.msg, 'warn');
-      if (m.code === 'auth') setTimeout(() => location.reload(), 800);
+      if (['auth', 'register', 'banned', 'kicked'].includes(m.code)) return; // handled by net.onAuth / onStatus
+      if (!world) statusScreen(m.msg);
+      else hud?.toast(m.msg, 'warn');
       return;
     default:
       world?.handle(m);
   }
 });
 
-net.connect();
+// ── Boot: server info → game data → log in → connect ─────────────────────
+let serverInfo: Health | null = null;
+
+net.onAuth = async (kind, msg) => {
+  if (world) {
+    // Mid-game: start over cleanly.
+    location.reload();
+    return;
+  }
+  if (kind === 'banned') return statusScreen(msg, 'Contact the server admin if you think this is a mistake.');
+  await showLogin(app, { health: serverInfo!, mode: kind === 'register' ? 'claim' : 'login', message: msg });
+  net.connect();
+};
+
+async function boot() {
+  statusScreen('Connecting to the islands…');
+  try {
+    serverInfo = await health();
+    await loadGameData();
+  } catch {
+    statusScreen('Can’t reach the server.', 'Is it running? (npm run dev) – retrying…');
+    setTimeout(boot, 3000);
+    return;
+  }
+  net.connect();
+}
+boot();

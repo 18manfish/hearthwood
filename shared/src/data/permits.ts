@@ -18,7 +18,11 @@ export const PERMITS: PermitDef[] = [
   { id: 'permit_water', name: 'Waterscaping Permit', icon: '💧', price: 1500, desc: 'Dig ponds and fill water back in.', ops: ['water', 'land'] },
 ];
 
-export const PERMIT_BY_ID = Object.fromEntries(PERMITS.map((p) => [p.id, p])) as Record<PermitId, PermitDef>;
+export const PERMIT_BY_ID = {} as Record<PermitId, PermitDef>;
+export function rebuildPermits() {
+  for (const p of PERMITS) PERMIT_BY_ID[p.id] = p;
+}
+rebuildPermits();
 
 export function isPermit(id: unknown): id is PermitId {
   return typeof id === 'string' && Object.prototype.hasOwnProperty.call(PERMIT_BY_ID, id);

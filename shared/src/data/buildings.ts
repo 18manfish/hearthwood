@@ -144,7 +144,12 @@ export const NON_BLOCKING: BuildingType[] = ['dock', 'exit'];
 export const BOARD_MAX_POSTS = 60;
 export const BOARD_POST_COOLDOWN_MS = 20_000;
 
-export const BUILDABLE: BuildingType[] = (Object.keys(BUILDINGS) as BuildingType[]).filter((t) => !BUILDINGS[t].fixed);
+export const BUILDABLE: BuildingType[] = [];
+export function rebuildBuildable() {
+  BUILDABLE.length = 0;
+  BUILDABLE.push(...(Object.keys(BUILDINGS) as BuildingType[]).filter((t) => !BUILDINGS[t].fixed));
+}
+rebuildBuildable();
 
 export const SHOP_TYPES: BuildingType[] = ['travel_agent', 'clothing_shop', 'restaurant', 'tool_store', 'furniture_store'];
 

@@ -17,6 +17,10 @@ export const config = {
   allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 
   devFast: DEV_FAST,
+  /** Usernames (comma separated, case-insensitive) that are always admins. */
+  adminUsers: (process.env.ADMIN_USERS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  /** Guests (no username/password) may play – only in dev mode. */
+  allowGuests: DEV_FAST,
   /** Construction & tree growth run this many times faster in dev mode. */
   timeFactor: DEV_FAST ? 60 : 1,
   /** Ignore the "minimum island day" pacing rules in dev mode. */

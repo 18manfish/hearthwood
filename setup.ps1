@@ -6,14 +6,20 @@ function Test-Cmd($name) { return [bool](Get-Command $name -ErrorAction Silently
 
 if (-not (Test-Cmd node)) {
   Write-Host 'Node.js not found – installing Node.js LTS with winget…' -ForegroundColor Yellow
-  if (-not (Test-Cmd winget)) { throw 'winget is not available. Install Node.js 20+ from https://nodejs.org and re-run this script.' }
+  if (-not (Test-Cmd winget)) { throw 'winget is not available. Install Node.js 22.13+ (LTS) from https://nodejs.org and re-run this script.' }
   winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements
   # Make node/npm visible in this session.
   $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
-$major = [int]((node -v).TrimStart('v').Split('.')[0])
-if ($major -lt 20) { throw "Node.js 20+ required (found $(node -v)). Update from https://nodejs.org" }
+$ver = (node -v).TrimStart('v').Split('.')
+$major = [int]$ver[0]; $minor = [int]$ver[1]
+# The server's database uses Node's built-in SQLite (node:sqlite), available from 22.13.
+if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 13)) {
+  Write-Host "Node $(node -v) is too old – updating to the current LTS with winget…" -ForegroundColor Yellow
+  winget upgrade --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements
+  throw 'Node.js was updated. Close this window, open a new PowerShell and run setup.ps1 again.'
+}
 Write-Host "Using Node $(node -v), npm $(npm -v)" -ForegroundColor Green
 
 Write-Host 'Installing dependencies…' -ForegroundColor Cyan

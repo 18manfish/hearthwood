@@ -116,7 +116,9 @@ export class World {
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
     sc.left = -22; sc.right = 22; sc.top = 22; sc.bottom = -22; sc.near = 1; sc.far = 90;
-    this.sun.shadow.bias = -0.0008;
+    // Bias + normal offset keep surfaces from shadowing themselves ("shadow acne" stripes).
+    this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target, this.moon, this.moon.target, this.hemi, this.world);
 
     // Ocean.
@@ -355,7 +357,11 @@ export class World {
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.computeVertexNormals();
-    const m = new THREE.Mesh(g, bend(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide })));
+    const tmat = bend(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide }));
+    // Only back faces go into the shadow map: cliff walls still cast shadows,
+    // but flat ground can't shadow itself (which caused striped "acne").
+    tmat.shadowSide = THREE.BackSide;
+    const m = new THREE.Mesh(g, tmat);
     m.receiveShadow = true;
     m.castShadow = true;
     m.customDepthMaterial = bentDepth;

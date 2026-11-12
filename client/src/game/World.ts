@@ -5,11 +5,15 @@ import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
   BIOMES, BUILDINGS, ITEMS, Grid, Tile, TREES, CLIFF, ENTERABLE, daylight, decodeTiles, distToTile, isWaterTile, nearBuilding,
-  slideMove, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle,
+  slideMove, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season,
 } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
 import { buildTerrainMesh, waterColor } from './terrain.ts';
+import { buildPaths, disposePaths, setPathSnow } from './paths.ts';
+import { buildFoliage, disposeFoliage } from './foliage.ts';
+import { Footprints } from './footprints.ts';
+import { windTime } from './bend.ts';
 import { animateRig, makePlayer, makeVillager, setHat, setTool, type Rig } from './characters.ts';
 import { buildingModel, furnitureModel, mat, objectModel, part } from './models.ts';
 import { net } from '../net.ts';
@@ -90,6 +94,14 @@ export class World {
   private bobber: THREE.Mesh;
   cast: { id: string | null; x: number; z: number; bite: boolean; window: number; at: number } | null = null;
   ghost: { group: THREE.Group; type: 'build'; building: BuildingType; tx: number; tz: number; ok: boolean } | { group: THREE.Group; type: 'place'; item: string; rot: number; tx: number; tz: number; ok: boolean } | null = null;
+  /** Path painting: type 1..5, or 0 for the eraser. */
+  paint: { type: number; group: THREE.Group; tx: number; tz: number; ok: boolean; down: boolean; last: string } | null = null;
+  onPaint: (x: number, z: number, type: number) => void = () => {};
+  private pathLayer: THREE.Group | null = null;
+  private foliage: THREE.Group | null = null;
+  private foliageTimer: ReturnType<typeof setTimeout> | null = null;
+  private pathTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly footprints = new Footprints();
   private mouse = new THREE.Vector2(-9, -9);
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.12);
@@ -189,10 +201,25 @@ export class World {
     container.addEventListener('pointermove', (e) => {
       const r = this.renderer.domElement.getBoundingClientRect();
       this.mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      if (this.paint?.down) {
+        this.updatePaintGhost();
+        this.paintHere();
+      }
+    });
+    container.addEventListener('pointerdown', (e) => {
+      if (!this.paint || e.button !== 0) return;
+      this.paint.down = true;
+      this.paint.last = '';
+      this.updatePaintGhost();
+      this.paintHere();
+    });
+    window.addEventListener('pointerup', () => {
+      if (this.paint) this.paint.down = false;
     });
     container.addEventListener('click', () => {
       if (this.ghost) this.onGhostClick();
     });
+    this.scene.add(this.footprints.mesh);
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
@@ -209,12 +236,15 @@ export class World {
   load(room: RoomView) {
     this.clearRoom();
     this.room = room;
-    this.grid = new Grid(room.size, decodeTiles(room.tiles), decodeTiles(room.levels), decodeTiles(room.ramps));
+    this.grid = new Grid(room.size, decodeTiles(room.tiles), decodeTiles(room.levels), decodeTiles(room.ramps), decodeTiles(room.paths));
     for (const o of room.objects) this.objects.set(o.id, o);
     for (const b of room.buildings) this.buildings.set(b.id, b);
     this.grid.rebuild(this.objects.values(), this.buildings.values());
     this.seasonKey = '';
+    this.footprints.clear();
+    this.footprints.sandColor.set(BIOMES[room.biome].shore);
     this.refreshVisuals(true);
+    this.rebuildPaths();
     for (const b of room.buildings) this.upsertBuildingMesh(b);
     for (const p of room.players) this.addPlayer(p);
     for (const v of room.villagers) this.upsertVillager(v);
@@ -235,6 +265,7 @@ export class World {
     this.cast = null;
     this.bobber.visible = false;
     this.cancelGhost();
+    this.stopPaint();
   }
 
   private clearRoom() {
@@ -253,6 +284,129 @@ export class World {
       this.terrain.geometry.dispose();
       this.terrain = null;
     }
+    if (this.pathLayer) {
+      this.world.remove(this.pathLayer);
+      disposePaths(this.pathLayer);
+      this.pathLayer = null;
+    }
+    if (this.foliage) {
+      this.world.remove(this.foliage);
+      disposeFoliage(this.foliage);
+      this.foliage = null;
+    }
+  }
+
+  // ── Paths & foliage ─────────────────────────────────────────────────────
+  private rebuildPaths() {
+    if (!this.grid) return;
+    if (this.pathLayer) {
+      this.world.remove(this.pathLayer);
+      disposePaths(this.pathLayer);
+    }
+    this.pathLayer = buildPaths(this.grid);
+    this.world.add(this.pathLayer);
+    setPathSnow(this.visual().snowy);
+  }
+
+  private rebuildFoliage() {
+    if (!this.grid || !this.room) return;
+    if (this.foliage) {
+      this.world.remove(this.foliage);
+      disposeFoliage(this.foliage);
+      this.foliage = null;
+    }
+    if (this.room.kind === 'interior') return;
+    const v = this.visual();
+    this.foliage = buildFoliage(this.grid, this.room.biome, v.season, v.vs, v.snowy, this.objects.values());
+    this.world.add(this.foliage);
+  }
+
+  /** Debounced: many world changes can arrive in a burst. */
+  private scheduleFoliage(ms = 400) {
+    if (this.foliageTimer) clearTimeout(this.foliageTimer);
+    this.foliageTimer = setTimeout(() => this.rebuildFoliage(), ms);
+  }
+
+  private schedulePaths() {
+    if (this.pathTimer) return;
+    this.pathTimer = setTimeout(() => {
+      this.pathTimer = null;
+      this.rebuildPaths();
+    }, 60);
+  }
+
+  startPaint(type: number) {
+    this.cancelGhost();
+    this.stopPaint();
+    const group = new THREE.Group();
+    const box = part('box', mat(type ? PATHS[type - 1].color : '#ff6b6b', { opacity: 0.55 }), 1, 0.04, 1, 0.5, 0.03, 0.5, false);
+    box.name = 'box';
+    group.add(box);
+    this.scene.add(group);
+    this.paint = { type, group, tx: 0, tz: 0, ok: false, down: false, last: '' };
+  }
+
+  stopPaint() {
+    if (this.paint) this.scene.remove(this.paint.group);
+    this.paint = null;
+  }
+
+  /** Paint the tile in front of the player (keyboard painting with E). */
+  paintFacing() {
+    if (!this.paint || !this.me) return;
+    const f = this.facingTile();
+    this.paint.tx = f.x;
+    this.paint.tz = f.z;
+    this.paint.ok = this.paintOk(f.x, f.z);
+    this.paint.last = '';
+    this.paintHere();
+  }
+
+  private paintOk(tx: number, tz: number) {
+    if (!this.grid || !this.me) return false;
+    if (distToTile(this.me.x, this.me.z, tx, tz) > PATH_REACH) return false;
+    return this.paint!.type ? this.grid.canPave(tx, tz) && this.grid.path(tx, tz) !== this.paint!.type : this.grid.path(tx, tz) > 0;
+  }
+
+  private paintHere() {
+    const p = this.paint;
+    if (!p || !p.ok) return;
+    const key = `${p.tx},${p.tz}`;
+    if (key === p.last) return;
+    p.last = key;
+    this.onPaint(p.tx, p.tz, p.type);
+  }
+
+  /**
+   * Point on the ground under the mouse. The world bend lowers distant ground
+   * by k·Δz², so refine the hit a few times against that curved surface.
+   */
+  private pickGround(): THREE.Vector3 | null {
+    if (!this.me) return null;
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    const base = this.groundY(this.me.x, this.me.z);
+    const hit = new THREE.Vector3();
+    this.groundPlane.constant = -base;
+    if (!this.raycaster.ray.intersectPlane(this.groundPlane, hit)) return null;
+    for (let i = 0; i < 3 && this.room?.kind !== 'interior'; i++) {
+      this.groundPlane.constant = -(base - bendDrop(hit.z));
+      if (!this.raycaster.ray.intersectPlane(this.groundPlane, hit)) return null;
+    }
+    return hit;
+  }
+
+  private updatePaintGhost() {
+    const p = this.paint;
+    if (!p || !this.grid || !this.me) return;
+    const hit = this.pickGround();
+    if (!hit) return;
+    p.tx = Math.floor(hit.x);
+    p.tz = Math.floor(hit.z);
+    p.ok = this.paintOk(p.tx, p.tz);
+    p.group.position.set(p.tx, this.grid.surfaceY(p.tx + 0.5, p.tz + 0.5), p.tz);
+    const box = p.group.getObjectByName('box') as THREE.Mesh;
+    box.visible = this.grid.inBounds(p.tx, p.tz);
+    box.material = mat(!p.ok ? '#9e9e9e' : p.type ? PATHS[p.type - 1].color : '#ff6b6b', { opacity: 0.55 });
   }
 
   private removeMover(m: Mover) {
@@ -268,7 +422,8 @@ export class World {
     const env = this.env();
     const season = debug.season ?? env?.season ?? 'summer';
     const vs = visualSeason(season);
-    const snowy = (vs === 'winter' && this.room != null && ['temperate', 'boreal'].includes(BIOMES[this.room.biome].seasonModel)) || env?.weather === 'snow';
+    const weather = debug.weather ?? env?.weather;
+    const snowy = this.room?.kind !== 'interior' && ((vs === 'winter' && this.room != null && ['temperate', 'boreal'].includes(BIOMES[this.room.biome].seasonModel)) || weather === 'snow');
     return { season, vs, snowy };
   }
 
@@ -281,6 +436,8 @@ export class World {
     this.seasonKey = key;
     this.buildTerrain();
     for (const o of this.objects.values()) this.upsertObjectMesh(o);
+    this.rebuildFoliage();
+    setPathSnow(v.snowy);
   }
 
   private buildTerrain() {
@@ -417,7 +574,13 @@ export class World {
   handle(m: ServerMessage) {
     if (!this.room) return;
     switch (m.t) {
+      case 'paths':
+        for (const [x, z, t] of m.l) this.grid!.paths[z * this.grid!.size + x] = t;
+        this.schedulePaths();
+        this.scheduleFoliage();
+        break;
       case 'oAdd':
+        this.scheduleFoliage();
         for (const o of m.o) {
           const prev = this.objects.get(o.id);
           if (prev) this.grid!.removeObject(prev);
@@ -427,6 +590,7 @@ export class World {
         }
         break;
       case 'oDel':
+        this.scheduleFoliage();
         for (const id of m.ids) {
           const prev = this.objects.get(id);
           if (prev) this.grid!.removeObject(prev);
@@ -437,6 +601,7 @@ export class World {
         }
         break;
       case 'bAdd':
+        this.scheduleFoliage();
         for (const b of m.b) {
           const prev = this.buildings.get(b.id);
           if (prev) this.grid!.removeBuilding(prev);
@@ -446,6 +611,7 @@ export class World {
         }
         break;
       case 'bDel':
+        this.scheduleFoliage();
         for (const id of m.ids) {
           const prev = this.buildings.get(id);
           if (prev) this.grid!.removeBuilding(prev);
@@ -459,6 +625,7 @@ export class World {
         this.addPlayer(m.p);
         break;
       case 'pDel': {
+        this.footprints.forget(m.id);
         const p = this.players.get(m.id);
         if (p) this.removeMover(p);
         this.players.delete(m.id);
@@ -533,6 +700,7 @@ export class World {
   // ── Ghost placement ─────────────────────────────────────────────────────
   startBuildGhost(type: BuildingType) {
     this.cancelGhost();
+    this.stopPaint();
     const def = BUILDINGS[type];
     const group = new THREE.Group();
     const box = part('box', mat('#7fe07f', { opacity: 0.45 }), def.w, 0.6, def.h, def.w / 2, 0.3, def.h / 2, false);
@@ -544,6 +712,7 @@ export class World {
 
   startPlaceGhost(item: string) {
     this.cancelGhost();
+    this.stopPaint();
     const group = new THREE.Group();
     const f = furnitureModel(item, 0);
     f.position.set(0.5, 0, 0.5);
@@ -576,10 +745,8 @@ export class World {
       const def = BUILDINGS[g.building];
       w = def.w;
       h = def.h;
-      this.raycaster.setFromCamera(this.mouse, this.camera);
-      this.groundPlane.constant = -this.groundY(this.me.x, this.me.z);
-      const hit = new THREE.Vector3();
-      if (!this.raycaster.ray.intersectPlane(this.groundPlane, hit)) return;
+      const hit = this.pickGround();
+      if (!hit) return;
       tx = Math.floor(hit.x - w / 2 + 0.5);
       tz = Math.floor(hit.z - h / 2 + 0.5);
     } else {
@@ -698,6 +865,14 @@ export class World {
     if (this.room && this.me && this.grid) this.updateLocal(dt);
     for (const p of this.players.values()) if (p !== this.me) this.interp(p, dt);
     for (const v of this.villagers.values()) this.interp(v, dt);
+    // Footprints for everyone walking around outside.
+    windTime.value = t;
+    if (this.grid && this.room?.kind !== 'interior') {
+      const snowy = this.visual().snowy;
+      for (const [id, p] of this.players) this.footprints.track(id, p.x, p.z, this.grid, snowy, t);
+      for (const [id, v] of this.villagers) if (!v.home) this.footprints.track(`v:${id}`, v.x, v.z, this.grid, snowy, t);
+    }
+    this.footprints.update(t);
     if (this.me) {
       const tgt = this.computeTarget();
       const changed = (tgt?.label ?? null) !== (this.target?.label ?? null) || (tgt && this.target && tgt.kind !== this.target.kind);
@@ -705,6 +880,7 @@ export class World {
       if (changed) this.onTarget(tgt);
     }
     this.updateGhost();
+    if (this.paint && !this.paint.down) this.updatePaintGhost();
     this.updateEnvironment(dt, t);
     this.animateProps(t);
     // Fishing bobber.

@@ -3,7 +3,7 @@
 // receive each other's updates (interest management).
 
 import {
-  BIOMES, TREES, Grid, computeEnvironment, daysBetween, encodeTiles, generateIsland, generateInterior, findFreeSpot,
+  BIOMES, TREES, Grid, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot,
   Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
   type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type InteriorStyle, type Season,
 } from '@hearthwood/shared';
@@ -90,7 +90,8 @@ export class Room {
       const variant = o.kind === 'island' ? 'home' : o.kind === 'shared' ? 'shared' : 'tour';
       this.layout = generateIsland(o.seed, o.biome, { variant, elevation: o.elevation });
     }
-    this.grid = new Grid(this.layout.size, this.layout.tiles, this.layout.levels, this.layout.ramps);
+    const paths = !o.interior && o.record?.paths && o.record.paths.length === this.layout.size * this.layout.size ? decodeTiles(o.record.paths) : undefined;
+    this.grid = new Grid(this.layout.size, this.layout.tiles, this.layout.levels, this.layout.ramps, paths);
 
     let objs: WorldObject[];
     let blds: Building[];
@@ -163,6 +164,7 @@ export class Room {
       tiles: encodeTiles(this.layout.tiles),
       levels: encodeTiles(this.layout.levels),
       ramps: encodeTiles(this.layout.ramps),
+      paths: encodeTiles(this.grid.paths),
       objects: [...this.objects.values()],
       buildings: [...this.buildings.values()],
       villagers: [...this.villagers.values()].map((v) => this.villagerView(v)),
@@ -250,6 +252,13 @@ export class Room {
     this.touch();
   }
 
+  /** Lay (type > 0) or remove (0) a path tile and tell everyone in the room. */
+  setPath(x: number, z: number, type: number) {
+    this.grid.paths[z * this.grid.size + x] = type;
+    this.broadcast({ t: 'paths', l: [[x, z, type]] });
+    this.touch();
+  }
+
   completedCount(type: string, now = Date.now()) {
     let n = 0;
     for (const b of this.buildings.values()) if (b.type === type && b.completeAt <= now) n++;
@@ -277,6 +286,7 @@ export class Room {
       this.record.nextId = Math.max(this.record.nextId, this.nextId);
       this.record.lastDayKey = this.dayKey;
       this.record.respawns = this.respawns;
+      this.record.paths = encodeTiles(this.grid.paths);
     }
     this.dirty = false;
     return true;
@@ -440,7 +450,7 @@ export class Room {
     const def = BIOMES[this.biome];
     for (const r of due) {
       const ok = (x: number, z: number) => {
-        if (this.grid.tile(x, z) !== Tile.Ground || !this.grid.canPlace(x, z)) return false;
+        if (this.grid.tile(x, z) !== Tile.Ground || !this.grid.canSpawn(x, z)) return false;
         for (const s of this.sessions) if (Math.floor(s.x) === x && Math.floor(s.z) === z) return false;
         if (r.kind === 'tree' || r.kind === 'rock') {
           // Keep breathing room around trees and rocks.
@@ -495,7 +505,7 @@ export class Room {
     }
     const freeNear = (x: number, z: number) => {
       const dirs = rng.shuffle([[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]);
-      for (const [dx, dz] of dirs) if (this.grid.canPlace(x + dx, z + dz)) return { x: x + dx, z: z + dz };
+      for (const [dx, dz] of dirs) if (this.grid.canSpawn(x + dx, z + dz)) return { x: x + dx, z: z + dz };
       return null;
     };
     for (const t of trees) {
@@ -509,7 +519,7 @@ export class Room {
     for (let i = 0; i < 4 && flowers < 12; i++) {
       const x = rng.int(1, this.layout.size - 2);
       const z = rng.int(1, this.layout.size - 2);
-      if (this.grid.tile(x, z) === Tile.Ground && this.grid.canPlace(x, z)) {
+      if (this.grid.tile(x, z) === Tile.Ground && this.grid.canSpawn(x, z)) {
         this.addObject({ id: this.newId('f'), kind: 'flower', x, z });
         flowers++;
       }

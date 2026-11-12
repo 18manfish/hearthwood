@@ -35,6 +35,7 @@ function startGame() {
   world = new World(container);
   hud = new Hud(app, world);
   world.onGhostClick = () => confirmGhost();
+  world.onPaint = (x, z, type) => queuePaint(x, z, type);
   // Debug handle for the browser console when the server runs in dev mode.
   if (state.dev) (window as unknown as Record<string, unknown>).hearthwood = { world, hud, state, net };
   bindKeys();
@@ -53,10 +54,35 @@ function confirmGhost() {
   });
 }
 
+// Path painting: tiles are queued and sent at a steady pace the server accepts.
+const paintQueue: [number, number, number][] = [];
+let paintTimer: ReturnType<typeof setInterval> | null = null;
+let lastPaintError = 0;
+function queuePaint(x: number, z: number, type: number) {
+  if (!paintQueue.some((p) => p[0] === x && p[1] === z)) paintQueue.push([x, z, type]);
+  if (paintTimer) return;
+  paintTimer = setInterval(async () => {
+    const next = paintQueue.shift();
+    if (!next) {
+      clearInterval(paintTimer!);
+      paintTimer = null;
+      return;
+    }
+    const [px, pz, pt] = next;
+    const r = await net.act(pt ? { k: 'pave', x: px, z: pz, path: pt } : { k: 'unpave', x: px, z: pz });
+    if (!r.ok && r.err && Date.now() - lastPaintError > 1500) {
+      lastPaintError = Date.now();
+      hud?.toast(r.err, 'warn');
+      if (/materials|shovel/i.test(r.err)) paintQueue.length = 0;
+    }
+  }, 70);
+}
+
 /** Context-sensitive interaction (E / Space). */
 async function interact() {
   if (!world || !hud) return;
   if (world.ghost) return confirmGhost();
+  if (world.paint) return world.paintFacing();
   const t = world.target;
   if (!t) return;
   switch (t.kind) {
@@ -115,7 +141,8 @@ function bindKeys() {
       return hud.toggle('debug');
     }
     if (e.code === 'Escape') {
-      if (world.ghost) world.cancelGhost();
+      if (world.paint) world.stopPaint();
+      else if (world.ghost) world.cancelGhost();
       else if (hud.talkingTo) hud.closeDialog();
       else hud.close();
       hud.setPrompt(world.target?.label ?? null);

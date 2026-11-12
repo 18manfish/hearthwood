@@ -66,6 +66,27 @@ If a resource's old spot is blocked when it's due back (you built there, placed 
 
 Mushrooms (and rare glowing *glowcaps*) appear under trees, and flowers pop up in the grass. Fish depend on the biome, freshwater or sea, the season and the hour.
 
+**Paths.** In the Build menu (B) under 🛤️ Paths, choose one of five paths and paint it tile by tile: click and drag on the ground, or press **E** to pave the tile in front of you. **Esc** stops painting. The eraser removes paths and refunds their materials.
+
+| Path | Cost per tile |
+|---|---|
+| Dirt path | free, needs a shovel |
+| Gravel path | 1 stone |
+| Stepping stones | 2 stone |
+| Brick path | 2 clay |
+| Wooden boardwalk | 2 wood |
+
+Adjacent tiles of the same path join up, and open edges get soft, bevelled borders. You can walk on paths and place furniture on them, but trees, flowers and respawning resources never appear on a path.
+
+**Grass, foliage & footprints.** Grass tufts, tall grass, ferns, pond reeds, wildflowers, fallen leaves and snow clumps all sway in the wind. They follow the biome and the season:
+- **Spring:** fresh green with lots of flowers.
+- **Summer:** lush and tall.
+- **Autumn:** golden grass with leaves under the trees.
+- **Snowy winter:** a few frosted tufts and snow clumps.
+- **Deserts** have dry, sparse grass; **tropical** islands and the **jungle** have dense, deep-green growth.
+
+In snowy winters everyone who walks leaves footprints in the snow, and on beaches you leave prints in the sand all year round. The prints slowly fade away.
+
 **Cliffs & ramps.** New islands have up to two cliff levels. You can only go up or down using the ramps; you can't climb or drop off a cliff edge. Each building has to sit on one level. Ramp landings are kept clear so that a plateau can never be cut off.
 
 **Homes you can enter.** Walk up to your tent (or your starter house) and press **E** to go inside. Each has a bed and a storage chest, which is your sell box, plus the mailbox in the house. You can place furniture inside, and the door takes you back out.
@@ -98,7 +119,7 @@ hearthwood/
 │  └─ src/
 │     ├─ protocol.ts   Message types + runtime schemas for every client message
 │     ├─ schema.ts     Tiny dependency-free validator (unknown keys are dropped)
-│     ├─ world.ts      Island generation (cliffs & ramps), interiors, level-aware collision
+│     ├─ world.ts      Island generation (cliffs & ramps), interiors, level-aware collision, paths
 │     ├─ env.ts        Solar position, seasons, weather, local time
 │     └─ data/         Items, biomes, buildings, recipes, villagers, chapters
 ├─ server/        Authoritative game server (Node + ws)
@@ -115,7 +136,8 @@ hearthwood/
    └─ src/
       ├─ net.ts        WebSocket client (auth, reconnect, clock sync, act→result)
       ├─ game/World.ts Scene, prediction, interpolation, lighting, weather
-      ├─ game/bend.ts  "Rolling log" world-curvature shader patch
+      ├─ game/bend.ts  "Rolling log" world-curvature + wind-sway shader patch
+      ├─ game/foliage.ts, footprints.ts, paths.ts  Instanced grass & foliage, fading footprints, path layer
       ├─ game/models.ts, characters.ts  Procedural low-poly art (no asset files)
       └─ ui/           Character creator, world map, HUD and menus
 ```

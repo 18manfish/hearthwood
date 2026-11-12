@@ -61,6 +61,8 @@ export interface IslandRecord {
   gen?: number;
   /** Furniture placed inside the tent / house, keyed by building id. */
   interiors?: Record<string, WorldObject[]>;
+  /** Path type per tile, as digits (0 = none). */
+  paths?: string;
   /** Pending resource respawns. */
   respawns?: Respawn[];
   id: string;

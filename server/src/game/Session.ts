@@ -23,6 +23,7 @@ export class Session {
   moved = false;
   lastMoveAt = 0;
   lastActAt = 0;
+  lastPaveAt = 0;
   cast: PendingCast | null = null;
   alive = true;
   /** Islands this session may enter via an invite code. */

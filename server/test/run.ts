@@ -57,7 +57,7 @@ class Bot {
     this.inbox.push(m);
     if (m.t === 'room') {
       this.room = m.room;
-      this.grid = new Grid(m.room.size, decodeTiles(m.room.tiles), decodeTiles(m.room.levels), decodeTiles(m.room.ramps));
+      this.grid = new Grid(m.room.size, decodeTiles(m.room.tiles), decodeTiles(m.room.levels), decodeTiles(m.room.ramps), decodeTiles(m.room.paths));
       this.objects = new Map(m.room.objects.map((o) => [o.id, o]));
       this.grid.rebuild(this.objects.values(), m.room.buildings);
       const me = m.room.players.find((p) => p.id === this.self?.id);
@@ -82,6 +82,7 @@ class Bot {
       }
     }
     if (m.t === 'inv') this.inv = m.inv;
+    if (m.t === 'paths') for (const [x, z, t] of m.l) this.grid.paths[z * this.grid.size + x] = t;
     if (m.t === 'welcome' || m.t === 'self') this.self = m.you;
     if (m.t === 'corr') {
       this.x = m.x;
@@ -312,6 +313,27 @@ async function main() {
     if (spotP) {
       const plant = await A.act({ k: 'plant', x: spotP[0], z: spotP[1] });
       check(plant.ok, `sapling planted${plant.ok ? '' : ` (${plant.err})`}`);
+    }
+
+    console.log('Paths');
+    let pv: [number, number] | null = null;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [0, 2]]) {
+      const x = Math.floor(A.x) + dx, z = Math.floor(A.z) + dz;
+      if (A.grid.canPave(x, z) && !A.grid.path(x, z) && Math.floor(A.x) !== x) { pv = [x, z]; break; }
+    }
+    if (pv) {
+      const clay0 = A.inv.clay ?? 0;
+      check((await A.act({ k: 'pave', x: pv[0], z: pv[1], path: 1 })).ok, 'dirt path laid (shovel)');
+      await A.wait('paths', (m) => m.l.some((e) => e[0] === pv![0] && e[1] === pv![1] && e[2] === 1)).catch(() => null);
+      check((await A.act({ k: 'pave', x: pv[0], z: pv[1], path: 4 })).ok, 'swapped for a brick path');
+      await sleep(100);
+      check((A.inv.clay ?? 0) === clay0 - 2, 'brick path cost 2 clay');
+      check(!(await A.act({ k: 'plant', x: pv[0], z: pv[1] })).ok, 'cannot plant a tree on a path');
+      check((await A.act({ k: 'unpave', x: pv[0], z: pv[1] })).ok, 'path removed');
+      await sleep(100);
+      check((A.inv.clay ?? 0) === clay0, 'removing a path refunds its materials');
+      const far = await A.act({ k: 'pave', x: Math.min(A.grid.size - 1, Math.floor(A.x) + 12), z: Math.floor(A.z), path: 1 });
+      check(!far.ok, 'paving far away is refused');
     }
 
     for (const b of ['tent', 'campfire', 'workbench'] as const) {

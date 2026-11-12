@@ -116,8 +116,10 @@ export class Grid {
   readonly occupied: Uint8Array;
   /** Ramp tiles plus their landing tiles – kept clear so cliffs stay reachable. */
   readonly reserved: Uint8Array;
+  /** Path type per tile (0 = none). */
+  readonly paths: Uint8Array;
 
-  constructor(size: number, tiles: Uint8Array, levels?: Uint8Array, ramps?: Uint8Array) {
+  constructor(size: number, tiles: Uint8Array, levels?: Uint8Array, ramps?: Uint8Array, paths?: Uint8Array) {
     this.size = size;
     this.tiles = tiles;
     this.levels = levels ?? new Uint8Array(size * size);
@@ -125,6 +127,7 @@ export class Grid {
     this.blocked = new Uint8Array(size * size);
     this.occupied = new Uint8Array(size * size);
     this.reserved = new Uint8Array(size * size);
+    this.paths = paths ?? new Uint8Array(size * size);
     for (let z = 0; z < size; z++)
       for (let x = 0; x < size; x++) {
         const d = this.ramp(x, z);
@@ -253,6 +256,21 @@ export class Grid {
         if (this.occupied[i] !== 0 || this.reserved[i] !== 0 || this.levels[i] !== lvl) return false;
       }
     return true;
+  }
+
+  path(x: number, z: number): number {
+    return this.inBounds(x, z) ? this.paths[this.idx(x, z)] : 0;
+  }
+
+  /** Can a path be laid here? Plain ground (any level), nothing solid on it. */
+  canPave(x: number, z: number): boolean {
+    if (!this.inBounds(x, z) || this.tile(x, z) !== Tile.Ground) return false;
+    return this.blocked[this.idx(x, z)] === 0;
+  }
+
+  /** Free ground for something to grow / respawn on (no paths). */
+  canSpawn(x: number, z: number): boolean {
+    return this.canPlace(x, z) && this.path(x, z) === 0;
   }
 
   /** Height of the walkable surface at a continuous position. */

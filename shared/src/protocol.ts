@@ -7,7 +7,7 @@ import { isItem } from './data/items.ts';
 import { isBuildingType, type BuildingType } from './data/buildings.ts';
 import type { Building, WorldObject } from './world.ts';
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -74,6 +74,8 @@ export const actionParser = s.union('k', {
   restyle: s.obj({ k: s.lit('restyle'), look: lookParser }),
   mail: s.obj({ k: s.lit('mail'), to: id, text: s.str(0, 280), item: s.opt(itemId), n: s.opt(qty) }),
   takeMail: s.obj({ k: s.lit('takeMail'), mailId: id }),
+  pave: s.obj({ k: s.lit('pave'), x: tileCoord, z: tileCoord, path: s.int(1, 5) }),
+  unpave: s.obj({ k: s.lit('unpave'), x: tileCoord, z: tileCoord }),
 });
 export type Action = ReturnType<typeof actionParser>;
 export type ActionKind = Action['k'];
@@ -170,6 +172,8 @@ export interface RoomView {
   levels: string;
   /** Ramp direction + 1 per tile (digits, 0 = none). */
   ramps: string;
+  /** Path type per tile (digits, 0 = none). */
+  paths: string;
   objects: WorldObject[];
   buildings: Building[];
   villagers: VillagerView[];
@@ -264,6 +268,7 @@ export type ServerMessage =
   | { t: 'bAdd'; b: Building[] }
   | { t: 'bDel'; ids: string[] }
   | { t: 'vAdd'; v: VillagerView[] }
+  | { t: 'paths'; l: [number, number, number][] }
   | { t: 'self'; you: SelfView }
   | { t: 'inv'; inv: Record<string, number>; coins: number }
   | { t: 'res'; seq: number; ok: boolean; err?: string; msg?: string; gained?: Record<string, number> }

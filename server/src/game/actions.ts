@@ -6,7 +6,7 @@ import {
   BIOMES, BUILDINGS, ENTERABLE, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
   VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE,
   FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_TALK, FRIENDSHIP_MAX, FRIENDSHIP_BIRTHDAY_BONUS, HAIR_STYLES,
-  Rng, Tile, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
+  Rng, Tile, PATH_REACH, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
   type Action, type BuildingType, type TalkView, type WorldObject, type Building,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
@@ -196,7 +196,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     if (!ctx.room.canBuild(ctx.p.id)) return fail('Plant saplings on your own island.');
     if (inv.count(ctx.p, 'sapling') < 1) return fail('You have no saplings.');
     if (distToTile(ctx.s.x, ctx.s.z, a.x, a.z) > config.reach) return fail('Too far away.');
-    if (!ctx.room.grid.canPlace(a.x, a.z)) return fail('Can’t plant there.');
+    if (!ctx.room.grid.canSpawn(a.x, a.z)) return fail(ctx.room.grid.path(a.x, a.z) ? 'Trees don’t grow on paths.' : 'Can’t plant there.');
     // Keep trees from touching each other.
     for (const o of ctx.room.objects.values()) {
       if ((o.kind === 'tree' || o.kind === 'stump') && Math.abs(o.x - a.x) <= 1 && Math.abs(o.z - a.z) <= 1) return fail('Too close to another tree.');
@@ -500,6 +500,33 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     return { ok: true, msg: `Letter sent to ${to.name}!` };
   },
 
+  pave(ctx, a) {
+    const g = paveGuard(ctx, a.x, a.z);
+    if (g) return g;
+    const def = pathDef(a.path)!;
+    const grid = ctx.room.grid;
+    const current = grid.path(a.x, a.z);
+    if (current === a.path) return { ok: true };
+    if (!grid.canPave(a.x, a.z)) return fail('You can’t lay a path there.');
+    if (def.tool === 'shovel' && !inv.toolPower(ctx.p, 'shovel')) return fail('You need a shovel to dig a dirt path.');
+    if (!inv.hasAll(ctx.p, def.cost)) return fail(`Not enough materials for ${def.name}.`);
+    // Swapping one path for another refunds the old one.
+    if (current) for (const [id, n] of Object.entries(pathDef(current)!.cost)) inv.add(ctx.p, id, n);
+    inv.removeAll(ctx.p, def.cost);
+    ctx.room.setPath(a.x, a.z, a.path);
+    return { ok: true };
+  },
+
+  unpave(ctx, a) {
+    const g = paveGuard(ctx, a.x, a.z);
+    if (g) return g;
+    const current = ctx.room.grid.path(a.x, a.z);
+    if (!current) return { ok: true };
+    for (const [id, n] of Object.entries(pathDef(current)!.cost)) inv.add(ctx.p, id, n);
+    ctx.room.setPath(a.x, a.z, 0);
+    return { ok: true };
+  },
+
   takeMail(ctx, a) {
     const idx = ctx.p.mail.findIndex((m) => m.id === a.mailId);
     if (idx < 0) return fail('No such letter.');
@@ -514,6 +541,16 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     return { ok: true, gained };
   },
 };
+
+function paveGuard(ctx: Ctx, x: number, z: number): ActionResult | null {
+  if (!ctx.room.canBuild(ctx.p.id)) return fail('You can only lay paths on your own island.');
+  if (!ctx.room.grid.inBounds(x, z)) return fail('Out of bounds.');
+  if (distToTile(ctx.s.x, ctx.s.z, x, z) > PATH_REACH) return fail('Too far away.');
+  // Painting sends many tiles quickly – allow ~16 per second.
+  if (ctx.now - ctx.s.lastPaveAt < 55) return fail('Slow down!');
+  ctx.s.lastPaveAt = ctx.now;
+  return null;
+}
 
 function sendTalk(ctx: Ctx, vid: string, line: string, f: { pts: number; talkDay?: string; giftDay?: string }, reaction?: TalkView['reaction']) {
   const env = ctx.room.env(ctx.now);

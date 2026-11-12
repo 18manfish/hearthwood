@@ -9,7 +9,7 @@ import {
 import { net } from '../net.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
-import { DEV_COMMANDS, SEASONS_BY_MODEL, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
+import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
 import { lookEditor, Preview } from './creator.ts';
@@ -117,7 +117,10 @@ export class Hud {
   }
 
   setPrompt(text: string | null, bite = false) {
-    if (this.world.ghost) {
+    if (this.world.paint) {
+      const t = this.world.paint.type;
+      text = t ? `Click & drag to lay ${PATHS[t - 1].name} (or E in front of you) · Esc to stop` : 'Click & drag to remove paths · Esc to stop';
+    } else if (this.world.ghost) {
       text = this.world.ghost.type === 'build' ? 'Click to build here · Esc to cancel' : 'E / click to place · R to rotate · Esc to cancel';
     }
     if (!text) {
@@ -401,6 +404,20 @@ export class Hud {
     const done = (t: BuildingType) => blds.filter((x) => x.type === t && x.completeAt <= now).length;
     const total = (t: BuildingType) => blds.filter((x) => x.type === t).length;
     const day = state.env?.islandDay ?? 1;
+    // Paths – painted tile by tile.
+    const pathGrid = h('div', { class: 'grid' });
+    for (const p of PATHS) {
+      const afford = Object.entries(p.cost).every(([id, n]) => have(id) >= n) && (!p.tool || have('shovel') + have('iron_shovel') > 0);
+      const costText = Object.keys(p.cost).length ? Object.entries(p.cost).map(([id, n]) => `${ITEMS[id].icon} ${n}`).join(' ') + ' per tile' : 'free · needs a shovel';
+      pathGrid.append(h('div', { class: `tile${afford ? '' : ' locked'}` },
+        h('div', { class: 'row' }, h('span', { class: 'path-swatch', style: `background:${p.color}` }), h('div', {}, h('div', { class: 'nm' }, p.name), h('div', { class: 'muted' }, costText))),
+        h('button', { class: 'btn small', disabled: !afford, onclick: () => { this.close(); this.world.startPaint(p.id); this.setPrompt(''); } }, 'Lay path')));
+    }
+    pathGrid.append(h('div', { class: 'tile' },
+      h('div', { class: 'row' }, h('span', { class: 'ico' }, '🧽'), h('div', {}, h('div', { class: 'nm' }, 'Remove paths'), h('div', { class: 'muted' }, 'Materials are refunded'))),
+      h('button', { class: 'btn ghost small', onclick: () => { this.close(); this.world.startPaint(0); this.setPrompt(''); } }, 'Eraser')));
+    b.append(h('h3', {}, '🛤️ Paths'), pathGrid, h('h3', { style: 'margin-top:14px' }, '🏗️ Buildings'));
+
     const grid = h('div', { class: 'grid' });
     for (const t of BUILDABLE) {
       const d = BUILDINGS[t];

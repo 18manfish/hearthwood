@@ -9,3 +9,4 @@ export * from './data/buildings.ts';
 export * from './data/recipes.ts';
 export * from './data/villagers.ts';
 export * from './data/quests.ts';
+export * from './data/paths.ts';

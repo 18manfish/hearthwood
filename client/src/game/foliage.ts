@@ -5,7 +5,7 @@
 // wind and follows the world bend.
 
 import * as THREE from 'three';
-import { BIOMES, Tile, hashString, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
+import { isFreshWater, BIOMES, Tile, hashString, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
 import { bend } from './bend.ts';
 
 type Vis = 'spring' | 'summer' | 'autumn' | 'winter';
@@ -140,7 +140,7 @@ export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis
     }
   }
   const nearWater = (x: number, z: number) => {
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (grid.tile(x + dx, z + dz) === Tile.Pond) return true;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (isFreshWater(grid.tile(x + dx, z + dz))) return true;
     return false;
   };
   const tropicalBeach = biome === 'tropical' || biome === 'desert' || biome === 'oasis';

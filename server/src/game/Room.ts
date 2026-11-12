@@ -3,7 +3,7 @@
 // receive each other's updates (interest management).
 
 import {
-  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot, applyTerrain, type TerrainChange, DIRS, BIRDS, BIRD_BY_ID, birdsFor,
+  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot, applyTerrainAndWater, classifyWater, type TerrainChange, DIRS, BIRDS, BIRD_BY_ID, birdsFor, washupsFor,
   Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
   type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
 } from '@hearthwood/shared';
@@ -41,7 +41,7 @@ export interface RoomOptions {
   /** Island side length (defaults to the current ISLAND_SIZE). */
   size?: number;
   /** For interiors: the building we're inside and the room we came from. */
-  interior?: { spec: InteriorSpec; buildingId: string; parentId: string };
+  interior?: { spec: InteriorSpec; buildingId: string; parentId: string; houseOwnerId?: string };
   /** Hand-designed shared locations. */
   design?: 'harbor' | 'aurora';
 }
@@ -112,6 +112,7 @@ export class Room {
         this.layout.tiles.set(decodeTiles(t.tiles));
         this.layout.levels.set(decodeTiles(t.levels));
         this.layout.ramps.set(decodeTiles(t.ramps));
+        classifyWater(this.layout.size, this.layout.tiles); // saves from before rivers existed
       }
     }
     const paths = !o.interior && o.record?.paths && o.record.paths.length === this.layout.size * this.layout.size ? decodeTiles(o.record.paths) : this.layout.paths;
@@ -152,13 +153,33 @@ export class Room {
     return this.ownerId === playerId;
   }
 
-  /** Harvesting is allowed for the owner of an island or a tour. */
+  /** Lives here: same rights as the owner (except managing visitors and roles). */
+  isResident(playerId: string) {
+    return !!this.record?.residents?.includes(playerId);
+  }
+
+  /** May build and decorate here (granted by the owner). */
+  isBuilder(playerId: string) {
+    return !!this.record?.builders?.includes(playerId);
+  }
+
+  /** 'owner' | 'resident' | 'builder' | 'visitor' – for the client. */
+  roleOf(playerId: string) {
+    return this.isOwner(playerId) ? 'owner' : this.isResident(playerId) ? 'resident' : this.isBuilder(playerId) ? 'builder' : 'visitor';
+  }
+
+  /** Harvesting is allowed for the owner (and residents) of an island, or a tour's owner. */
   canHarvest(playerId: string) {
-    return (this.kind === 'island' || this.kind === 'tour') && this.isOwner(playerId);
+    return (this.kind === 'island' && (this.isOwner(playerId) || this.isResident(playerId))) || (this.kind === 'tour' && this.isOwner(playerId));
   }
 
   canBuild(playerId: string) {
-    return this.kind === 'island' && this.isOwner(playerId);
+    return this.kind === 'island' && (this.isOwner(playerId) || this.isResident(playerId) || this.isBuilder(playerId));
+  }
+
+  /** Send someone a fresh view of this room (e.g. their rights changed). */
+  resendView(s: Session) {
+    s.send({ t: 'room', room: this.view(s), env: this.env() });
   }
 
   /** Your own tent / starter house: furniture can be rearranged and is saved. */
@@ -167,12 +188,14 @@ export class Room {
   }
 
   canDecorate(playerId: string) {
-    return (this.kind === 'island' || this.isHome()) && this.isOwner(playerId);
+    if (this.kind === 'island') return this.canBuild(playerId);
+    // Homes: the island owner, residents and whoever owns the house.
+    return this.isHome() && (this.isOwner(playerId) || this.isResident(playerId) || this.interior?.houseOwnerId === playerId);
   }
 
   /** Owner-only services (selling, cooking…) are available on the island and inside its buildings. */
   ownsHere(playerId: string) {
-    return (this.kind === 'island' || (this.kind === 'interior' && !this.interior!.parentId.startsWith('shared_'))) && this.isOwner(playerId);
+    return (this.kind === 'island' || (this.kind === 'interior' && !this.interior!.parentId.startsWith('shared_'))) && (this.isOwner(playerId) || this.isResident(playerId));
   }
 
   islandDay(now = Date.now()): number {
@@ -210,6 +233,7 @@ export class Room {
       canHarvest: this.canHarvest(pid),
       canBuild: this.canBuild(pid),
       canDecorate: this.canDecorate(pid),
+      role: this.roleOf(pid),
       board: this.board ?? undefined,
     };
   }
@@ -309,9 +333,9 @@ export class Room {
 
   /** Reshape terrain (already validated) and tell everyone in the room. */
   setTerrain(changes: TerrainChange[]) {
-    applyTerrain(this.grid, changes);
+    const all = applyTerrainAndWater(this.grid, changes);
     this.terraformed = true;
-    this.broadcast({ t: 'terrain', l: changes });
+    this.broadcast({ t: 'terrain', l: all });
     this.touch();
   }
 
@@ -472,6 +496,7 @@ export class Room {
     if (env.dayKey !== this.dayKey) this.dailyRefresh(env.dayKey, now);
     this.birdTick(now, env);
     if (this.kind === 'shared') return;
+    this.beachTick(now);
 
     for (const o of [...this.objects.values()]) {
       // Tree growth.
@@ -496,6 +521,50 @@ export class Room {
         if (b.completeAt > 0) this.onBuildingComplete?.(this, b); // must be idempotent (also runs after a restart)
       }
     }
+  }
+
+  // ── Beachcombing ───────────────────────────────────────────────────────
+  /** Shells, driftwood… wash up on the beach now and then; bottles addressed to this island land first. */
+  private beachTick(now: number) {
+    const washed = [...this.objects.values()].filter((o) => o.kind === 'washed');
+    // Messages in bottles waiting for this island.
+    for (const b of this.record?.bottles ?? []) {
+      if (washed.some((o) => o.bottle === b.id)) continue;
+      const spot = this.beachSpot();
+      if (!spot) break;
+      this.addObject({ id: this.newId('w'), kind: 'washed', item: 'message_bottle', bottle: b.id, ...spot });
+      washed.push({ id: '', kind: 'washed', x: spot.x, z: spot.z, bottle: b.id });
+    }
+    const max = Math.max(4, Math.round(this.layout.size / 8));
+    if (washed.length >= max || !this.birdRng.chance(this.sessions.size ? 0.03 : 0.002)) return;
+    const pick = this.birdRng.weighted(washupsFor(this.biome), (w) => w.weight);
+    const spot = this.beachSpot();
+    if (pick && spot) this.addObject({ id: this.newId('w'), kind: 'washed', item: pick.item, ...spot, rot: this.birdRng.int(0, 3) });
+  }
+
+  /** Dev helper: wash things up right now. */
+  washUp(count: number) {
+    let n = 0;
+    for (let i = 0; i < count; i++) {
+      const pick = this.birdRng.weighted(washupsFor(this.biome), (w) => w.weight);
+      const spot = this.beachSpot();
+      if (!pick || !spot) break;
+      this.addObject({ id: this.newId('w'), kind: 'washed', item: pick.item, ...spot, rot: 0 });
+      n++;
+    }
+    return n;
+  }
+
+  /** A free beach tile right next to the sea. */
+  private beachSpot(): { x: number; z: number } | null {
+    const g = this.grid;
+    for (let tries = 0; tries < 60; tries++) {
+      const x = this.birdRng.int(1, g.size - 2), z = this.birdRng.int(1, g.size - 2);
+      if (g.tile(x, z) !== Tile.Shore || g.occupied[z * g.size + x]) continue;
+      if (!DIRS.some(([dx, dz]) => g.tile(x + dx, z + dz) === Tile.Sea)) continue;
+      return { x, z };
+    }
+    return null;
   }
 
   // ── Birds ──────────────────────────────────────────────────────────────

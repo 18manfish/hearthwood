@@ -5,12 +5,12 @@ import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
   BIOMES, BUILDINGS, ITEMS, Grid, Tile, TREES, CLIFF, ENTERABLE, daylight, decodeTiles, distToTile, isWaterTile, nearBuilding,
-  slideMove, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
+  slideMove, atDoor, placeError, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
   TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, terraformError, BIRD_BY_ID, type TerraOp, type HotbarTool,
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season,
 } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
-import { buildDocks, buildTerrainMesh, waterColor } from './terrain.ts';
+import { buildDocks, buildTerrainMesh, buildWater, fallTexture, waterColor } from './terrain.ts';
 import { buildPaths, disposePaths, setPathSnow } from './paths.ts';
 import { buildFoliage, disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
@@ -541,6 +541,7 @@ export class World {
     }
     const m = buildTerrainMesh(this.grid, { biome: this.room.biome, ...this.visual(), interior: this.room.interior, theme: this.room.theme });
     m.add(buildDocks(this.grid)); // boardwalks & piers ride along with the terrain mesh
+    if (this.room.kind !== 'interior') m.add(buildWater(this.grid, waterColor(this.room.biome))); // raised rivers, waterfalls
     this.terrain = m;
     this.world.add(m);
     (this.water.material as THREE.MeshStandardMaterial).color.set(waterColor(this.room.biome));
@@ -804,7 +805,7 @@ export class World {
   // ── Fishing ─────────────────────────────────────────────────────────────
   startCast(x: number, z: number) {
     this.cast = { id: null, x, z, bite: false, window: 0, at: performance.now() };
-    this.bobber.position.set(x + 0.5, WATER_Y + 0.03, z + 0.5);
+    this.bobber.position.set(x + 0.5, WATER_Y + 0.03 + (this.grid?.level(x, z) ?? 0) * CLIFF, z + 0.5);
     this.bobber.visible = true;
     if (this.me) this.me.swing = 1;
   }
@@ -905,7 +906,7 @@ export class World {
     const cx = tx + w / 2, cz = tz + h / 2;
     const inRange = g.type === 'build' ? Math.hypot(this.me.x - cx, this.me.z - cz) <= 6 : distToTile(this.me.x, this.me.z, tx, tz) <= 2.4;
     const meInside = this.me.x > tx - 0.3 && this.me.x < tx + w + 0.3 && this.me.z > tz - 0.3 && this.me.z < tz + h + 0.3;
-    g.ok = this.grid.canPlace(tx, tz, w, h) && inRange && !meInside;
+    g.ok = (g.type === 'build' ? placeError(this.grid, g.building, tx, tz) === null : this.grid.canPlace(tx, tz, w, h)) && inRange && !meInside;
     g.group.position.set(tx, this.grid.surfaceY(tx + 0.5, tz + 0.5), tz);
     const box = g.group.getObjectByName('box') as THREE.Mesh;
     box.material = mat(g.ok ? '#7fe07f' : '#ff6b6b', { opacity: 0.45 });
@@ -964,6 +965,11 @@ export class World {
         : b.type === 'mailbox' ? (this.room.kind === 'shared' ? 'Send a letter' : this.room.ownerId === state.self?.id ? `Check mailbox${state.mail.length ? ` (${state.mail.length})` : ''}` : `Leave ${this.room.ownerName ?? 'them'} a letter`)
         : b.type === 'billboard' ? `Read the billboard${this.room.board?.length ? ` (${this.room.board.length})` : ''}`
         : `Use ${def.name}`;
+      // You only go in through the door: enterable buildings are a target only from in front of it.
+      if (done && ENTERABLE.includes(b.type)) {
+        if (atDoor(b, px, pz)) consider({ kind: 'building', b, label }, b.x + b.w / 2 - px, b.z + b.h - pz, 1.6);
+        continue;
+      }
       const cx = Math.max(b.x, Math.min(px, b.x + b.w)), cz = Math.max(b.z, Math.min(pz, b.z + b.h));
       consider({ kind: 'building', b, label }, cx - px, cz - pz, 1.8);
     }
@@ -995,6 +1001,9 @@ export class World {
       case 'bush': return owner ? (o.ripe ? `Pick ${ITEMS[BIOMES[this.room!.biome].bushItem].name}` : 'Gather (nothing ripe)') : null;
       case 'mushroom': return owner ? `Pick ${o.rare ? 'Glowcap' : 'mushroom'}` : null;
       case 'flower': return owner ? 'Pick flower' : null;
+      case 'washed':
+        if (o.bottle) return this.room!.ownerId === state.self?.id ? '🍾 Open the message in a bottle' : '🍾 A message in a bottle';
+        return owner ? `Pick up ${ITEMS[o.item ?? '']?.name ?? 'it'}` : null;
       case 'furniture': return this.room!.canDecorate ? `Pick up ${ITEMS[o.item!]?.name ?? 'item'} (F)` : null;
       case 'decor': return null;
       case 'bird': {
@@ -1043,7 +1052,7 @@ export class World {
     // Fishing bobber.
     if (this.cast) {
       const bite = this.cast.bite;
-      this.bobber.position.y = WATER_Y + (bite ? -0.08 + Math.sin(t * 30) * 0.04 : 0.03 + Math.sin(t * 3) * 0.02);
+      this.bobber.position.y = WATER_Y + (this.grid?.level(this.cast.x, this.cast.z) ?? 0) * CLIFF + (bite ? -0.08 + Math.sin(t * 30) * 0.04 : 0.03 + Math.sin(t * 3) * 0.02);
     }
     // Camera follow.
     const fx = this.me?.x ?? 24, fz = this.me?.z ?? 24;
@@ -1330,6 +1339,7 @@ export class World {
     this.flash = Math.max(0, this.flash - dt * 4);
     // Gentle water motion.
     this.water.position.y = WATER_Y + Math.sin(t * 0.8) * 0.015;
+    fallTexture.offset.y = (t * 1.6) % 1; // waterfalls tumble
   }
 
   /** Warm, cosy, weather-free light indoors. */

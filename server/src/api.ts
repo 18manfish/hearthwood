@@ -11,7 +11,7 @@ import { credentialError, hashPassword, hashToken, USERNAME_RE } from './auth.ts
 import { HttpError, Router, bearer, clientIp, readJson } from './http.ts';
 import { logger } from './log.ts';
 import type { Game } from './game/Game.ts';
-import type { Store } from './store.ts';
+import type { NewsRow, Store } from './store.ts';
 import type { IslandRecord, PlayerRecord, VillagerRecord } from './types.ts';
 
 const log = logger('api');
@@ -109,6 +109,44 @@ export function buildApi(game: Game, store: Store): Router {
   r.on('GET', '/api/me', ({ req }) => {
     const p = who(req);
     return { id: p.id, username: p.username ?? null, name: p.name, admin: game.isAdmin(p), dev: config.devFast };
+  });
+
+  // ── News boxes on the start screen ─────────────────────────────────────
+  const newsView = (n: NewsRow) => ({ id: n.id, title: n.title, body: n.body, icon: n.icon ?? '📰', created: n.created, updated: n.updated, author: n.author, pinned: !!n.pinned, published: !!n.published });
+  r.on('GET', '/api/news', () => ({ news: store.news().map(newsView) }));
+  r.on('GET', '/api/admin/news', ({ req }) => {
+    admin(req);
+    return { news: store.news(true).map(newsView) };
+  });
+  const readNews = async (req: Parameters<typeof readJson>[0]) => {
+    const b = await readJson(req, 64 * 1024);
+    return {
+      title: str(b.title, 1, 120, 'Title'),
+      body: str(b.body, 0, 8000, 'Text'),
+      icon: typeof b.icon === 'string' && b.icon.length <= 16 ? b.icon || '📰' : '📰',
+      pinned: b.pinned === true,
+      published: b.published !== false,
+    };
+  };
+  r.on('POST', '/api/admin/news', async ({ req }) => {
+    const me = admin(req);
+    const id = store.saveNews(await readNews(req), actor(me));
+    store.audit(actor(me), 'news.create', String(id));
+    return { ok: true, id };
+  });
+  r.on('PUT', '/api/admin/news/:id', async ({ req, params }) => {
+    const me = admin(req);
+    const id = Number(params.id);
+    if (!store.news(true).some((n) => n.id === id)) throw new HttpError(404, 'No such news box.');
+    store.saveNews({ ...(await readNews(req)), id }, actor(me));
+    store.audit(actor(me), 'news.edit', String(id));
+    return { ok: true, id };
+  });
+  r.on('DELETE', '/api/admin/news/:id', ({ req, params }) => {
+    const me = admin(req);
+    store.deleteNews(Number(params.id));
+    store.audit(actor(me), 'news.delete', params.id);
+    return { ok: true };
   });
 
   // ── Game data (everyone needs it to play) ──────────────────────────────
@@ -464,7 +502,7 @@ function applyIslandPatch(store: Store, rec: IslandRecord, b: Record<string, unk
     const n = size * size;
     for (const k of ['tiles', 'levels', 'ramps'] as const) if (typeof t?.[k] !== 'string' || (t[k] as string).length !== n || !/^[0-9]+$/.test(t[k] as string)) throw new HttpError(400, `terrain.${k} must be ${n} digits.`);
     const tiles = decodeTiles(t.tiles as string), levels = decodeTiles(t.levels as string), ramps = decodeTiles(t.ramps as string);
-    if (tiles.some((v) => v > 7) || levels.some((v) => v > 3) || ramps.some((v) => v > 4)) throw new HttpError(400, 'Terrain values out of range.');
+    if (tiles.some((v) => v > 8) || levels.some((v) => v > 3) || ramps.some((v) => v > 4)) throw new HttpError(400, 'Terrain values out of range.');
     rec.terrain = { tiles: encodeTiles(tiles), levels: encodeTiles(levels), ramps: encodeTiles(ramps) };
   });
   set('paths', () => {

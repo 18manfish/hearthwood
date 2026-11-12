@@ -50,7 +50,7 @@ In VS Code, press **Ctrl+Shift+B** to run the dev task. Use **F5 → "Debug game
 - **Client-only visual controls:** world-bend strength, a time-of-day shift, a weather preview, and shadows, labels and collision-grid overlay on or off.
 - **Server buttons (need `dev:fast`):** material kit, coins, day +1/+7/+30, finish construction and growth, respawn resources now, give any item, set the island's weather, teleport to spawn.
 
-The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /season /tp /clearinv /permits /birds`. `/permits` grants both Town Hall permits, and `/birds [n]` lands a few birds next to you.
+The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /season /tp /clearinv /permits /birds /beach /bottles`. `/permits` grants both Town Hall permits, `/birds [n]` lands a few birds next to you, `/beach [n]` washes things up on the beach, and `/bottles` delivers every bottle still at sea right away.
 
 ---
 
@@ -62,7 +62,7 @@ The server buttons are sent as a schema-checked `dev` message, and the server re
 | **E** / Space | Use whatever is in front of you: shake or chop a tree, break a rock, pick, talk, use a building, cast or reel |
 | 1–9, 0 | Hotbar slots (right-click a slot to change it, drag slots to rearrange) |
 | F | Pick up placed furniture |
-| G · I · C · B · M · O · L · K · V | Goals · Pockets · Craft · Build · Map · Friends · Mail · Album · Island & visitors |
+| G · I · C · B · M · O · L · K · V | Goals · Pockets · Craft · Build · Map · Friends · Mail · Album · Options |
 | Enter | Chat |
 | R / Esc | Rotate placement or switch terraforming tool / cancel |
 | F3 or ` | Developer debug menu |
@@ -117,6 +117,24 @@ Adjacent tiles of the same path join up, and open edges get soft, bevelled borde
 **Hotbar.** The hotbar has ten slots. Right-click a slot to choose the tool in it, drag a slot onto another to swap them, or use the dropdowns at the top of Pockets (I), which also works with a controller. Your layout is saved with your account.
 
 **Birds & the album.** Birds land on islands, hop around for a few minutes and then fly off. Which birds appear depends on the biome, the time of day and the season; owls and nightjars only come out at night. Craft a **Bird Net** by hand (4 wood, 5 fiber), or buy the better **Silk Bird Net** at the Tool Store. Select the net in your hotbar, walk up to a bird and press **E**. Rare birds are warier and fly off more often. Every fish and bird you catch goes into the **Album (K)**. Entries you haven't caught yet show where and when to look.
+
+**Water.** A **river** is fresh water that's connected to the sea; a **pond** isn't. New islands have a river that starts at a lake on the highest plateau and runs down to the north coast. Wherever it drops a cliff level there's a **waterfall**. River biomes (Nordic forest, Forest edge, Jungle) and the grassland also have a pond. Each kind of water has its own fish: sea fish, river fish (trout, salmon, dace, eel, sturgeon…) and pond fish (carp, koi, bitterling, goldfish, frogs…). When you dig or fill water while terraforming, the game re-sorts the tiles automatically: water joined to the sea or a river becomes river.
+
+**Bridges.** Build menu → 🌉 Bridge (north–south or east–west), for 30 wood and 10 stone, after a workbench. A bridge spans a 2-tile river or pond. Both ends need flat ground at the same height, and you walk across at that height, even over a river running in a gorge.
+
+**Beachcombing & messages in bottles.** Seashells, driftwood, seaweed, sea glass, conches, coral (on tropical islands) and the odd pearl wash up on beaches over time; walk up and press **E**. Craft a **Message Bottle** by hand from 2 sea glass and 1 fiber (empty bottles sometimes wash up too). In Pockets choose **Write & throw**, then throw it from the beach. Within 5 minutes to 24 hours it washes up on a **random other player's** island, and that island's owner reads it in their letters. If nobody else is around, it drifts back to you. You can throw one every 10 minutes.
+
+**Builders & residents.** In **⚙️ Options (V)** the island owner can give any friend a role:
+- **🔨 Builder:** may build, pave, terraform (with the owner's permits), move buildings and place furniture.
+- **🏡 Resident:** lives on the island and has the same rights as the owner: gathering, the workbench and shops, the Town Hall, and building **their own tent and house**, which belong to them. The only things a resident can't do are manage visitors and roles.
+
+Builders and residents can always visit, whatever the access setting. The islands you help on are listed in Options with a **Go there** button.
+
+**Location & time zone.** Also in Options: pick your time zone and latitude/longitude, or press **Use this device**. Your island's sun, seasons and clock follow that place right away. It's stored rounded to about 50 km.
+
+**Doors.** You go into a building only when you stand in front of its door (the middle of its front side), not from the back or the sides.
+
+**Start screen.** After logging in you see the logo, the news boxes and a **Play** button. Admins write and edit the news boxes in the admin tool under **📰 News**: icon, title, text with paragraphs and `**bold**`, pinned or draft, with a live preview.
 
 **Moving buildings.** In the Build menu under 🚚 Move a building, pick a building up and click its new spot. This costs coins depending on its size. Villagers and everything inside move along with it. The dock stays where it is.
 
@@ -180,13 +198,13 @@ In snowy winters everyone who walks leaves footprints in the snow, and on beache
 - **Sunset Bazaar** is a lantern-lit market on the edge of the desert.
 
 ### Visitors
-In **Island & visitors (V)** you choose who may visit your island:
+In **Options (V)** you choose who may visit your island:
 - 🔒 Nobody
 - 💌 Friends only
 - 🎟️ Friends + invite code (you can regenerate the code at any time)
 - 🌍 Everyone (listed on the world map)
 
-Visitors can walk around, chat, fish and befriend your villagers, but only the owner can harvest or build. The owner can send any visitor home.
+Visitors can walk around, chat, fish and befriend your villagers, but only the owner and residents can harvest, and only the owner, residents and builders can build. The owner can send any visitor home.
 
 ---
 
@@ -232,7 +250,7 @@ hearthwood/
 - **Interest management:** each island, hub or tour is a `Room`, and only its members receive its updates. Idle rooms are unloaded. When an island loads again, the server catches up whatever happened meanwhile (growth, construction, the daily refresh).
 - **Abuse protection:** a per-connection token-bucket rate limiter, a chat rate limit with sanitising (control and bidi characters are stripped), a WebSocket `maxPayload`, a hello timeout, ping/pong heartbeats, per-IP account-creation limits and an optional Origin allow-list (`ALLOWED_ORIGINS`).
 - **Auth:** username and password accounts (scrypt), with guests only in dev mode. Logging in returns a random 256-bit token that the browser keeps. The server stores only its SHA-256 hash, in the `tokens` table. The token is sent in the first WebSocket message rather than the URL, so it stays out of logs. The HTTP tools send it as `Authorization: Bearer …`. Login attempts are rate-limited per IP. Banned accounts are refused at login and on connect.
-- **Database:** `DATA_DIR/hearthwood.db` (SQLite, WAL mode) has tables for `players`, `tokens`, `islands`, `boards`, `gamedata` (editor overrides) and `audit`. Players and islands are kept in memory and the changed ones are written in one transaction every 5 s and on shutdown. Saves from older versions (JSON files) are imported on first start and moved to `DATA_DIR/json-backup-<date>/`.
+- **Database:** `DATA_DIR/hearthwood.db` (SQLite, WAL mode) has tables for `players`, `tokens`, `islands`, `boards`, `gamedata` (editor overrides), `bottles` (messages in bottles at sea and delivered), `news` (start-screen boxes) and `audit`. Players and islands are kept in memory and the changed ones are written in one transaction every 5 s and on shutdown. Saves from older versions (JSON files) are imported on first start and moved to `DATA_DIR/json-backup-<date>/`.
 - **Determinism:** island generation uses integer-only hashing and noise, and the server also sends the tiles, cliff levels and ramps it generated. Weather comes from a seeded RNG, so all observers agree.
 - **Cliffs on both sides:** `Grid.canMove` / `Grid.stepOk` define when you can move between levels: same level, or via a ramp from its bottom or sides, or from the tile directly uphill. The client uses them for prediction and the server uses the same code to validate every movement step.
 - **Interiors are rooms too:** a tent or house interior is its own `Room` with its own interest management. Furniture you place inside is saved in the island record.

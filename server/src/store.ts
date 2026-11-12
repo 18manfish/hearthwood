@@ -17,6 +17,28 @@ const log = logger('store');
 
 const SCHEMA_VERSION = 1;
 
+export interface BottleRow {
+  id: string;
+  from_id: string;
+  from_name: string;
+  text: string;
+  created: number;
+  deliver_at: number;
+  to_id: string | null;
+}
+
+export interface NewsRow {
+  id: number;
+  title: string;
+  body: string;
+  icon: string | null;
+  created: number;
+  updated: number;
+  author: string | null;
+  pinned: number;
+  published: number;
+}
+
 export interface AuditEntry {
   id: number;
   at: number;
@@ -79,6 +101,13 @@ export class Store {
       CREATE TABLE IF NOT EXISTS islands (id TEXT PRIMARY KEY, owner_id TEXT, data TEXT NOT NULL, updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS boards (key TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gamedata (tbl TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL, author TEXT);
+      CREATE TABLE IF NOT EXISTS bottles (
+        id TEXT PRIMARY KEY, from_id TEXT, from_name TEXT, text TEXT NOT NULL, created INTEGER NOT NULL,
+        deliver_at INTEGER NOT NULL, to_id TEXT, delivered_at INTEGER, opened_at INTEGER);
+      CREATE INDEX IF NOT EXISTS bottles_due ON bottles(deliver_at) WHERE to_id IS NULL;
+      CREATE TABLE IF NOT EXISTS news (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT NOT NULL, icon TEXT,
+        created INTEGER NOT NULL, updated INTEGER NOT NULL, author TEXT, pinned INTEGER NOT NULL DEFAULT 0, published INTEGER NOT NULL DEFAULT 1);
       CREATE TABLE IF NOT EXISTS audit (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor TEXT, action TEXT, target TEXT, detail TEXT);
     `);
@@ -341,6 +370,54 @@ export class Store {
   }
   deleteGameData(table: string) {
     this.q.deleteGameData.run(table);
+  }
+
+  // ── Messages in bottles ───────────────────────────────────────────────────
+  addBottle(b: { id: string; fromId: string; fromName: string; text: string; deliverAt: number }) {
+    this.db.prepare('INSERT INTO bottles (id, from_id, from_name, text, created, deliver_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(b.id, b.fromId, b.fromName, b.text, Date.now(), b.deliverAt);
+  }
+  dueBottles(now: number): BottleRow[] {
+    return this.db.prepare('SELECT * FROM bottles WHERE to_id IS NULL AND deliver_at <= ? ORDER BY deliver_at LIMIT 50').all(now) as unknown as BottleRow[];
+  }
+  bottleSent(id: string, toId: string) {
+    this.db.prepare('UPDATE bottles SET to_id = ?, delivered_at = ? WHERE id = ?').run(toId, Date.now(), id);
+  }
+  /** Dev: every bottle still at sea arrives now. */
+  rushBottles() {
+    this.db.prepare('UPDATE bottles SET deliver_at = ? WHERE to_id IS NULL').run(Date.now());
+  }
+  bottleOpened(id: string) {
+    this.db.prepare('UPDATE bottles SET opened_at = ? WHERE id = ?').run(Date.now(), id);
+  }
+  bottleStats() {
+    return this.db.prepare('SELECT COUNT(*) AS total, SUM(to_id IS NULL) AS waiting, SUM(opened_at IS NOT NULL) AS opened FROM bottles').get() as { total: number; waiting: number; opened: number };
+  }
+
+  // ── News (start screen) ───────────────────────────────────────────────────
+  news(includeDrafts = false): NewsRow[] {
+    return this.db.prepare(`SELECT * FROM news ${includeDrafts ? '' : 'WHERE published = 1'} ORDER BY pinned DESC, created DESC LIMIT 50`).all() as unknown as NewsRow[];
+  }
+  saveNews(n: { id?: number; title: string; body: string; icon: string; pinned: boolean; published: boolean }, author: string): number {
+    const now = Date.now();
+    if (n.id) {
+      this.db.prepare('UPDATE news SET title = ?, body = ?, icon = ?, pinned = ?, published = ?, updated = ?, author = ? WHERE id = ?')
+        .run(n.title, n.body, n.icon, n.pinned ? 1 : 0, n.published ? 1 : 0, now, author, n.id);
+      return n.id;
+    }
+    const r = this.db.prepare('INSERT INTO news (title, body, icon, created, updated, author, pinned, published) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(n.title, n.body, n.icon, now, now, author, n.pinned ? 1 : 0, n.published ? 1 : 0);
+    return Number(r.lastInsertRowid);
+  }
+  deleteNews(id: number) {
+    this.db.prepare('DELETE FROM news WHERE id = ?').run(id);
+  }
+  /** First start: a welcome post so the start screen isn't empty. */
+  seedNews() {
+    const n = this.db.prepare('SELECT COUNT(*) AS n FROM news').get() as { n: number };
+    if (n.n) return;
+    this.saveNews({ title: 'Welcome to Hearthwood!', icon: '🌿', pinned: true, published: true,
+      body: 'Settle an island, gather, craft and build – then invite friends over. Admins can edit these news boxes in the admin tool (📰 News).' }, 'system');
   }
 
   // ── Audit log (admin & editor actions) ────────────────────────────────────

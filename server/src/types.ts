@@ -44,6 +44,8 @@ export interface PlayerRecord {
   permits?: string[];
   /** Tools in the ten hotbar slots. */
   hotbar?: (string | null)[];
+  /** Last message in a bottle sent (cooldown). */
+  lastBottleAt?: number;
   /** Caught fish and birds. */
   album?: Album;
 }
@@ -80,6 +82,11 @@ export interface IslandRecord {
   size?: number;
   /** Reshaped terrain (terraforming), encoded like `paths`. */
   terrain?: { tiles: string; levels: string; ramps: string };
+  /** Messages in bottles on their way to this island's beach. */
+  bottles?: { id: string; from: string; fromName: string; text: string; at: number }[];
+  /** Players allowed to build here / who live here (same rights as the owner). */
+  builders?: string[];
+  residents?: string[];
   /** Pending resource respawns. */
   respawns?: Respawn[];
   id: string;

@@ -1,7 +1,7 @@
 // Terraforming: raise / lower cliffs, place / remove ramps, dig / fill ponds.
 // The same rules run on the client (ghost preview) and the server (authority).
 
-import { CLIFF, DIRS, Grid, MAX_LEVEL, Tile } from './world.ts';
+import { CLIFF, DIRS, Grid, MAX_LEVEL, Tile, classifyWater } from './world.ts';
 
 export const TERRA_OPS = ['raise', 'lower', 'ramp', 'unramp', 'water', 'land'] as const;
 export type TerraOp = (typeof TERRA_OPS)[number];
@@ -19,8 +19,8 @@ export const TERRA_INFO: Record<TerraOp, { name: string; icon: string; color: st
   lower: { name: 'Lower cliff', icon: '🕳️', color: '#8d6e63', hint: 'Takes ground down one level' },
   ramp: { name: 'Build ramp', icon: '📐', color: '#ffd166', hint: 'Slope up to the level in front of it' },
   unramp: { name: 'Remove ramp', icon: '🚧', color: '#ef8354', hint: 'Turns a ramp back into flat ground' },
-  water: { name: 'Dig water', icon: '💧', color: '#4fb7d8', hint: 'Digs a pond tile (ground level only)' },
-  land: { name: 'Fill water', icon: '🟫', color: '#a1887f', hint: 'Fills a pond tile with earth' },
+  water: { name: 'Dig water', icon: '💧', color: '#4fb7d8', hint: 'Digs water (ground level). Joined to the sea or a river it becomes river, otherwise a pond' },
+  land: { name: 'Fill water', icon: '🟫', color: '#a1887f', hint: 'Fills a pond or river tile with earth' },
 };
 
 /** One changed tile: [x, z, tile, level, ramp (dir + 1, 0 = none)]. */
@@ -96,7 +96,9 @@ export function terraformError(g: Grid, op: TerraOp, x: number, z: number, dir =
       if (!neighbours((nx, nz) => g.level(nx, nz) === 0)) return 'Water can’t sit right against a cliff.';
       return null;
     case 'land':
-      if (t !== Tile.Pond) return 'There’s no pond water here.';
+      if (t !== Tile.Pond && t !== Tile.River) return 'There’s no pond or river water here.';
+      if (g.bridges[i]) return 'There’s a bridge over this water.';
+      if (L !== 0) return 'Only ground-level water can be filled in.';
       return null;
   }
 }
@@ -121,6 +123,17 @@ export function applyTerrain(g: Grid, changes: TerrainChange[]) {
     if (t !== Tile.Ground && t !== Tile.Ramp) g.paths[z * g.size + x] = 0;
   }
   g.recomputeReserved();
+}
+
+/** Server side: apply, then re-sort water into rivers / ponds. Returns every changed tile. */
+export function applyTerrainAndWater(g: Grid, changes: TerrainChange[]): TerrainChange[] {
+  applyTerrain(g, changes);
+  const out = [...changes];
+  for (const i of classifyWater(g.size, g.tiles)) {
+    const x = i % g.size, z = Math.floor(i / g.size);
+    out.push([x, z, g.tiles[i], g.levels[i], g.ramps[i]]);
+  }
+  return out;
 }
 
 /** Visual height of a raised tile, for previews. */

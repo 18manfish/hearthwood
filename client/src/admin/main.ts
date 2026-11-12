@@ -10,6 +10,7 @@ import {
 } from '@hearthwood/shared';
 import { api, clearToken, health, loadGameData, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
+import { newsCard, type NewsItem } from '../ui/start.ts';
 import { h, clear } from '../ui/dom.ts';
 
 const app = document.getElementById('app')!;
@@ -54,7 +55,7 @@ function shell(active: string, body: HTMLElement) {
   app.append(
     h('div', { class: 'tb' },
       h('span', { class: 'brand' }, '🛡️ Hearthwood Admin'),
-      nav('players', '👥 Players'), nav('islands', '🏝️ Islands'), nav('audit', '📜 Audit log'),
+      nav('players', '👥 Players'), nav('islands', '🏝️ Islands'), nav('news', '📰 News'), nav('audit', '📜 Audit log'),
       h('span', { class: 'sp' }),
       me.dev ? h('a', { class: 'btn ghost small', href: '/editor.html' }, '🛠️ Game creation tool') : null,
       h('a', { class: 'btn ghost small', href: '/' }, '🎮 Game'),
@@ -71,6 +72,7 @@ async function route() {
   if (page === 'islands') return islandsPage();
   if (page === 'island' && id) return islandPage(id);
   if (page === 'audit') return auditPage();
+  if (page === 'news') return newsPage(id ? Number(id) : null);
   return playersPage();
 }
 
@@ -263,7 +265,7 @@ interface IslandView {
   birds: WorldObject[];
 }
 
-const TILE_NAMES: [number, string][] = [[Tile.Sea, 'Sea'], [Tile.Shore, 'Beach'], [Tile.Ground, 'Ground'], [Tile.Pond, 'Pond'], [Tile.Dock, 'Dock'], [Tile.Ramp, 'Ramp']];
+const TILE_NAMES: [number, string][] = [[Tile.Sea, 'Sea'], [Tile.Shore, 'Beach'], [Tile.Ground, 'Ground'], [Tile.Pond, 'Pond'], [Tile.River, 'River'], [Tile.Dock, 'Dock'], [Tile.Ramp, 'Ramp']];
 const OBJ_COLORS: Record<string, string> = { tree: '#2f7d32', stump: '#7a5230', rock: '#8d8f93', bush: '#4f8f3a', mushroom: '#d84315', flower: '#ec6fa0', furniture: '#a0703f', decor: '#a0703f' };
 
 async function islandPage(id: string) {
@@ -324,7 +326,8 @@ function islandEditor(v: IslandView) {
     switch (t) {
       case Tile.Sea: return '#4fb7d8';
       case Tile.Shore: return biome?.shore ?? '#f3e2b3';
-      case Tile.Pond: return '#3f9cc4';
+      case Tile.Pond: return shade('#3f9cc4', 0.9 + L * 0.12);
+      case Tile.River: return shade('#2f8fd0', 0.9 + L * 0.12);
       case Tile.Dock: return '#b98a5a';
       case Tile.Ramp: return shade(ground, 0.85 + L * 0.12);
       case Tile.Floor: return '#c9b27a';
@@ -421,7 +424,7 @@ function islandEditor(v: IslandView) {
 
   function legend() {
     return h('div', { class: 'legend' },
-      [['Sea', '#4fb7d8'], ['Beach', biome?.shore ?? '#f3e2b3'], ['Ground (lighter = higher)', ground], ['Pond', '#3f9cc4'], ['Dock', '#b98a5a'],
+      [['Sea', '#4fb7d8'], ['Beach', biome?.shore ?? '#f3e2b3'], ['Ground (lighter = higher)', ground], ['Pond', '#3f9cc4'], ['River', '#2f8fd0'], ['Dock', '#b98a5a'],
         ['Tree', OBJ_COLORS.tree], ['Rock', OBJ_COLORS.rock], ['Bush', OBJ_COLORS.bush], ['Flower', OBJ_COLORS.flower], ['Furniture', OBJ_COLORS.furniture], ['Bird', '#ffd166'], ['Player', '#e8607a']]
         .map(([n, c]) => h('span', { style: `--c:${c}` }, n)),
       h('span', { class: 'muted' }, 'Dark edges = cliffs, lines on ramps point uphill, 🐾 villager, ⚓ arrival'));
@@ -490,7 +493,7 @@ function islandEditor(v: IslandView) {
       case 'terrain': {
         const t = Number(brushTile.value);
         d.tiles[i] = t;
-        d.levels[i] = t === Tile.Ground || t === Tile.Ramp ? Number(brushLevel.value) : 0;
+        d.levels[i] = t === Tile.Sea || t === Tile.Shore || t === Tile.Dock ? 0 : Number(brushLevel.value);
         d.ramps[i] = t === Tile.Ramp ? Number(brushDir.value) + 1 : 0;
         if (t !== Tile.Ground && t !== Tile.Ramp) d.paths[i] = 0;
         dirty.add('terrain');
@@ -710,6 +713,50 @@ function islandEditor(v: IslandView) {
   window.onbeforeunload = () => (dirty.size ? 'Unsaved changes' : undefined);
   drawSide();
   draw();
+}
+
+// ── News boxes on the start screen ──────────────────────────────────────────
+async function newsPage(editId: number | null) {
+  const r = await call<{ news: NewsItem[] }>('GET', '/api/admin/news');
+  if (!r) return;
+  const list = h('div', { class: 'box col' });
+  const editor = h('div', { class: 'col', style: 'gap:16px' });
+  shell('news', h('div', { class: 'split' }, list, editor));
+  list.append(h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, '📰 Start-screen news'), h('span', { style: 'flex:1' }),
+    h('a', { class: 'btn small', href: '#news/0' }, '+ New box')),
+    h('p', { class: 'muted' }, 'Shown on the start screen, pinned boxes first, then newest first. Drafts (unpublished) are only visible here.'),
+    h('table', { class: 'data' }, h('tr', {}, ['', 'Title', 'Date', ''].map((t) => h('th', {}, t))),
+      r.news.map((n) => h('tr', { class: `click${n.id === editId ? ' sel' : ''}`, onclick: () => (location.hash = `news/${n.id}`) },
+        h('td', { style: 'font-size:22px' }, n.icon), h('td', {}, h('b', {}, n.title), n.pinned ? h('span', { class: 'pill', style: 'margin-left:6px' }, '📌') : null, n.published ? null : h('span', { class: 'pill no', style: 'margin-left:6px' }, 'draft')),
+        h('td', { class: 'muted' }, new Date(n.created).toLocaleDateString()), h('td', { class: 'muted' }, n.author ?? '')))));
+  if (editId === null) return void editor.append(h('div', { class: 'box' }, h('p', { class: 'muted' }, 'Pick a news box, or create a new one.')));
+  const n: NewsItem = r.news.find((x) => x.id === editId) ?? { id: 0, title: '', body: '', icon: '📰', created: Date.now(), updated: Date.now(), author: null, pinned: false, published: true };
+  const title = input(n.title, { maxlength: 120 });
+  const icon = input(n.icon, { maxlength: 16, style: 'width:70px' });
+  const body = h('textarea', { rows: 10, style: 'font-family:inherit;font-size:14px' }, n.body) as HTMLTextAreaElement;
+  const pinned = h('input', { type: 'checkbox', checked: n.pinned }) as HTMLInputElement;
+  const published = h('input', { type: 'checkbox', checked: n.published }) as HTMLInputElement;
+  const preview = h('div');
+  const draw = () => {
+    clear(preview);
+    preview.append(newsCard({ ...n, title: title.value || 'Untitled', icon: icon.value || '📰', body: body.value, pinned: pinned.checked }));
+  };
+  for (const el of [title, icon, body, pinned]) el.addEventListener('input', draw);
+  draw();
+  editor.append(h('div', { class: 'box' }, h('h3', {}, n.id ? 'Edit news box' : 'New news box'),
+    h('div', { class: 'form' }, field('Icon', icon, 'An emoji'), field('Title', title), field('Text', body, 'Blank line = new paragraph · **bold**'),
+      field('Pinned', pinned, 'Stays at the top'), field('Published', published, 'Untick to keep it as a draft')),
+    h('div', { class: 'row', style: 'margin-top:10px' },
+      h('button', { class: 'btn', onclick: async () => {
+        const payload = { title: title.value, icon: icon.value, body: body.value, pinned: pinned.checked, published: published.checked };
+        const res = await call<{ id: number }>(n.id ? 'PUT' : 'POST', n.id ? `/api/admin/news/${n.id}` : '/api/admin/news', payload);
+        if (res) { toast('Saved'); location.hash = `news/${res.id}`; newsPage(res.id); }
+      } }, '💾 Save'),
+      n.id ? h('button', { class: 'btn warn small', onclick: async () => {
+        if (!confirm('Delete this news box?')) return;
+        if (await call('DELETE', `/api/admin/news/${n.id}`)) { toast('Deleted'); location.hash = 'news'; }
+      } }, 'Delete') : null)),
+    h('div', { class: 'box' }, h('h3', {}, '👁️ Preview'), preview));
 }
 
 // ── Audit log ────────────────────────────────────────────────────────────────

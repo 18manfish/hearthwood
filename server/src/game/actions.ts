@@ -6,7 +6,7 @@ import {
   BIOMES, BUILDINGS, ENTERABLE, SHOP_TYPES, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
   VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE,
   FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_TALK, FRIENDSHIP_MAX, FRIENDSHIP_BIRTHDAY_BONUS, HAIR_STYLES,
-  Rng, Tile, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
+  Rng, Tile, waterKind, placeError, BOTTLE_COOLDOWN_MS, BOTTLE_MIN_DELAY_MS, BOTTLE_MAX_DELAY_MS, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
   type Action, type BuildingType, type TalkView, type WorldObject, type Building,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
@@ -179,9 +179,15 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
   forage(ctx, a) {
     const g = harvestGuard(ctx);
     if (g) return g;
-    const o = getObj(ctx, a.id, ['bush', 'mushroom', 'flower']);
+    const o = getObj(ctx, a.id, ['bush', 'mushroom', 'flower', 'washed']);
     if (isResult(o)) return o;
     const gained: Record<string, number> = {};
+    if (o.kind === 'washed') {
+      if (o.bottle) return openBottle(ctx, o);
+      if (!give(ctx, gained, o.item ?? 'seashell', 1)) return fail('Your pockets are full of those.');
+      ctx.room.removeObject(o.id);
+      return { ok: true, gained };
+    }
     if (o.kind === 'bush') {
       if (!o.ripe) return fail('Nothing to pick until tomorrow.');
       give(ctx, gained, BIOMES[ctx.room.biome].bushItem, 2);
@@ -229,12 +235,12 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     ctx.s.clearCast();
     const env = ctx.room.env(ctx.now);
     const def = BIOMES[ctx.room.biome];
-    const water = t === Tile.Pond ? 'fresh' : 'sea';
-    const ids = new Set(t === Tile.Pond ? def.freshFish : def.seaFish);
+    const water = waterKind(t)!;
+    const ids = new Set(water === 'sea' ? def.seaFish : def.freshFish);
     for (const f of FISH) if (f.water === water && f.biomes?.includes(ctx.room.biome)) ids.add(f.id);
     const pool = [...ids]
       .map((id) => FISH.find((f) => f.id === id))
-      .filter((f): f is (typeof FISH)[number] => !!f)
+      .filter((f): f is (typeof FISH)[number] => !!f && f.water === water)
       .filter((f) => {
         if (f.seasons && !f.seasons.includes(env.season)) return false;
         if (f.hours) {
@@ -314,7 +320,12 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
       if (ctx.room.completedCount(req, ctx.now) < 1) return fail(`Requires a finished ${BUILDINGS[req].name}.`);
     }
     if (!config.ignoreDayGates && day < def.minDay) return fail(`${def.name} unlocks on island day ${def.minDay} (today is day ${day}).`);
-    const existing = ctx.room.totalCount(a.type);
+    // Everyone who lives here may have their own tent and house.
+    const personal = a.type === 'tent' || a.type === 'cabin';
+    const houseOwner = (b: Building) => b.ownerId ?? ctx.room.ownerId;
+    const builder = ctx.room.isOwner(ctx.p.id) || ctx.room.isResident(ctx.p.id) ? ctx.p.id : ctx.room.ownerId!;
+    if (personal && !ctx.room.isOwner(ctx.p.id) && !ctx.room.isResident(ctx.p.id)) return fail('Only the owner and residents can build homes here.');
+    const existing = personal ? [...ctx.room.buildings.values()].filter((b) => b.type === a.type && houseOwner(b) === builder).length : ctx.room.totalCount(a.type);
     let max = def.max;
     if (a.type === 'villager_house' && !config.ignoreDayGates && day < VILLAGER_HOUSE_MONTH_TWO_MIN_DAY) max = VILLAGER_HOUSE_MONTH_ONE_LIMIT;
     if (existing >= max) {
@@ -329,6 +340,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
       id: ctx.room.newId('b'), type: a.type, x: a.x, z: a.z, w: def.w, h: def.h,
       completeAt: ctx.now + (def.buildMinutes * 60000) / config.timeFactor,
     };
+    if (personal && builder !== ctx.room.ownerId) b.ownerId = builder;
     ctx.room.addBuilding(b);
     const mins = Math.round((def.buildMinutes) / config.timeFactor);
     return { ok: true, msg: def.buildMinutes ? `Construction started! Ready in about ${mins >= 60 ? `${Math.round(mins / 60)}h` : `${Math.max(1, mins)} min`}.` : `${def.name} built!` };
@@ -340,6 +352,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     const b = room.buildings.get(a.id);
     if (!b) return fail('That building isn’t there any more.');
     if (BUILDINGS[b.type].fixed || b.type === 'dock') return fail('That can’t be moved.');
+    if (b.ownerId && b.ownerId !== ctx.p.id && !room.isOwner(ctx.p.id)) return fail('That’s someone else’s home.');
     if (b.x === a.x && b.z === a.z) return fail('It’s already there.');
     const cost = relocationCost(b.w, b.h);
     if (ctx.p.coins < cost) return fail(`Moving it costs ${cost} coins.`);
@@ -398,6 +411,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     if (!ctx.room.canBuild(ctx.p.id)) return fail('Not your island.');
     const b = ctx.room.buildings.get(a.id);
     if (!b) return fail('Nothing there.');
+    if (b.ownerId && b.ownerId !== ctx.p.id && !ctx.room.isOwner(ctx.p.id)) return fail('That’s someone else’s home.');
     if (BUILDINGS[b.type].fixed || b.type === 'town_hall' || b.type === 'cabin') return fail('That building is too important to remove.');
     if (!nearBuilding(b, ctx.s.x, ctx.s.z, config.buildingReach)) return fail('Too far away.');
     if (b.type === 'villager_house' && b.villagerId) return fail('Someone lives there!');
@@ -593,6 +607,26 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     return { ok: true };
   },
 
+  bottle(ctx, a) {
+    if (inv.count(ctx.p, 'message_bottle') < 1) return fail('You need a Message Bottle (2 sea glass + 1 fiber).');
+    const g = ctx.room.grid;
+    const tx = Math.floor(ctx.s.x), tz = Math.floor(ctx.s.z);
+    let sea = false;
+    for (let dz = -3; dz <= 3 && !sea; dz++) for (let dx = -3; dx <= 3 && !sea; dx++) sea = g.tile(tx + dx, tz + dz) === Tile.Sea;
+    if (!sea || ctx.room.kind === 'interior') return fail('Walk down to the sea to throw it in.');
+    const wait = (ctx.p.lastBottleAt ?? 0) + BOTTLE_COOLDOWN_MS - ctx.now;
+    if (wait > 0 && !config.devFast) return fail(`Let the last one drift off first (${Math.ceil(wait / 60000)} min).`);
+    const text = ctx.game.sanitize(a.text).trim();
+    if (!text) return fail('Write something first.');
+    inv.remove(ctx.p, 'message_bottle', 1);
+    ctx.p.lastBottleAt = ctx.now;
+    const delay = BOTTLE_MIN_DELAY_MS + Math.random() * (BOTTLE_MAX_DELAY_MS - BOTTLE_MIN_DELAY_MS);
+    const id = `bt_${ctx.now.toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
+    ctx.game.store.addBottle({ id, fromId: ctx.p.id, fromName: ctx.p.name, text, deliverAt: ctx.now + delay / config.timeFactor });
+    log.info('bottle thrown', { player: ctx.p.id, bottle: id, hours: Math.round(delay / 360000) / 10 });
+    return { ok: true, msg: '🍾 Off it goes! It will wash up on someone’s beach within a day.' };
+  },
+
   terra(ctx, a) {
     const room = ctx.room;
     if (!room.canBuild(ctx.p.id)) return fail('You can only reshape your own island.');
@@ -600,7 +634,9 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     if (!grid.inBounds(a.x, a.z)) return fail('Out of bounds.');
     if (distToTile(ctx.s.x, ctx.s.z, a.x, a.z) > TERRA_REACH) return fail('Too far away.');
     const permit = PERMIT_BY_ID[TERRA_PERMIT[a.op]];
-    if (!(ctx.p.permits ?? []).includes(permit.id)) return fail(`You need a ${permit.name} – buy one at the Town Hall.`);
+    // Builders and residents may use the island owner's permits.
+    const owner = ctx.game.store.players.get(room.ownerId ?? '');
+    if (!(ctx.p.permits ?? []).includes(permit.id) && !(owner?.permits ?? []).includes(permit.id)) return fail(`You need a ${permit.name} – buy one at the Town Hall.`);
     if (ctx.now - ctx.s.lastPaveAt < 120) return fail('Slow down!');
     ctx.s.lastPaveAt = ctx.now;
     const err = terraformError(grid, a.op, a.x, a.z, a.dir ?? -1);
@@ -633,7 +669,8 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
 /** Where a building of this size may not go (null = fine). Shared by building and moving. */
 function placementError(ctx: Ctx, type: BuildingType, x: number, z: number, w: number, h: number): string | null {
   const grid = ctx.room.grid;
-  if (!grid.canPlace(x, z, w, h)) return 'Not enough free space there.';
+  const bad = placeError(grid, type, x, z);
+  if (bad) return bad;
   if (ENTERABLE.includes(type)) {
     // The door (south side) must open onto walkable ground on the same cliff level.
     const lvl = grid.level(x, z);
@@ -648,6 +685,24 @@ function placementError(ctx: Ctx, type: BuildingType, x: number, z: number, w: n
     if (other.x >= x - 0.3 && other.x <= x + w + 0.3 && other.z >= z - 0.3 && other.z <= z + h + 0.3) return 'Someone is standing there.';
   }
   return null;
+}
+
+/** A message in a bottle washed up: the island owner reads it (it goes to their letters) and keeps the bottle. */
+function openBottle(ctx: Ctx, o: WorldObject): ActionResult {
+  const rec = ctx.room.record;
+  if (!rec || ctx.room.ownerId !== ctx.p.id) return fail('This bottle washed up for the island’s owner.');
+  const b = rec.bottles?.find((x) => x.id === o.bottle);
+  ctx.room.removeObject(o.id);
+  rec.bottles = (rec.bottles ?? []).filter((x) => x.id !== o.bottle);
+  const gained: Record<string, number> = {};
+  give(ctx, gained, 'message_bottle', 1);
+  if (!b) return { ok: true, gained, msg: 'The bottle was empty.' };
+  ctx.p.mail.push({ id: `m${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`, from: '', fromName: `${b.fromName} (🍾 message in a bottle)`, text: b.text, at: ctx.now });
+  ctx.game.store.bottleOpened(b.id);
+  ctx.game.store.markIsland(rec.id);
+  ctx.s.send({ t: 'mail', list: ctx.p.mail });
+  log.info('bottle opened', { bottle: b.id, by: ctx.p.id });
+  return { ok: true, gained, msg: `🍾 A message in a bottle from ${b.fromName}! It’s in your letters (L).` };
 }
 
 /** Add a catch to the album; returns true if it's a new entry. */

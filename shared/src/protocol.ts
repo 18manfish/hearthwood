@@ -9,9 +9,11 @@ import type { Building, WorldObject } from './world.ts';
 import type { InteriorStyle, InteriorTheme } from './interiors.ts';
 import { TERRA_OPS, type TerrainChange } from './terraform.ts';
 import { isPermit } from './data/permits.ts';
+import type { GeoInfo } from './env.ts';
+import { BOTTLE_MAX_CHARS } from './data/beach.ts';
 import { HOTBAR_SIZE, HOTBAR_TOOLS, type Hotbar } from './data/hotbar.ts';
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -39,7 +41,7 @@ export interface Look {
 
 export type Access = 'private' | 'friends' | 'invite' | 'public';
 
-export const DEV_COMMANDS = ['kit', 'give', 'coins', 'day', 'finish', 'respawn', 'weather', 'season', 'tp', 'clearinv', 'permits', 'birds'] as const;
+export const DEV_COMMANDS = ['kit', 'give', 'coins', 'day', 'finish', 'respawn', 'weather', 'season', 'tp', 'clearinv', 'permits', 'birds', 'bottles', 'beach'] as const;
 export type DevCommand = (typeof DEV_COMMANDS)[number];
 export const ACCESS_LEVELS: Access[] = ['private', 'friends', 'invite', 'public'];
 
@@ -81,6 +83,7 @@ export const actionParser = s.union('k', {
   pave: s.obj({ k: s.lit('pave'), x: tileCoord, z: tileCoord, path: s.int(1, 5) }),
   unpave: s.obj({ k: s.lit('unpave'), x: tileCoord, z: tileCoord }),
   catch: s.obj({ k: s.lit('catch'), id }),
+  bottle: s.obj({ k: s.lit('bottle'), text: s.str(1, BOTTLE_MAX_CHARS) }),
   permit: s.obj({ k: s.lit('permit'), id: s.guard(isPermit, 'permit') }),
   relocate: s.obj({ k: s.lit('relocate'), id, x: tileCoord, z: tileCoord }),
   terra: s.obj({ k: s.lit('terra'), op: s.oneOf(TERRA_OPS), x: tileCoord, z: tileCoord, dir: s.opt(s.int(-1, 3)) }),
@@ -125,6 +128,10 @@ export const clientMessageParser = s.union('t', {
   newInvite: s.obj({ t: s.lit('newInvite') }),
   kick: s.obj({ t: s.lit('kick'), id }),
   map: s.obj({ t: s.lit('map') }),
+  /** Island owner: let a friend build here, live here, or neither. */
+  role: s.obj({ t: s.lit('role'), id, role: s.oneOf(['none', 'builder', 'resident'] as const) }),
+  /** Your location & time zone (drives your island's sun, seasons and clock). */
+  geo: s.obj({ t: s.lit('geo'), lat: s.num(-90, 90), lon: s.num(-180, 180), tz: s.str(1, 64, /^[A-Za-z0-9_+\-/]+$/) }),
   hotbar: s.obj({ t: s.lit('hotbar'), slots: s.arr(s.nullable(s.oneOf(HOTBAR_TOOLS)), HOTBAR_SIZE) }),
   ping: s.obj({ t: s.lit('ping'), ct: s.num() }),
   /** Billboard: pin a note / take down one of your own. */
@@ -196,6 +203,8 @@ export interface RoomView {
   canBuild: boolean;
   /** Place / pick up furniture (own island and its interiors). */
   canDecorate: boolean;
+  /** Your standing here. */
+  role: 'owner' | 'resident' | 'builder' | 'visitor';
   /** Notes pinned to this location's billboard (if it has one), newest first. */
   board?: BoardPost[];
 }
@@ -261,6 +270,12 @@ export interface SelfView {
   username: string | null;
   /** May open the admin tool. */
   admin: boolean;
+  /** Your own island's builders and residents (player id → role). */
+  islandRoles: Record<string, 'builder' | 'resident'>;
+  /** Other islands you build on or live on. */
+  helping: { id: string; name: string; owner: string; role: 'builder' | 'resident' }[];
+  /** Location used for your island's sun, seasons and clock. */
+  geo: GeoInfo;
 }
 
 export interface QuestView {

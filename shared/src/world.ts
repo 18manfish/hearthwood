@@ -24,12 +24,14 @@ export enum Tile {
   Ramp = 5,
   Floor = 6,
   Wall = 7,
+  /** Flowing fresh water connected to the sea (a pond has no connection). */
+  River = 8,
 }
 
 /** Ramp directions point uphill: 0 = north (−z), 1 = east (+x), 2 = south (+z), 3 = west (−x). */
 export const DIRS: readonly [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
-export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor' | 'bird';
+export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor' | 'bird' | 'washed';
 
 export interface WorldObject {
   id: string;
@@ -55,6 +57,8 @@ export interface WorldObject {
   shook?: string;
   /** Stumps rot away (and a sapling sprouts) at this time. */
   decayAt?: number;
+  /** Washed ashore: a message in a bottle (id in the bottle store). */
+  bottle?: string;
   /** Birds: species id (see data/birds.ts) and when it flies off on its own. */
   bird?: string;
   leaveAt?: number;
@@ -72,6 +76,8 @@ export interface Building {
   villagerId?: string;
   /** For interior counters: which service it provides (a shop type, town_hall…). */
   role?: BuildingType;
+  /** Houses built by a resident belong to them (default: the island owner). */
+  ownerId?: string;
 }
 
 export interface IslandLayout {
@@ -93,7 +99,53 @@ export function tileAt(tiles: Uint8Array, size: number, x: number, z: number): T
 }
 
 export function isWaterTile(t: Tile): boolean {
-  return t === Tile.Sea || t === Tile.Pond;
+  return t === Tile.Sea || t === Tile.Pond || t === Tile.River;
+}
+
+/** Fresh inland water (ponds and rivers). */
+export function isFreshWater(t: Tile): boolean {
+  return t === Tile.Pond || t === Tile.River;
+}
+
+/** Which kind of water a tile is, for fishing. */
+export function waterKind(t: Tile): 'sea' | 'river' | 'pond' | null {
+  return t === Tile.Sea ? 'sea' : t === Tile.River ? 'river' : t === Tile.Pond ? 'pond' : null;
+}
+
+/** Height of the water surface for a water tile at a cliff level. */
+export const WATER_SURFACE = -0.2;
+
+/**
+ * Fresh water connected to the sea is a river, everything else a pond.
+ * Returns the indices whose tile type changed.
+ */
+export function classifyWater(size: number, tiles: Uint8Array): number[] {
+  const seen = new Uint8Array(size * size);
+  const q: number[] = [];
+  for (let i = 0; i < size * size; i++) if (tiles[i] === Tile.Sea) { seen[i] = 1; q.push(i); }
+  while (q.length) {
+    const i = q.pop()!;
+    const x = i % size, z = Math.floor(i / size);
+    for (const [dx, dz] of DIRS) {
+      const nx = x + dx, nz = z + dz;
+      if (nx < 0 || nz < 0 || nx >= size || nz >= size) continue;
+      const j = nz * size + nx;
+      if (seen[j] || (tiles[j] !== Tile.Pond && tiles[j] !== Tile.River)) continue;
+      seen[j] = 1;
+      q.push(j);
+    }
+  }
+  const changed: number[] = [];
+  for (let i = 0; i < size * size; i++) {
+    const t = tiles[i];
+    if (t !== Tile.Pond && t !== Tile.River) continue;
+    const want = seen[i] ? Tile.River : Tile.Pond;
+    if (t !== want) {
+      tiles[i] = want;
+      changed.push(i);
+    }
+  }
+  return changed;
 }
 
 export function encodeTiles(tiles: Uint8Array): string {
@@ -136,6 +188,8 @@ export class Grid {
   readonly reserved: Uint8Array;
   /** Path type per tile (0 = none). */
   readonly paths: Uint8Array;
+  /** Bridge deck level + 1 per tile (0 = no bridge). */
+  readonly bridges: Uint8Array;
 
   constructor(size: number, tiles: Uint8Array, levels?: Uint8Array, ramps?: Uint8Array, paths?: Uint8Array) {
     this.size = size;
@@ -146,6 +200,7 @@ export class Grid {
     this.occupied = new Uint8Array(size * size);
     this.reserved = new Uint8Array(size * size);
     this.paths = paths ?? new Uint8Array(size * size);
+    this.bridges = new Uint8Array(size * size);
     this.recomputeReserved();
   }
 
@@ -208,6 +263,18 @@ export class Grid {
   }
 
   addBuilding(b: Building, sign = 1) {
+    if (isBridge(b.type)) {
+      // Bridges don't block: they make the water under them walkable at the bank's level.
+      const deck = this.level(b.x, b.z) + 1;
+      for (let dz = 0; dz < b.h; dz++)
+        for (let dx = 0; dx < b.w; dx++) {
+          if (!this.inBounds(b.x + dx, b.z + dz)) continue;
+          const i = this.idx(b.x + dx, b.z + dz);
+          this.occupied[i] += sign;
+          if (isWaterTile(this.tiles[i] as Tile)) this.bridges[i] = sign > 0 ? deck : 0;
+        }
+      return;
+    }
     for (let dz = 0; dz < b.h; dz++)
       for (let dx = 0; dx < b.w; dx++) {
         if (!this.inBounds(b.x + dx, b.z + dz)) continue;
@@ -224,6 +291,7 @@ export class Grid {
   rebuild(objects: Iterable<WorldObject>, buildings: Iterable<Building>) {
     this.blocked.fill(0);
     this.occupied.fill(0);
+    this.bridges.fill(0);
     for (const o of objects) this.addObject(o);
     for (const b of buildings) this.addBuilding(b);
   }
@@ -231,8 +299,16 @@ export class Grid {
   /** Can a character stand on this tile at all (ignoring elevation)? */
   walkableTile(x: number, z: number): boolean {
     if (!this.inBounds(x, z)) return false;
-    if (!WALKABLE.has(this.tile(x, z))) return false;
-    return this.blocked[this.idx(x, z)] === 0;
+    const i = this.idx(x, z);
+    if (!WALKABLE.has(this.tile(x, z)) && !this.bridges[i]) return false;
+    return this.blocked[i] === 0;
+  }
+
+  /** The level you walk at: a bridge deck's, otherwise the tile's. */
+  walkLevel(x: number, z: number): number {
+    if (!this.inBounds(x, z)) return 0;
+    const b = this.bridges[this.idx(x, z)];
+    return b ? b - 1 : this.levels[this.idx(x, z)];
   }
 
   /**
@@ -244,14 +320,14 @@ export class Grid {
     if (Math.abs(ax - bx) > 1 || Math.abs(az - bz) > 1) return false;
     const ra = this.ramp(ax, az);
     const rb = this.ramp(bx, bz);
-    if (ra < 0 && rb < 0) return this.level(ax, az) === this.level(bx, bz);
+    if (ra < 0 && rb < 0) return this.walkLevel(ax, az) === this.walkLevel(bx, bz);
     if (ra >= 0 && rb >= 0) return ra === rb && this.level(ax, az) === this.level(bx, bz);
     return ra >= 0 ? this.rampLink(ax, az, ra, bx, bz) : this.rampLink(bx, bz, rb, ax, az);
   }
 
   private rampLink(rx: number, rz: number, d: number, ox: number, oz: number) {
     const L = this.level(rx, rz);
-    const lo = this.level(ox, oz);
+    const lo = this.walkLevel(ox, oz);
     const along = (ox - rx) * DIRS[d][0] + (oz - rz) * DIRS[d][1];
     if (lo === L) return along <= 0;
     if (lo === L + 1) return along === 1;
@@ -312,9 +388,11 @@ export class Grid {
   surfaceY(px: number, pz: number): number {
     const x = Math.floor(px), z = Math.floor(pz);
     const t = this.tile(x, z);
+    const bridge = this.inBounds(x, z) ? this.bridges[this.idx(x, z)] : 0;
+    if (bridge) return (bridge - 1) * CLIFF + BRIDGE_DECK;
     const base = baseHeight(t) + this.level(x, z) * CLIFF;
     const d = this.ramp(x, z);
-    if (d < 0) return t === Tile.Dock ? 0.16 : Math.max(base, t === Tile.Sea || t === Tile.Pond ? -0.2 : base);
+    if (d < 0) return t === Tile.Dock ? 0.16 : isWaterTile(t) ? WATER_SURFACE + this.level(x, z) * CLIFF : base;
     const fx = px - x, fz = pz - z;
     const f = d === 0 ? 1 - fz : d === 1 ? fx : d === 2 ? fz : 1 - fx;
     return base + f * CLIFF;
@@ -339,6 +417,7 @@ export function baseHeight(t: Tile): number {
     case Tile.Sea: return -0.7;
     case Tile.Dock: return -0.7;
     case Tile.Pond: return -0.55;
+    case Tile.River: return -0.55;
     case Tile.Shore: return 0;
     case Tile.Ground: return 0.12;
     case Tile.Ramp: return 0.12;
@@ -421,7 +500,14 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
     carveDisc(c + 13 * S, c - 2 * S, 7 * S, Tile.Shore, true);
     carveDisc(c + 14 * S, c - 2 * S, 5.5 * S, Tile.Sea, false);
   }
-  if (water === 'river') {
+  // New (72-tile) islands get a proper river that flows down the cliffs into the sea
+  // (carved after the cliffs, below); 48-tile islands keep their original layout.
+  const legacy = size <= LEGACY_ISLAND_SIZE;
+  const riverSource = !legacy && variant !== 'shared' && RIVER_BIOMES.includes(biome)
+    ? biome === 'grassland' ? { x: c + 7 * S, z: c - 6 * S } : biome === 'tropical' ? { x: c - 6 * S, z: c - 5 * S } : { x: c - 4 * S, z: c - 7 * S }
+    : null;
+  if (!legacy && variant !== 'shared' && (water === 'river')) carveDisc(c + 8 * S, c + 3 * S, 2.4 * S, Tile.Pond);
+  if (water === 'river' && legacy) {
     let rx = c - 4 * S + rng.range(-3, 3);
     const end = c - 8 * S;
     for (let z = 0; z <= end; z++) {
@@ -454,7 +540,8 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
     return ddx * ddx + ddz * ddz < r * r || (Math.abs(x + 0.5 - (dockX + 1)) < 2 && z > clearZ);
   };
 
-  if (opts.elevation && variant !== 'shared') carveCliffs(seed, size, tiles, levels, ramps, (x, z) => inClearing(x, z, 8.5), spawn);
+  if (opts.elevation && variant !== 'shared') carveCliffs(seed, size, tiles, levels, ramps, (x, z) => inClearing(x, z, 8.5), spawn, riverSource);
+  else if (riverSource) carveRiver(seed, size, tiles, levels, riverSource.x, riverSource.z, S);
 
   const objects: WorldObject[] = [];
   let nid = 1;
@@ -531,7 +618,77 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
     }
   }
 
+  classifyWater(size, tiles);
   return { size, tiles, levels, ramps, objects, buildings: [dock], spawn };
+}
+
+const RIVER_BIOMES: BiomeId[] = ['grassland', 'tropical', 'nordic', 'forest_edge', 'jungle'];
+
+/**
+ * A river from an inland lake to the north coast. It takes the level of the
+ * lowest bank it passes, never flowing uphill – where it drops a cliff level
+ * there's a waterfall.
+ */
+function carveRiver(seed: number, size: number, tiles: Uint8Array, levels: Uint8Array, sx: number, sz: number, S: number) {
+  const idx = (x: number, z: number) => z * size + x;
+  const inB = (x: number, z: number) => x >= 1 && z >= 0 && x < size - 1 && z < size;
+  const land = (x: number, z: number) => inB(x, z) && (tiles[idx(x, z)] === Tile.Ground || tiles[idx(x, z)] === Tile.Shore);
+  // Source lake: up on the highest plateau near the preferred spot, so the river
+  // has cliffs to tumble down.
+  const r = 2.2 * S;
+  const disc = (cx: number, cz: number) => {
+    const out: number[] = [];
+    for (let z = Math.floor(cz - r); z <= cz + r; z++)
+      for (let x = Math.floor(cx - r); x <= cx + r; x++) {
+        const dx = x + 0.5 - cx, dz = z + 0.5 - cz;
+        if (dx * dx + dz * dz <= r * r && inB(x, z)) out.push(idx(x, z));
+      }
+    return out;
+  };
+  let best = -1;
+  const search = Math.round(9 * S);
+  for (let z = Math.floor(sz - search); z <= sz + search; z += 2)
+    for (let x = Math.floor(sx - search); x <= sx + search; x += 2) {
+      if (!land(x, z) || tiles[idx(x, z)] !== Tile.Ground) continue;
+      const L = levels[idx(x, z)];
+      const same = disc(x + 0.5, z + 0.5).filter((i) => tiles[i] === Tile.Ground && levels[i] === L).length;
+      const score = L * 1000 + same * 10 - Math.hypot(x - sx, z - sz);
+      if (score > best) {
+        best = score;
+        sx = x + 0.5;
+        sz = z + 0.5;
+      }
+    }
+  const lakeL = levels[idx(Math.floor(sx), Math.floor(sz))];
+  const lake = disc(sx, sz).filter((i) => tiles[i] === Tile.Ground && levels[i] === lakeL);
+  if (!lake.length) return;
+  for (const i of lake) {
+    tiles[i] = Tile.River;
+    levels[i] = lakeL;
+  }
+  // Flow north to the sea, two tiles wide.
+  let rx = sx;
+  let prev = lakeL;
+  for (let z = Math.floor(sz - r); z >= 0; z--) {
+    rx += (fbm2D(seed + 77, z / 6, 0, 2) - 0.5) * 1.4;
+    const x0 = Math.floor(rx) - 1;
+    let L = prev;
+    let reachedSea = false;
+    for (const x of [x0 - 1, x0, x0 + 1, x0 + 2]) {
+      if (!inB(x, z)) continue;
+      const t = tiles[idx(x, z)];
+      if (t === Tile.Sea) reachedSea ||= x === x0 || x === x0 + 1;
+      if (t === Tile.Ground || t === Tile.River) L = Math.min(L, levels[idx(x, z)]);
+      if (t === Tile.Shore) L = 0;
+    }
+    for (const x of [x0, x0 + 1]) {
+      if (!land(x, z) && !(inB(x, z) && tiles[idx(x, z)] === Tile.River)) continue;
+      tiles[idx(x, z)] = Tile.River;
+      levels[idx(x, z)] = L;
+    }
+    prev = L;
+    if (reachedSea) break;
+  }
 }
 
 /**
@@ -541,6 +698,7 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
 function carveCliffs(
   seed: number, size: number, tiles: Uint8Array, levels: Uint8Array, ramps: Uint8Array,
   keepLow: (x: number, z: number) => boolean, spawn: { x: number; z: number },
+  river: { x: number; z: number } | null = null,
 ) {
   const idx = (x: number, z: number) => z * size + x;
   const inB = (x: number, z: number) => x >= 0 && z >= 0 && x < size && z < size;
@@ -572,6 +730,7 @@ function carveCliffs(
     }
 
   smoothLevels(size, tiles, levels);
+  if (river) carveRiver(seed, size, tiles, levels, river.x, river.z, size / LEGACY_ISLAND_SIZE);
   connectPlateaus(seed, size, tiles, levels, ramps, spawn);
 }
 
@@ -744,6 +903,48 @@ export function nearBuilding(b: Building, px: number, pz: number, reach = 1.6): 
   const dx = px - cx;
   const dz = pz - cz;
   return dx * dx + dz * dz <= reach * reach;
+}
+
+/** Height of a bridge deck above its bank's level. */
+export const BRIDGE_DECK = 0.28;
+
+export function isBridge(type: string) {
+  return type.startsWith('bridge_');
+}
+
+/** Why a building can't go at (x, z) – null if it can. Bridges must span water between two banks. */
+export function placeError(g: Grid, type: BuildingType, x: number, z: number): string | null {
+  const { w, h } = BUILDINGS[type];
+  if (!isBridge(type)) return g.canPlace(x, z, w, h) ? null : 'Not enough free space there.';
+  const along = type.startsWith('bridge_ns'); // the bridge runs north–south (along z)
+  const len = along ? h : w;
+  const lanes = along ? w : h;
+  const at = (i: number, k: number) => (along ? [x + k, z + i] : [x + i, z + k]) as [number, number];
+  const [bx0, bz0] = at(0, 0);
+  if (!g.inBounds(bx0, bz0)) return 'Out of bounds.';
+  const L = g.level(bx0, bz0);
+  for (let k = 0; k < lanes; k++)
+    for (const i of [0, len - 1]) {
+      const [tx, tz] = at(i, k);
+      const et = g.tile(tx, tz);
+      if (!g.inBounds(tx, tz) || (et !== Tile.Ground && et !== Tile.Shore) || g.level(tx, tz) !== L || g.ramp(tx, tz) >= 0) return 'Both ends of a bridge need flat ground at the same height.';
+      if (g.occupied[tz * g.size + tx]) return 'Clear the ends of the bridge first.';
+    }
+  for (let i = 1; i < len - 1; i++)
+    for (let k = 0; k < lanes; k++) {
+      const [tx, tz] = at(i, k);
+      const t = g.tile(tx, tz);
+      if (t !== Tile.River && t !== Tile.Pond) return 'Bridges go across rivers and ponds.';
+      if (g.level(tx, tz) > L || g.occupied[tz * g.size + tx]) return 'Something is in the way.';
+    }
+  return null;
+}
+
+/** Is a point standing in front of a building's door (south side, centred)? */
+export function atDoor(b: Building, px: number, pz: number): boolean {
+  const doorX = b.x + b.w / 2;
+  const front = b.z + b.h;
+  return Math.abs(px - doorX) <= 0.8 && pz >= front - 0.15 && pz <= front + 1.5;
 }
 
 /** Wrap an angle into [-π, π). */

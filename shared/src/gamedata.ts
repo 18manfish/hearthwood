@@ -121,12 +121,12 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'icon', type: 'string', required: true },
       { key: 'sell', type: 'number', required: true },
       { key: 'rarity', type: 'number', required: true, help: 'Weight – higher is more common' },
-      { key: 'water', type: 'enum', options: ['sea', 'fresh'], required: true },
+      { key: 'water', type: 'enum', options: ['sea', 'river', 'pond'], required: true, help: 'Rivers connect to the sea, ponds don’t' },
       { key: 'hours', type: 'json', help: '[from, to] local hours, e.g. [16, 9]' },
       { key: 'seasons', type: 'tags', options: SEASON_NAMES },
       { key: 'biomes', type: 'tags', options: BIOME_IDS, help: 'Extra biomes (on top of each biome’s fish list)' },
     ],
-    blank: () => ({ id: 'fish_new', name: 'New fish', icon: '🐟', sell: 100, rarity: 5, water: 'sea', biomes: ['grassland'] }),
+    blank: () => ({ id: 'fish_new', name: 'New fish', icon: '🐟', sell: 100, rarity: 5, water: 'river', biomes: ['grassland'] }),
   },
   birds: {
     label: 'Birds', icon: '🐦', shape: 'list', key: 'id', canAdd: true,
@@ -265,7 +265,7 @@ export function validateGameData(d: GameData): string[] {
   for (const f of d.fish) {
     if (!f.id.startsWith('fish_') || !ID_RE.test(f.id)) err(`fish: id "${f.id}" must start with fish_`);
     if (!isStr(f.name, 60) || !isStr(f.icon, 16) || !isNum(f.sell) || !isNum(f.rarity) || f.rarity <= 0) err(`fish: "${f.id}" needs name, icon, sell ≥ 0 and rarity > 0`);
-    if (f.water !== 'sea' && f.water !== 'fresh') err(`fish: "${f.id}" water must be sea or fresh`);
+    if (!['sea', 'river', 'pond'].includes(f.water)) err(`fish: "${f.id}" water must be sea, river or pond`);
     if (!hoursOk(f.hours)) err(`fish: "${f.id}" hours must be [from, to]`);
     if (f.biomes && f.biomes.some((b) => !(BIOME_IDS as string[]).includes(b))) err(`fish: "${f.id}" has unknown biomes`);
   }

@@ -8,7 +8,8 @@ import { World } from './game/World.ts';
 import { Hud } from './ui/hud.ts';
 import { showCreator } from './ui/creator.ts';
 import { showLogin } from './ui/login.ts';
-import { health, loadGameData, type Health } from './auth.ts';
+import { api, clearToken, health, loadGameData, token, type Health } from './auth.ts';
+import { showStart } from './ui/start.ts';
 import { h, clear } from './ui/dom.ts';
 import { GamepadInput, type PadButton } from './input/gamepad.ts';
 import { activate, clearPadFocus, focusRoot, navigate, scrollMenu } from './input/padnav.ts';
@@ -400,6 +401,21 @@ async function boot() {
     setTimeout(boot, 3000);
     return;
   }
+  // Log in first if needed, then the start screen (logo + news), then into the world.
+  let me: { username: string | null } | null = null;
+  while (!me) {
+    if (!token()) await showLogin(app, { health: serverInfo });
+    try {
+      me = await api<{ username: string | null }>('GET', '/api/me');
+    } catch (e) {
+      if ((e as { status?: number }).status !== 401) {
+        setTimeout(boot, 3000);
+        return statusScreen('Can’t reach the server.', 'Retrying…');
+      }
+      clearToken();
+    }
+  }
+  await showStart(app, me.username ?? 'a guest');
   net.connect();
 }
 boot();

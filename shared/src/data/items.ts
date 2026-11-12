@@ -71,6 +71,16 @@ export const BASE_ITEMS: ItemDef[] = [
   { id: 'sapling', name: 'Sapling', icon: '🌱', category: 'plant', tags: ['plant'], sell: 20, buy: 80 },
   { id: 'flower', name: 'Wildflower', icon: '🌼', category: 'plant', tags: ['plant', 'sweet'], sell: 15 },
 
+  // ── Beachcombing (washes ashore) ─────────────────────────
+  { id: 'seashell', name: 'Seashell', icon: '🐚', category: 'material', tags: ['sweet'], sell: 20 },
+  { id: 'conch', name: 'Conch Shell', icon: '🐚', category: 'material', tags: ['rare'], sell: 90 },
+  { id: 'driftwood', name: 'Driftwood', icon: '🪵', category: 'material', tags: ['wood'], sell: 12 },
+  { id: 'seaweed', name: 'Seaweed', icon: '🌿', category: 'food', tags: ['herb'], sell: 8 },
+  { id: 'sea_glass', name: 'Sea Glass', icon: '💎', category: 'material', tags: ['mineral'], sell: 45 },
+  { id: 'coral', name: 'Coral', icon: '🪸', category: 'material', tags: ['rare'], sell: 70 },
+  { id: 'pearl', name: 'Pearl', icon: '🫧', category: 'material', tags: ['rare'], sell: 600 },
+  { id: 'message_bottle', name: 'Message Bottle', icon: '🍾', category: 'material', tags: [], sell: 30 },
+
   // ── Tools ────────────────────────────────────────────────
   { id: 'stone_axe', name: 'Stone Axe', icon: '🪓', category: 'tool', tags: ['tool'], sell: 40, stack: 1, tool: { kind: 'axe', power: 1 } },
   { id: 'shovel', name: 'Shovel', icon: '⛏️', category: 'tool', tags: ['tool'], sell: 40, stack: 1, tool: { kind: 'shovel', power: 1 } },
@@ -127,7 +137,8 @@ export interface FishDef {
   icon: string;
   sell: number;
   rarity: number; // weight – higher is more common
-  water: 'sea' | 'fresh';
+  /** Where it bites: the sea, rivers (connected to the sea) or ponds. */
+  water: 'sea' | 'river' | 'pond';
   /** Active hours (island local), inclusive start, exclusive end. Wraps past midnight. */
   hours?: [number, number];
   /** Seasons in which the fish appears (undefined = all). */
@@ -138,19 +149,28 @@ export interface FishDef {
 
 // Fish live in their own table so biomes can reference them; they are
 // registered as regular items below.
+const ALL_BIOMES = ['grassland', 'tropical', 'nordic', 'forest_edge', 'oasis', 'jungle', 'desert'];
+
 export const FISH: FishDef[] = [
   // Freshwater
-  { id: 'fish_carp', name: 'Carp', icon: '🐟', sell: 60, rarity: 10, water: 'fresh' },
-  { id: 'fish_perch', name: 'Perch', icon: '🐟', sell: 90, rarity: 8, water: 'fresh' },
-  { id: 'fish_pike', name: 'Pike', icon: '🐟', sell: 300, rarity: 2, water: 'fresh', hours: [16, 9] },
-  { id: 'fish_trout', name: 'Rainbow Trout', icon: '🐟', sell: 200, rarity: 5, water: 'fresh', seasons: ['spring', 'autumn', 'winter'] },
-  { id: 'fish_salmon', name: 'Salmon', icon: '🐟', sell: 350, rarity: 3, water: 'fresh', seasons: ['summer', 'autumn'] },
-  { id: 'fish_char', name: 'Arctic Char', icon: '🐟', sell: 450, rarity: 2, water: 'fresh', seasons: ['winter', 'spring'] },
-  { id: 'fish_tilapia', name: 'Tilapia', icon: '🐟', sell: 80, rarity: 10, water: 'fresh' },
-  { id: 'fish_koi', name: 'Golden Koi', icon: '🐠', sell: 900, rarity: 1, water: 'fresh', hours: [16, 9] },
-  { id: 'fish_catfish', name: 'Catfish', icon: '🐟', sell: 200, rarity: 6, water: 'fresh', hours: [16, 9] },
-  { id: 'fish_piranha', name: 'Piranha', icon: '🐟', sell: 500, rarity: 3, water: 'fresh', hours: [9, 16] },
-  { id: 'fish_arowana', name: 'Arowana', icon: '🐉', sell: 1200, rarity: 1, water: 'fresh', hours: [16, 9] },
+  { id: 'fish_carp', name: 'Carp', icon: '🐟', sell: 60, rarity: 10, water: 'pond' },
+  { id: 'fish_perch', name: 'Perch', icon: '🐟', sell: 90, rarity: 8, water: 'river' },
+  { id: 'fish_pike', name: 'Pike', icon: '🐟', sell: 300, rarity: 2, water: 'river', hours: [16, 9] },
+  { id: 'fish_trout', name: 'Rainbow Trout', icon: '🐟', sell: 200, rarity: 5, water: 'river', seasons: ['spring', 'autumn', 'winter'] },
+  { id: 'fish_salmon', name: 'Salmon', icon: '🐟', sell: 350, rarity: 3, water: 'river', seasons: ['summer', 'autumn'] },
+  { id: 'fish_char', name: 'Arctic Char', icon: '🐟', sell: 450, rarity: 2, water: 'river', seasons: ['winter', 'spring'] },
+  { id: 'fish_tilapia', name: 'Tilapia', icon: '🐟', sell: 80, rarity: 10, water: 'pond' },
+  { id: 'fish_koi', name: 'Golden Koi', icon: '🐠', sell: 900, rarity: 1, water: 'pond', hours: [16, 9] },
+  { id: 'fish_catfish', name: 'Catfish', icon: '🐟', sell: 200, rarity: 6, water: 'pond', hours: [16, 9] },
+  { id: 'fish_piranha', name: 'Piranha', icon: '🐟', sell: 500, rarity: 3, water: 'river', hours: [9, 16] },
+  { id: 'fish_bitterling', name: 'Bitterling', icon: '🐟', sell: 50, rarity: 12, water: 'pond', biomes: ALL_BIOMES },
+  { id: 'fish_goldfish', name: 'Goldfish', icon: '🐠', sell: 400, rarity: 1, water: 'pond', biomes: ALL_BIOMES },
+  { id: 'fish_frog', name: 'Pond Frog', icon: '🐸', sell: 120, rarity: 5, water: 'pond', biomes: ALL_BIOMES, seasons: ['spring', 'summer', 'wet'] },
+  { id: 'fish_dace', name: 'Dace', icon: '🐟', sell: 60, rarity: 12, water: 'river', biomes: ALL_BIOMES },
+  { id: 'fish_eel', name: 'River Eel', icon: '🐍', sell: 320, rarity: 3, water: 'river', biomes: ALL_BIOMES, hours: [18, 6] },
+  { id: 'fish_sweetfish', name: 'Sweetfish', icon: '🐟', sell: 240, rarity: 4, water: 'river', biomes: ['nordic', 'forest_edge', 'grassland'], seasons: ['summer'] },
+  { id: 'fish_sturgeon', name: 'Sturgeon', icon: '🐟', sell: 1000, rarity: 0.8, water: 'river', biomes: ['nordic', 'forest_edge', 'grassland', 'jungle'] },
+  { id: 'fish_arowana', name: 'Arowana', icon: '🐉', sell: 1200, rarity: 1, water: 'river', hours: [16, 9] },
   // Sea
   { id: 'fish_sardine', name: 'Sardine', icon: '🐟', sell: 40, rarity: 12, water: 'sea' },
   { id: 'fish_mackerel', name: 'Mackerel', icon: '🐟', sell: 120, rarity: 8, water: 'sea' },

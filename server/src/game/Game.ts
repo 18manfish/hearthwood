@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   BIOMES, BUILDINGS, ISLAND_SIZE, LEGACY_ISLAND_SIZE, DEFAULT_HOTBAR, normalizeHotbar, PERMITS, type Album, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
-  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, interiorSpecFor, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
+  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, interiorSpecFor, Rng, nearBuilding, atDoor, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
   GAME_TABLES, DEFAULT_GAME_DATA, applyGameData, snapshotGameData, validateGameData, encodeTiles,
@@ -41,6 +41,7 @@ export class Game {
     this.timers.push(setInterval(() => this.villagerTick(), 1000 / config.villagerHz));
     this.timers.push(setInterval(() => this.slowTick(), 2000));
     this.timers.push(setInterval(() => this.flush(), config.saveIntervalMs));
+    this.timers.push(setInterval(() => this.deliverBottles(), 15_000));
   }
 
   stop() {
@@ -261,13 +262,16 @@ export class Game {
       case 'kick': {
         const room = s.room;
         const target = this.online.get(m.id);
-        if (!room || !room.ownsHere(p.id) || !target || target.room !== room || target === s) return;
+        if (!room || !room.isOwner(p.id) || room.kind !== 'island' || !target || target.room !== room || target === s) return;
+        if (room.isResident(m.id)) return s.send({ t: 'toast', text: 'Residents live here – remove their residency first.', kind: 'warn' });
         log.info('visitor sent home', { owner: p.id, visitor: m.id, room: room.id });
         target.send({ t: 'toast', text: `${p.name} sent you home.`, kind: 'warn' });
         this.travel(target, { kind: 'home' });
         return;
       }
       case 'map': return s.send({ t: 'map', islands: this.mapFor(p) });
+      case 'role': return this.setRole(s, m.id, m.role);
+      case 'geo': return this.setGeo(s, m.lat, m.lon, m.tz);
       case 'hotbar':
         p.hotbar = normalizeHotbar(m.slots);
         this.store.markPlayer(p.id);
@@ -426,7 +430,8 @@ export class Game {
     }
     const spec = interiorSpecFor(b.type, b.id, villager);
     if (!spec) return null;
-    const owner = parent.ownerName ?? 'Someone';
+    const houseOwnerId = b.ownerId ?? parent.ownerId ?? undefined;
+    const owner = (b.ownerId ? this.store.players.get(b.ownerId)?.name : parent.ownerName) ?? 'Someone';
     const name =
       spec.style === 'tent' ? `${owner}\u2019s tent`
       : spec.style === 'cabin' ? `${owner}\u2019s house`
@@ -436,11 +441,81 @@ export class Game {
     const room = new Room({
       id, kind: 'interior', name, biome: parent.biome,
       ownerId: parent.ownerId, ownerName: parent.ownerName, geo: parent.geo, seed: parent.seed, record: parent.record,
-      interior: { spec, buildingId: b.id, parentId: parent.id },
+      interior: { spec, buildingId: b.id, parentId: parent.id, houseOwnerId },
     });
     this.rooms.set(id, room);
     this.syncVillagerAtHome(parent, room, b);
     return room;
+  }
+
+  // ── Builders & residents ────────────────────────────────────────────────
+  /** The island owner lets a friend build here, live here – or neither. */
+  private setRole(s: Session, targetId: string, role: 'none' | 'builder' | 'resident') {
+    const p = s.player!;
+    const isl = this.homeIsland(p);
+    if (!isl) return;
+    const target = this.store.players.get(targetId);
+    if (!target || target.id === p.id) return s.send({ t: 'toast', text: 'Pick one of your friends.', kind: 'warn' });
+    if (role !== 'none' && !p.friends.includes(target.id)) return s.send({ t: 'toast', text: 'You can only grant this to friends.', kind: 'warn' });
+    isl.builders = (isl.builders ?? []).filter((x) => x !== target.id);
+    isl.residents = (isl.residents ?? []).filter((x) => x !== target.id);
+    if (role === 'builder') isl.builders.push(target.id);
+    if (role === 'resident') isl.residents.push(target.id);
+    this.store.markIsland(isl.id);
+    log.info('island role changed', { island: isl.id, owner: p.id, player: target.id, role });
+    this.sendSelf(s);
+    const text = role === 'none' ? `${target.name} no longer builds or lives on ${isl.name}.`
+      : role === 'builder' ? `${target.name} can now build on ${isl.name}.` : `${target.name} is now a resident of ${isl.name}!`;
+    s.send({ t: 'toast', text, kind: 'good' });
+    const ts = this.online.get(target.id);
+    if (ts) {
+      this.sendSelf(ts);
+      ts.send({ t: 'toast', text: role === 'none' ? `You no longer build or live on ${isl.name}.` : role === 'builder' ? `🔨 ${p.name} lets you build on ${isl.name}!` : `🏡 ${p.name} made you a resident of ${isl.name}! Build your own house there.`, kind: role === 'none' ? 'info' : 'good' });
+    }
+    // Everyone affected who stands on the island gets their new rights straight away.
+    for (const r of this.islandRooms(isl.id)) for (const x of r.sessions) if (x.player?.id === target.id) r.resendView(x);
+  }
+
+  /** Change your location / time zone: your island's sun, seasons and clock follow it. */
+  private setGeo(s: Session, lat: number, lon: number, tz: string) {
+    const p = s.player!;
+    if (!isValidTimeZone(tz)) return s.send({ t: 'toast', text: 'Unknown time zone.', kind: 'warn' });
+    p.geo = { lat: Math.round(lat * 2) / 2, lon: Math.round(lon * 2) / 2, tz }; // ≈ 50 km – enough for the sun
+    this.store.markPlayer(p.id);
+    if (p.homeIslandId) for (const r of this.islandRooms(p.homeIslandId)) {
+      r.geo = p.geo;
+      r.invalidateEnv();
+      r.broadcast({ t: 'env', env: r.env() });
+    }
+    this.sendSelf(s);
+    s.send({ t: 'toast', text: `📍 Location saved – your island now follows ${tz.replace(/_/g, ' ')}.`, kind: 'good' });
+  }
+
+  // ── Messages in bottles ─────────────────────────────────────────────────
+  /** Bottles whose time has come wash up on a random player's island (never the sender's). */
+  deliverBottles(now = Date.now()) {
+    const due = this.store.dueBottles(now);
+    if (!due.length) return;
+    const all = [...this.store.players.values()].filter((p) => p.created && p.homeIslandId && this.store.islands.has(p.homeIslandId) && !p.banned);
+    const active = all.filter((p) => now - p.lastSeen < 30 * 86400_000 || this.online.has(p.id));
+    for (const b of due) {
+      const pool = (active.length > 1 ? active : all).filter((p) => p.id !== b.from_id);
+      // Nobody else around: it drifts back to the sender's own beach.
+      const to = pool.length ? pool[Math.floor(Math.random() * pool.length)] : all.find((p) => p.id === b.from_id);
+      if (!to) {
+        this.store.bottleSent(b.id, '');
+        continue;
+      }
+      const isl = this.store.islands.get(to.homeIslandId!)!;
+      (isl.bottles ??= []).push({ id: b.id, from: b.from_id, fromName: b.from_name, text: b.text, at: now });
+      this.store.markIsland(isl.id);
+      this.store.bottleSent(b.id, to.id);
+      log.info('bottle washed up', { bottle: b.id, to: to.id, island: isl.id });
+      const live = this.rooms.get(isl.id);
+      if (live) live.slowTick(now); // land it on the beach right away
+      const s = this.online.get(to.id);
+      if (s) s.send({ t: 'toast', text: '🍾 Something washed up on your beach…', kind: 'info' });
+    }
   }
 
   // ── Admin tool support ──────────────────────────────────────────────────
@@ -633,6 +708,7 @@ export class Game {
 
   canVisit(p: PlayerRecord, isl: IslandRecord, viaCode: boolean, s?: Session): boolean {
     if (isl.ownerId === p.id) return true;
+    if (isl.residents?.includes(p.id) || isl.builders?.includes(p.id)) return true;
     if (isl.access === 'private') return false;
     const owner = this.store.players.get(isl.ownerId);
     const friend = !!owner?.friends.includes(p.id);
@@ -650,7 +726,7 @@ export class Game {
         const b = room?.buildings.get(to.id);
         if (!room || (room.kind !== 'island' && room.kind !== 'shared') || !b || !ENTERABLE.includes(b.type)) return s.send({ t: 'toast', text: 'You can\u2019t go in there.', kind: 'warn' });
         if (b.completeAt > Date.now()) return s.send({ t: 'toast', text: 'It\u2019s still being built.', kind: 'warn' });
-        if (!nearBuilding(b, s.x, s.z, config.buildingReach)) return s.send({ t: 'toast', text: 'Walk up to the door first.', kind: 'warn' });
+        if (!atDoor(b, s.x, s.z)) return s.send({ t: 'toast', text: 'Stand in front of the door to go in.', kind: 'warn' });
         const inside = this.interiorRoom(room, b);
         if (!inside) return s.send({ t: 'toast', text: 'It\u2019s locked.', kind: 'warn' });
         if (b.villagerId && !inside.villagers.has(b.villagerId)) s.send({ t: 'toast', text: `${villagerDef(b.villagerId)?.name ?? 'They'} is out and about – they’re home from 19:00 to 07:00.`, kind: 'info' });
@@ -830,7 +906,11 @@ export class Game {
       homeIslandId: p.homeIslandId, islandName: isl?.name ?? null, biome: isl?.biome ?? null,
       access: isl?.access ?? 'friends', inviteCode: isl?.inviteCode ?? null, coins: p.coins, inv: p.inv,
       permits: p.permits ?? [], hotbar: normalizeHotbar(p.hotbar ?? DEFAULT_HOTBAR), album: albumOf(p),
-      username: p.username ?? null, admin: this.isAdmin(p),
+      username: p.username ?? null, admin: this.isAdmin(p), geo: p.geo,
+      islandRoles: isl ? Object.fromEntries([...(isl.builders ?? []).map((id) => [id, 'builder'] as const), ...(isl.residents ?? []).map((id) => [id, 'resident'] as const)]) : {},
+      helping: [...this.store.islands.values()]
+        .filter((i) => i.residents?.includes(p.id) || i.builders?.includes(p.id))
+        .map((i) => ({ id: i.id, name: i.name, owner: this.store.players.get(i.ownerId)?.name ?? '?', role: i.residents?.includes(p.id) ? 'resident' as const : 'builder' as const })),
     };
   }
 
@@ -860,8 +940,9 @@ export class Game {
       const mine = isl.ownerId === p.id;
       const owner = this.store.players.get(isl.ownerId);
       if (!owner) continue;
-      const friend = owner.friends.includes(p.id);
-      const visible = mine || isl.access === 'public' || (friend && isl.access !== 'private');
+      const helps = !!(isl.residents?.includes(p.id) || isl.builders?.includes(p.id));
+      const friend = owner.friends.includes(p.id) || helps;
+      const visible = mine || helps || isl.access === 'public' || (friend && isl.access !== 'private');
       if (!visible) continue;
       const room = this.rooms.get(isl.id);
       out.push({
@@ -1021,6 +1102,17 @@ export class Game {
         if (!room || room.interior) return reply('Go outside first.');
         const landed = room.landBirdsNear(s.x, s.z, Math.max(1, Math.min(6, n(0, 3))));
         reply(`${landed} bird(s) landed nearby.`);
+        break;
+      }
+      case 'bottles':
+        this.store.rushBottles();
+        this.deliverBottles();
+        reply('All bottles at sea have washed up.');
+        break;
+      case 'beach': {
+        if (!room || room.kind !== 'island') return reply('Only on islands.');
+        const k = room.washUp(Math.max(1, Math.min(10, n(0, 5))));
+        reply(`${k} thing(s) washed up on the beach.`);
         break;
       }
       case 'clearinv':

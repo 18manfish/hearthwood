@@ -11,7 +11,7 @@ import { logout } from '../auth.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
 import {
-  HOTBAR_INFO, HOTBAR_TOOLS, HOTBAR_SIZE, DEFAULT_HOTBAR, PERMITS, PERMIT_BY_ID, TERRA_PERMIT, BIRDS, FISH, relocationCost,
+  BOTTLE_MAX_CHARS, HOTBAR_INFO, HOTBAR_TOOLS, HOTBAR_SIZE, DEFAULT_HOTBAR, PERMITS, PERMIT_BY_ID, TERRA_PERMIT, BIRDS, FISH, relocationCost,
   type Hotbar, type HotbarTool, type TerraOp, type PermitId,
 } from '@hearthwood/shared';
 import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, ENTERABLE, TERRA_INFO, TERRA_OPS, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
@@ -80,7 +80,7 @@ export class Hud {
       h('div', { class: 'topbar' }, this.coins,
         btn('📜', 'G', 'goals', 'Goals'), btn('🎒', 'I', 'bag', 'Pockets'), btn('🔨', 'C', 'craft', 'Craft'),
         btn('🏗️', 'B', 'build', 'Build'), btn('🗺️', 'M', 'map', 'World map'), btn('💌', 'O', 'friends', 'Friends'),
-        btn('📬', 'L', 'mail', 'Mail'), btn('📖', 'K', 'album', 'Album'), btn('⚙️', 'V', 'island', 'Island & visitors'), btn('🐞', 'F3', 'debug', 'Developer debug')),
+        btn('📬', 'L', 'mail', 'Mail'), btn('📖', 'K', 'album', 'Album'), btn('⚙️', 'V', 'island', 'Options & island'), btn('🐞', 'F3', 'debug', 'Developer debug')),
       this.hotbar,
       this.prompt,
       h('div', { class: 'chat' }, this.log, this.chatInput),
@@ -285,7 +285,8 @@ export class Hud {
     const wasTerra = !!this.world.paint?.terra;
     if (t === 'pick' || t === 'spade') {
       const permit = PERMIT_BY_ID[HOTBAR_INFO[t].permit as PermitId];
-      if (!hasPermit(permit.id)) return this.toast(`You need a ${permit.name} – buy it at the Town Hall.`, 'warn');
+      // Builders and residents use the owner's permits (the server checks).
+      if (!hasPermit(permit.id) && state.room?.role === 'owner') return this.toast(`You need a ${permit.name} – buy it at the Town Hall.`, 'warn');
       if (!state.room?.canBuild) return this.toast('You can only reshape your own island.', 'warn');
       this.world.tool = t;
       this.world.startTerra(this.terraOp[t]);
@@ -386,7 +387,7 @@ export class Hud {
         b.append(h('p', { class: 'muted' }, 'Read your letters anywhere. To send one, walk up to your mailbox 📮 (build it from the Build menu).'));
         this.mail(b, false);
       });
-      case 'island': return this.live('Island & visitors', id, (b) => this.island(b));
+      case 'island': return this.live('⚙️ Options & island', id, (b) => this.island(b));
       case 'album': return this.live('📖 Album', id, (b) => this.album(b));
       case 'debug': return this.debugPanel();
     }
@@ -403,6 +404,20 @@ export class Hud {
         h('button', { class: 'btn ghost small', onclick: async () => { await logout(); location.reload(); } }, 'Log out'))));
   }
 
+  /** Write a message in a bottle and throw it into the sea. */
+  writeBottle() {
+    const text = h('textarea', { rows: 4, maxlength: BOTTLE_MAX_CHARS, placeholder: 'Dear stranger…', style: 'width:100%' }) as HTMLTextAreaElement;
+    const body = h('div', { class: 'col' },
+      h('p', { class: 'muted' }, 'Stand near the sea and throw it in. Within a day it washes up on a random player’s beach.'),
+      text,
+      h('button', { class: 'btn', onclick: async () => {
+        const r = await this.act({ k: 'bottle', text: text.value });
+        if (r.ok) this.close();
+      } }, '🍾 Throw it into the sea'));
+    this.frame('🍾 Message in a bottle', body);
+    setTimeout(() => text.focus());
+  }
+
   // ── Album ───────────────────────────────────────────────────────────────
   private albumTab: 'fish' | 'birds' = 'fish';
   private album(b: HTMLElement) {
@@ -416,7 +431,7 @@ export class Hud {
     const when = (s?: string[]) => (s ? s.map((x) => SEASON_ICON[x] ?? '').join('') + ' ' + s.join(', ') : 'all year');
     const grid = h('div', { class: 'grid album' });
     const entries = this.albumTab === 'fish'
-      ? FISH.map((f) => ({ id: f.id, name: f.name, icon: f.icon, sell: f.sell, e: a.fish[f.id], hint: `${f.water === 'sea' ? '🌊 Sea' : '🏞️ Rivers & ponds'} · ${hours(f.hours)} · ${when(f.seasons)}` }))
+      ? FISH.map((f) => ({ id: f.id, name: f.name, icon: f.icon, sell: f.sell, e: a.fish[f.id], hint: `${f.water === 'sea' ? '🌊 Sea' : f.water === 'river' ? '🏞️ Rivers' : '🪷 Ponds'} · ${hours(f.hours)} · ${when(f.seasons)}` }))
       : BIRDS.map((x) => ({ id: x.id, name: x.name, icon: x.icon, sell: x.sell, e: a.birds[x.id], hint: `${x.biomes.map((bi) => BIOME_ICON[bi]).join('')} ${x.perch === 'shore' ? '· on beaches ' : ''}· ${hours(x.hours)} · ${when(x.seasons)}` }));
     for (const en of entries) {
       const got = !!en.e;
@@ -562,6 +577,7 @@ export class Hud {
       const it = ITEMS[id];
       const actions = h('div', { class: 'row' });
       if (it.placeable && canBuild) actions.append(h('button', { class: 'btn small', onclick: () => { this.close(); this.world.startPlaceGhost(id); this.setPrompt(''); } }, 'Place'));
+      if (id === 'message_bottle') actions.append(h('button', { class: 'btn small', onclick: () => this.writeBottle() }, 'Write & throw'));
       if (it.wear) actions.append(h('button', { class: 'btn small', onclick: () => this.act({ k: 'wear', item: state.self?.hat === id ? null : id }) }, state.self?.hat === id ? 'Take off' : 'Wear'));
       actions.append(h('button', { class: 'btn ghost small', title: `${it.sell} each`, onclick: () => this.act({ k: 'sell', item: id, n: 1 }) }, `Sell ${it.sell}`));
       if (n > 1) actions.append(h('button', { class: 'btn ghost small', onclick: () => this.act({ k: 'sell', item: id, n }) }, 'All'));
@@ -612,7 +628,7 @@ export class Hud {
     for (const op of TERRA_OPS) {
       const info = TERRA_INFO[op];
       const permit = PERMIT_BY_ID[TERRA_PERMIT[op]];
-      const lock = hasPermit(permit.id) ? null : `Needs the ${permit.name} (Town Hall)`;
+      const lock = hasPermit(permit.id) || room.role !== 'owner' ? null : `Needs the ${permit.name} (Town Hall)`;
       terraGrid.append(h('div', { class: `tile${lock ? ' locked' : ''}` },
         h('div', { class: 'row' }, h('span', { class: 'ico' }, info.icon), h('div', {}, h('div', { class: 'nm' }, info.name), h('div', { class: 'muted' }, lock ?? info.hint))),
         h('button', { class: 'btn small', disabled: !!lock, onclick: () => {
@@ -627,6 +643,7 @@ export class Hud {
     for (const bl of blds) {
       const d = BUILDINGS[bl.type];
       if (d.fixed || bl.type === 'dock') continue;
+      if (bl.ownerId && bl.ownerId !== state.self?.id && room.role !== 'owner') continue; // someone else's home
       const cost = relocationCost(bl.w, bl.h);
       const afford = state.coins >= cost;
       moveGrid.append(h('div', { class: `tile${afford ? '' : ' locked'}` },
@@ -799,7 +816,62 @@ export class Hud {
       b.append(h('h3', { style: 'margin-top:10px' }, `Visitors here (${visitors.length})`),
         h('div', { class: 'list' }, visitors.map(([id, p]) => h('div', { class: 'item' }, p.label.element.textContent ?? id, h('button', { class: 'btn warn small', onclick: () => net.send({ t: 'kick', id }) }, 'Send home')))));
     }
+    this.rolesBox(b);
+    this.geoBox(b);
     if (state.dev) b.append(h('p', { class: 'muted', style: 'margin-top:12px' }, 'Dev mode: chat /kit, /give <item> [n], /coins [n], /day [n], /finish'));
+  }
+
+  /** Friends who may build on / live on your island, and islands you help on. */
+  private rolesBox(b: HTMLElement) {
+    const self = state.self!;
+    b.append(h('h3', { style: 'margin-top:14px' }, '👷 Builders & residents'),
+      h('p', { class: 'muted' }, 'Builders may build, pave, terraform and place furniture on your island. Residents live there: they can also gather, use your workbench and shops, and build their own tent and house – everything you can, except managing visitors.'));
+    if (!state.friends.length) b.append(h('p', { class: 'muted' }, 'Add friends (O) first.'));
+    else b.append(h('div', { class: 'list' }, state.friends.map((f) => {
+      const cur: string = self.islandRoles[f.id] ?? 'none';
+      const sel = h('select', { onchange: () => net.send({ t: 'role', id: f.id, role: sel.value as 'none' | 'builder' | 'resident' }) },
+        h('option', { value: 'none', selected: cur === 'none' }, 'Visitor'),
+        h('option', { value: 'builder', selected: cur === 'builder' }, '🔨 Builder'),
+        h('option', { value: 'resident', selected: cur === 'resident' }, '🏡 Resident')) as HTMLSelectElement;
+      return h('div', { class: 'item' }, h('span', {}, `${f.online ? '🟢' : '⚪'} ${f.name}`), sel);
+    })));
+    if (self.helping.length) {
+      b.append(h('h3', { style: 'margin-top:14px' }, '🧭 Islands you help on'), h('div', { class: 'list' }, self.helping.map((i) => h('div', { class: 'item' },
+        h('div', {}, h('b', {}, i.name), h('div', { class: 'muted' }, `${i.owner}’s island · ${i.role === 'resident' ? '🏡 resident' : '🔨 builder'}`)),
+        h('button', { class: 'btn small', onclick: () => { this.close(); this.travel({ kind: 'island', id: i.id }); } }, 'Go there')))));
+    }
+  }
+
+  /** Where you are in the world: drives your island's sun, seasons and clock. */
+  private geoBox(b: HTMLElement) {
+    const self = state.self!;
+    const zones = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [self.geo.tz];
+    if (!zones.includes(self.geo.tz)) zones.unshift(self.geo.tz);
+    const tz = h('select', {}, zones.map((z) => h('option', { value: z, selected: z === self.geo.tz }, z.replace(/_/g, ' ')))) as HTMLSelectElement;
+    const lat = h('input', { type: 'number', step: '0.5', min: -90, max: 90, value: String(self.geo.lat), style: 'width:90px' }) as HTMLInputElement;
+    const lon = h('input', { type: 'number', step: '0.5', min: -180, max: 180, value: String(self.geo.lon), style: 'width:90px' }) as HTMLInputElement;
+    const note = h('span', { class: 'muted' });
+    b.append(h('h3', { style: 'margin-top:14px' }, '📍 Location & time zone'),
+      h('p', { class: 'muted' }, 'Your island follows the real sun, seasons and clock of this place (stored roughly, to the nearest ~50 km).'),
+      h('div', { class: 'col' },
+        h('label', { class: 'row' }, 'Time zone', tz),
+        h('label', { class: 'row' }, 'Latitude', lat, 'Longitude', lon),
+        h('div', { class: 'row' },
+          h('button', { class: 'btn ghost small', onclick: () => {
+            const z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (z) tz.value = z;
+            note.textContent = navigator.geolocation ? 'Asking your browser…' : 'This browser can’t share a location.';
+            navigator.geolocation?.getCurrentPosition(
+              (p) => { lat.value = String(Math.round(p.coords.latitude * 2) / 2); lon.value = String(Math.round(p.coords.longitude * 2) / 2); note.textContent = 'Found you – press Save.'; },
+              () => { note.textContent = 'Location not shared – time zone set, enter coordinates by hand.'; },
+              { timeout: 8000 });
+          } }, '📡 Use this device'),
+          h('button', { class: 'btn small', onclick: () => {
+            const la = Number(lat.value), lo = Number(lon.value);
+            if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) return this.toast('Latitude −90…90, longitude −180…180.', 'warn');
+            net.send({ t: 'geo', lat: la, lon: lo, tz: tz.value });
+          } }, 'Save'),
+          note)));
   }
 
   // ── Buildings ───────────────────────────────────────────────────────────
@@ -811,7 +883,7 @@ export class Hud {
       return this.toast(`${def.name} will be ready in ${mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`}.`);
     }
     const room = state.room!;
-    const own = room.ownerId === state.self?.id;
+    const own = room.role === 'owner' || room.role === 'resident';
     // Every enterable building opens its interior; services are at the counter inside.
     if (ENTERABLE.includes(bld.type)) return this.travel({ kind: 'enter', id: bld.id });
     const service: BuildingType = bld.type === 'counter' && bld.role ? bld.role : bld.type;

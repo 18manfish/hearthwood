@@ -18,6 +18,7 @@ process.on('unhandledRejection', (e) => log.error('unhandled rejection', { err: 
 
 const store = new Store(config.dataDir);
 store.load();
+store.seedNews();
 const game = new Game(store);
 game.loadGameData();
 game.start();

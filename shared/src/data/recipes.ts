@@ -17,6 +17,7 @@ export const RECIPES: RecipeDef[] = [
   // Day-one tools – craftable by hand.
   { id: 'stone_axe', output: 'stone_axe', qty: 1, station: 'hand', ingredients: [{ item: 'wood', qty: 3 }, { item: 'stone', qty: 2 }, { item: 'fiber', qty: 1 }] },
   { id: 'shovel', output: 'shovel', qty: 1, station: 'hand', ingredients: [{ item: 'wood', qty: 3 }, { item: 'stone', qty: 3 }] },
+  { id: 'message_bottle', output: 'message_bottle', qty: 1, station: 'hand', ingredients: [{ item: 'sea_glass', qty: 2 }, { item: 'fiber', qty: 1 }] },
   { id: 'bird_net', output: 'bird_net', qty: 1, station: 'hand', ingredients: [{ item: 'wood', qty: 4 }, { item: 'fiber', qty: 5 }] },
   { id: 'fishing_rod', output: 'fishing_rod', qty: 1, station: 'hand', ingredients: [{ item: 'wood', qty: 3 }, { item: 'fiber', qty: 3 }] },
 

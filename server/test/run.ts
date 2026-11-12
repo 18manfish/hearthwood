@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost,
+  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 
@@ -548,6 +548,11 @@ async function main() {
     console.log('Tent interior');
     const islandId = A.room.id;
     const tent = A.room.buildings.find((b) => b.type === 'tent')!;
+    // From behind the tent you can't get in – only through the door.
+    if (await A.walkTo(tent.x, tent.z - 1, false)) {
+      A.send({ t: 'travel', to: { kind: 'enter', id: tent.id } });
+      check(!!(await A.wait('toast', (m) => /front of the door/.test(m.text)).catch(() => null)), 'buildings are entered through the door only');
+    }
     await A.walkTo(tent.x, tent.z + tent.h, false);
     A.send({ t: 'travel', to: { kind: 'enter', id: tent.id } });
     await A.wait('room', (m) => m.room.kind === 'interior');
@@ -790,6 +795,154 @@ async function main() {
     A.send({ t: 'dev', cmd: 'season', args: ['wet'] });
     const envN = await A.wait('env').catch(() => null);
     check(envN?.env.season !== 'wet', 'season not valid for the climate is refused (back to real calendar)');
+
+    console.log('Water, bridges & the beach');
+    {
+      if (A.room.id !== A.self.homeIslandId) {
+        A.send({ t: 'travel', to: { kind: 'home' } });
+        await A.wait('room', (m) => m.room.id === A.self.homeIslandId);
+      }
+      const g = A.grid;
+      let river = 0, pond = 0;
+      for (let i = 0; i < g.size * g.size; i++) { if (g.tiles[i] === Tile.River) river++; if (g.tiles[i] === Tile.Pond) pond++; }
+      check(river > 0 && pond > 0, `the island has a river (${river} tiles) and a pond (${pond})`);
+      check(classifyWater(g.size, Uint8Array.from(g.tiles)).length === 0, 'rivers connect to the sea, ponds don’t');
+      // A bridge across the river.
+      A.send({ t: 'dev', cmd: 'kit', args: [] });
+      await sleep(300);
+      // The rules on a hand-made river first: 2 tiles of water between two banks.
+      {
+        const n = 8, tiles = new Uint8Array(n * n).fill(Tile.Ground);
+        for (let z = 0; z < n; z++) tiles[z * n + 3] = tiles[z * n + 4] = Tile.River;
+        const tg = new Grid(n, tiles);
+        check(placeError(tg, 'bridge_ew', 2, 2) === null && placeError(tg, 'bridge_ns', 2, 2) !== null && placeError(tg, 'bridge_ew_long', 2, 2) !== null, 'bridge placement rules (ends on banks, middle over water)');
+        tg.addBuilding({ id: 'tb', type: 'bridge_ew', x: 2, z: 2, w: 4, h: 2, completeAt: 0 });
+        check(tg.walkableTile(3, 2) && tg.stepOk(2, 2, 3, 2) && tg.stepOk(4, 2, 5, 2) && !tg.walkableTile(3, 4), 'a bridge makes its water walkable (only there)');
+      }
+      type BT = 'bridge_ns' | 'bridge_ew' | 'bridge_ns_long' | 'bridge_ew_long';
+      let bridged: { type: BT; x: number; z: number } | null = null;
+      const cands: { type: BT; x: number; z: number }[] = [];
+      for (const type of ['bridge_ns', 'bridge_ew', 'bridge_ns_long', 'bridge_ew_long'] as const)
+        for (let z = 1; z < g.size - 5; z++) for (let x = 1; x < g.size - 5; x++) if (!placeError(g, type, x, z)) cands.push({ type, x, z });
+      cands.sort((p, q) => Math.hypot(p.x - A.x, p.z - A.z) - Math.hypot(q.x - A.x, q.z - A.z));
+      for (const c of cands.slice(0, 25)) {
+        const [sx, sz] = c.type.startsWith('bridge_ns') ? [c.x, c.z - 1] : [c.x - 1, c.z];
+        if (!(await A.walkTo(sx, sz, false))) continue;
+        const r = await A.act({ k: 'build', type: c.type, x: c.x, z: c.z });
+        if (r.ok) { bridged = c; break; }
+      }
+      if (!cands.length) console.log('  (no free bridge spot on this island’s river – trees or uneven banks)');
+      else check(!!bridged, `built a bridge over the river ${bridged ? `(${bridged.type})` : `(${cands.length} spots)`}`);
+      if (bridged) {
+        const len = bridged.type.endsWith('long') ? 5 : 4;
+        const [ex, ez] = bridged.type.startsWith('bridge_ns') ? [bridged.x, bridged.z + len] : [bridged.x + len, bridged.z];
+        const corr0 = A.inbox.filter((m) => m.t === 'corr').length;
+        const walked = await A.walkTo(ex, ez, false);
+        await sleep(300);
+        check(walked && A.inbox.filter((m) => m.t === 'corr').length === corr0 && Math.floor(A.x) === ex && Math.floor(A.z) === ez, 'walked across the bridge to the other bank');
+      }
+      // River fishing gives river fish.
+      let rs: [number, number] | null = null, rc: [number, number] | null = null;
+      outerR: for (let z = 1; z < g.size - 1; z++) for (let x = 1; x < g.size - 1; x++) {
+        if (!g.walkableTile(x, z) || g.bridges[z * g.size + x]) continue;
+        for (const [dx, dz] of DIRS) if (g.tile(x + dx, z + dz) === Tile.River) { rs = [x, z]; rc = [x + dx, z + dz]; if (await A.walkTo(x, z, false)) break outerR; rs = null; }
+      }
+      if (rs && rc) {
+        A.inbox = A.inbox.filter((m) => m.t !== 'bite' && m.t !== 'fish'); // forget earlier casts
+        const c = await A.act({ k: 'cast', x: rc[0], z: rc[1] });
+        if (c.ok && !c.msg) {
+          const bite = await A.wait('bite', () => true, 8000);
+          A.send({ t: 'act', seq: ++A.seq, a: { k: 'reel', castId: bite.castId } });
+          const f = await A.wait('fish', () => true, 3000).catch(() => null);
+          check(!!f?.item && FISH.find((x) => x.id === f.item)?.water === 'river', `river fishing catches river fish (${f?.item})`);
+        } else console.log('  cast:', c.err ?? c.msg);
+      }
+      // Things wash ashore.
+      A.send({ t: 'dev', cmd: 'beach', args: ['4'] });
+      const wash = await A.wait('oAdd', (m) => m.o.some((o) => o.kind === 'washed')).catch(() => null);
+      const item = wash?.o.find((o) => o.kind === 'washed');
+      check(!!item, `something washed ashore (${item?.item})`);
+      if (item && (await A.walkTo(item.x, item.z))) {
+        const r = await A.act({ k: 'forage', id: item.id });
+        check(r.ok && !!r.gained?.[item.item!], 'picked it up');
+      }
+      // Message in a bottle.
+      A.send({ t: 'dev', cmd: 'give', args: ['message_bottle', '1'] });
+      await sleep(200);
+      let atSea = false;
+      for (let z = 1; z < g.size - 1 && !atSea; z++) for (let x = 1; x < g.size - 1 && !atSea; x++)
+        if (g.tile(x, z) === Tile.Shore && DIRS.some(([dx, dz]) => g.tile(x + dx, z + dz) === Tile.Sea) && Math.hypot(x - A.x, z - A.z) < 25) atSea = await A.walkTo(x, z, false);
+      const thrown = await A.act({ k: 'bottle', text: 'Hello from Alice' });
+      check(thrown.ok, `message in a bottle thrown ${thrown.err ?? ''}`);
+      A.send({ t: 'dev', cmd: 'bottles', args: [] });
+      await sleep(400);
+      let finder: Bot | null = null;
+      for (const bot of [B, C]) {
+        const v = await http('GET', `/api/admin/islands/${bot.self.homeIslandId}`, undefined, A.token);
+        if ((v.body.record as { bottles?: unknown[] }).bottles?.length) finder = bot;
+      }
+      check(!!finder, `the bottle washed up on another player’s island (${finder?.name})`);
+      if (finder) {
+        finder.send({ t: 'travel', to: { kind: 'home' } });
+        await finder.wait('room', (m) => m.room.id === finder!.self.homeIslandId);
+        await sleep(300);
+        const bottle = [...finder.objects.values()].find((o) => o.kind === 'washed' && o.bottle);
+        if (bottle && (await finder.walkTo(bottle.x, bottle.z))) {
+          await finder.act({ k: 'forage', id: bottle.id });
+          const mail = await finder.wait('mail', (m) => m.list.some((l) => l.text === 'Hello from Alice')).catch(() => null);
+          check(!!mail, 'its finder reads the message in their letters');
+        } else check(false, 'bottle lies on the finder’s beach');
+      }
+    }
+
+    console.log('Builders & residents');
+    {
+      B.send({ t: 'travel', to: { kind: 'island', id: A.self.homeIslandId } });
+      await B.wait('room', (m) => m.room.id === A.self.homeIslandId);
+      const spot = [Math.floor(B.x) + 1, Math.floor(B.z)];
+      check(!(await B.act({ k: 'pave', x: spot[0], z: spot[1], path: 2 })).ok, 'visitors can’t build');
+      B.send({ t: 'dev', cmd: 'kit', args: [] }); // stone for gravel paths
+      await sleep(300);
+      A.send({ t: 'role', id: B.self.id, role: 'builder' });
+      check(!!(await B.wait('room', (m) => m.room.role === 'builder').catch(() => null)), 'owner made Bob a builder');
+      let paved = false;
+      outerP: for (let r = 1; r <= 5; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+        const x = Math.floor(B.x) + dx, z = Math.floor(B.z) + dz;
+        if (B.grid.canPave(x, z) && !B.grid.path(x, z)) { paved = (await B.act({ k: 'pave', x, z, path: 2 })).ok; if (paved) break outerP; }
+      }
+      check(paved, 'builders can build (paths) on the island');
+      A.send({ t: 'role', id: B.self.id, role: 'resident' });
+      check(!!(await B.wait('room', (m) => m.room.role === 'resident' && m.room.canHarvest).catch(() => null)), 'owner made Bob a resident (can gather too)');
+      const tentB = await B.build('tent');
+      check(tentB.ok, `a resident builds their own tent ${tentB.err ?? ''}`);
+      const mine = B.room.buildings.find((b) => b.type === 'tent' && b.ownerId === B.self.id);
+      check(!!mine, 'the tent belongs to the resident');
+      A.send({ t: 'role', id: B.self.id, role: 'none' });
+      check(!!(await B.wait('room', (m) => m.room.role === 'visitor').catch(() => null)), 'owner can take the rights back');
+    }
+
+    console.log('Location & time zone');
+    {
+      A.send({ t: 'geo', lat: 35.7, lon: 139.7, tz: 'Asia/Tokyo' });
+      const self = await A.wait('self', (m) => m.you.geo.tz === 'Asia/Tokyo').catch(() => null);
+      check(!!self && self.you.geo.lat === 35.5, 'location saved (rounded to ~50 km)');
+      check(!!(await A.wait('env', (m) => m.env.geo.tz === 'Asia/Tokyo').catch(() => null)), 'the island now follows that time zone');
+      A.send({ t: 'geo', lat: 0, lon: 0, tz: 'Not/AZone' });
+      check(!!(await A.wait('toast', (m) => /Unknown time zone/.test(m.text)).catch(() => null)), 'unknown time zones are refused');
+    }
+
+    console.log('News');
+    {
+      const n0 = await http('GET', '/api/news');
+      check((n0.body.news as { title: string }[]).some((n) => /Welcome/.test(n.title)), 'start screen has a welcome news box');
+      const created = await http('POST', '/api/admin/news', { title: 'Patch 1.1', body: 'Rivers!', icon: '🏞️', pinned: true }, A.token);
+      check(created.status === 200, 'admin writes a news box');
+      const n1 = await http('GET', '/api/news');
+      check((n1.body.news as { title: string; pinned: boolean }[])[0]?.title === 'Patch 1.1', 'pinned news comes first');
+      await http('PUT', `/api/admin/news/${created.body.id}`, { title: 'Patch 1.1', body: 'x', published: false }, A.token);
+      check(!((await http('GET', '/api/news')).body.news as { title: string }[]).some((n) => n.title === 'Patch 1.1'), 'drafts stay hidden');
+      check((await http('POST', '/api/admin/news', { title: 'x', body: 'y' })).status === 401, 'only admins edit news');
+    }
 
     console.log('Accounts');
     {

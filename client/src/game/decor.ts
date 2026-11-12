@@ -44,8 +44,10 @@ export function decorModel(item: string, rot = 0): THREE.Object3D {
       g.add(part('box', c, 0.9, 1.7, 0.4, 0, 0.85, -0.25));
       const books = ['#c0392b', '#2e86de', '#f1c40f', '#27ae60', '#8e44ad', '#e67e22'];
       for (let row = 0; row < 3; row++) {
-        g.add(part('box', '#3b2f25', 0.8, 0.42, 0.3, 0, 0.32 + row * 0.5, -0.2, false));
-        for (let i = 0; i < 6; i++) g.add(part('box', books[(i + row * 2) % books.length], 0.1, 0.32 + ((i * 7) % 3) * 0.03, 0.26, -0.3 + i * 0.12, 0.3 + row * 0.5, -0.18, false));
+        // Dark shelf opening sits just proud of the case; books sit recessed inside it
+        // (no two faces share a plane, so nothing flickers).
+        g.add(part('box', '#3b2f25', 0.8, 0.42, 0.32, 0, 0.32 + row * 0.5, -0.19, false));
+        for (let i = 0; i < 6; i++) g.add(part('box', books[(i + row * 2) % books.length], 0.1, 0.32 + ((i * 7) % 3) * 0.03, 0.24, -0.3 + i * 0.12, 0.3 + row * 0.5, -0.2, false));
       }
       break;
     }
@@ -63,9 +65,9 @@ export function decorModel(item: string, rot = 0): THREE.Object3D {
       // Spans two tiles (this one and the one in front of it).
       g.add(part('box', DARK, 0.95, 0.32, 1.95, 0, 0.16, 0.5));
       g.add(part('box', '#f5ecd7', 0.88, 0.14, 1.85, 0, 0.38, 0.5));
-      g.add(part('box', c, 0.9, 0.16, 1.15, 0, 0.4, 0.85));
+      g.add(part('box', c, 0.9, 0.16, 1.17, 0, 0.4, 0.86)); // blanket overhangs the mattress a little
       g.add(part('box', '#ffffff', 0.6, 0.12, 0.32, 0, 0.47, -0.2));
-      g.add(part('box', DARK, 0.95, 0.85, 0.08, 0, 0.42, -0.45));
+      g.add(part('box', DARK, 0.99, 0.85, 0.08, 0, 0.42, -0.46));
       break;
     case 'sofa':
       g.add(part('box', c, 1.5, 0.3, 0.7, 0, 0.3, 0));

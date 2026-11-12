@@ -196,6 +196,8 @@ export function objectModel(o: WorldObject, season: Season, visual: 'spring' | '
       }
       return g;
     }
+    case 'washed':
+      return washedModel(o.item ?? 'seashell', o.id);
     case 'mushroom': {
       const g = new THREE.Group();
       const cap = o.rare ? mat('#4dd0e1', { emissive: '#26c6da', ei: 0.9 }) : mat('#d84315');
@@ -275,6 +277,60 @@ export function birdModel(id: string, rot = 0): THREE.Object3D {
   root.rotation.y = (rot * Math.PI) / 2 + (rand(id, rot) - 0.5) * 0.8;
   root.userData.bird = true;
   return root;
+}
+
+/** Things lying on the beach. */
+function washedModel(item: string, id: string): THREE.Object3D {
+  const g = new THREE.Group();
+  g.rotation.y = rand(id) * 6.28;
+  switch (item) {
+    case 'driftwood':
+      { const log = part('cyl', '#b8a088', 0.06, 0.7, 0.06, 0, 0.06, 0); log.rotation.z = Math.PI / 2; g.add(log); }
+      g.add(part('cyl', '#a68d72', 0.04, 0.25, 0.04, 0.15, 0.08, 0.1));
+      break;
+    case 'seaweed':
+      for (let i = 0; i < 4; i++) g.add(part('box', '#3d7a3a', 0.08, 0.025, 0.4, (i - 1.5) * 0.08, 0.015, Math.sin(i) * 0.06));
+      break;
+    case 'sea_glass':
+      g.add(part('dodeca', mat('#7fe0c0', { opacity: 0.75, rough: 0.2 }), 0.08, 0.05, 0.07, 0, 0.04, 0));
+      g.add(part('dodeca', mat('#8fc8ff', { opacity: 0.75, rough: 0.2 }), 0.06, 0.04, 0.05, 0.12, 0.03, 0.05));
+      break;
+    case 'coral':
+      for (let i = 0; i < 4; i++) {
+        const b = part('cyl', '#ff6f61', 0.03, 0.22, 0.03, Math.cos(i * 1.6) * 0.06, 0.11, Math.sin(i * 1.6) * 0.06);
+        b.rotation.z = Math.cos(i * 1.6) * 0.5;
+        b.rotation.x = Math.sin(i * 1.6) * 0.5;
+        g.add(b);
+      }
+      break;
+    case 'pearl':
+      g.add(part('sphere', '#e9e2f0', 0.12, 0.05, 0.12, 0, 0.03, 0));
+      g.add(part('sphere', mat('#ffffff', { emissive: '#f4ecff', ei: 0.4, rough: 0.2 }), 0.06, 0.06, 0.06, 0, 0.09, 0));
+      break;
+    case 'message_bottle': {
+      const b = part('cyl', mat('#7fc8a8', { opacity: 0.7, rough: 0.15 }), 0.09, 0.36, 0.09, 0, 0.09, 0);
+      b.rotation.z = Math.PI / 2;
+      g.add(b);
+      const neck = part('cyl', mat('#7fc8a8', { opacity: 0.7, rough: 0.15 }), 0.04, 0.12, 0.04, 0.23, 0.09, 0);
+      neck.rotation.z = Math.PI / 2;
+      g.add(neck);
+      const cork = part('cyl', '#a0703f', 0.035, 0.05, 0.035, 0.31, 0.09, 0);
+      cork.rotation.z = Math.PI / 2;
+      g.add(cork);
+      const paper = part('cyl', '#f5ecd7', 0.04, 0.22, 0.04, -0.02, 0.09, 0, false);
+      paper.rotation.z = Math.PI / 2;
+      g.add(paper);
+      break;
+    }
+    case 'conch':
+      { const shell = part('cone', '#f2c9a0', 0.12, 0.3, 0.12, 0, 0.1, 0); shell.rotation.z = Math.PI / 2.4; g.add(shell); }
+      g.add(part('sphere', '#f7a7a0', 0.08, 0.06, 0.06, -0.1, 0.06, 0));
+      break;
+    default: // seashell
+      g.add(part('sphere', '#f6d5c4', 0.12, 0.04, 0.1, 0, 0.03, 0));
+      for (let i = -2; i <= 2; i++) g.add(part('box', '#e8b8a0', 0.015, 0.02, 0.18, i * 0.04, 0.06, 0, false));
+  }
+  return g;
 }
 
 export function furnitureModel(item: string, rot = 0): THREE.Object3D {
@@ -428,6 +484,28 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
     return g;
   }
   switch (b.type) {
+    case 'bridge_ns':
+    case 'bridge_ew':
+    case 'bridge_ns_long':
+    case 'bridge_ew_long': {
+      // Deck running along the long axis, planks across it, posts and rails on both sides.
+      const along = b.type.startsWith('bridge_ns');
+      const len = along ? b.h : b.w, wid = along ? b.w : b.h;
+      const deck = new THREE.Group();
+      const deckY = 0.16;
+      for (let i = 0; i < len * 4; i++) {
+        const o = -len / 2 + 0.125 + i * 0.25;
+        deck.add(part('box', i % 3 === 0 ? '#9c7a52' : i % 3 === 1 ? '#8b6b47' : '#a8875c', wid - 0.1, 0.07, 0.23, 0, deckY - 0.035, o));
+      }
+      for (const s of [-1, 1]) {
+        deck.add(part('box', '#6d4c2f', 0.1, 0.08, len - 0.2, s * (wid / 2 - 0.12), deckY - 0.1, 0));
+        for (let i = 0; i <= len; i++) deck.add(part('box', '#7a5230', 0.09, 0.55, 0.09, s * (wid / 2 - 0.1), deckY + 0.27, -len / 2 + 0.15 + i * ((len - 0.3) / len)));
+        deck.add(part('box', '#a0703f', 0.08, 0.07, len - 0.2, s * (wid / 2 - 0.1), deckY + 0.52, 0));
+      }
+      if (!along) deck.rotation.y = Math.PI / 2;
+      g.add(deck);
+      break;
+    }
     case 'exit':
       g.add(part('box', '#8d5a3b', 0.9, 0.03, 0.7, 0, 0.02, 0, false));
       g.add(part('box', '#c0392b', 0.7, 0.035, 0.5, 0, 0.025, 0, false));
@@ -441,8 +519,9 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       } else {
         g.add(part('box', '#8d5a3b', 0.9, 0.3, 1.9, 0, 0.15, 0));
         g.add(part('box', '#f5ecd7', 0.82, 0.14, 1.8, 0, 0.36, 0));
-        g.add(part('box', '#e8607a', 0.84, 0.16, 1.1, 0, 0.38, 0.35));
-        g.add(part('box', '#8d5a3b', 0.9, 0.8, 0.1, 0, 0.4, -0.92));
+        // Blanket and headboard overlap their neighbours slightly so no faces are coplanar (no z-fighting).
+        g.add(part('box', '#e8607a', 0.86, 0.17, 1.14, 0, 0.39, 0.37));
+        g.add(part('box', '#8d5a3b', 0.94, 0.8, 0.1, 0, 0.4, -0.93));
         g.add(part('box', '#ffffff', 0.55, 0.1, 0.3, 0, 0.45, -0.65));
       }
       break;

@@ -15,6 +15,10 @@ export type BuildingType =
   | 'tool_store'
   | 'furniture_store'
   | 'dock'
+  | 'bridge_ns'
+  | 'bridge_ew'
+  | 'bridge_ns_long'
+  | 'bridge_ew_long'
   // Interior fixtures (not buildable)
   | 'exit'
   | 'bed'
@@ -114,6 +118,26 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   restaurant: shop('restaurant', 'Restaurant', '🍽️', '#fff2d6', '#e67e22', 'Cook hearty meals from what you gather.'),
   tool_store: shop('tool_store', 'Tool Store', '🧰', '#e8e8e8', '#7f8c8d', 'Sturdier tools and saplings.'),
   furniture_store: shop('furniture_store', 'Furniture Store', '🛋️', '#efe1cf', '#8e5a3c', 'Benches, lamps and other outdoor decor.'),
+  bridge_ns: {
+    type: 'bridge_ns', name: 'Bridge (north–south)', icon: '🌉', w: 2, h: 4,
+    cost: { wood: 30, stone: 10 }, requires: ['workbench'], minDay: 1, buildMinutes: 0, max: 8,
+    color: '#a0703f', roof: '#7a5230', description: 'Crosses a two-tile river or pond running east–west. Both ends need flat ground.',
+  },
+  bridge_ew: {
+    type: 'bridge_ew', name: 'Bridge (east–west)', icon: '🌉', w: 4, h: 2,
+    cost: { wood: 30, stone: 10 }, requires: ['workbench'], minDay: 1, buildMinutes: 0, max: 8,
+    color: '#a0703f', roof: '#7a5230', description: 'Crosses a two-tile river or pond running north–south. Both ends need flat ground.',
+  },
+  bridge_ns_long: {
+    type: 'bridge_ns_long', name: 'Long bridge (north–south)', icon: '🌉', w: 2, h: 5,
+    cost: { wood: 40, stone: 15 }, requires: ['workbench'], minDay: 1, buildMinutes: 0, max: 8,
+    color: '#a0703f', roof: '#7a5230', description: 'Crosses three tiles of water running east–west.',
+  },
+  bridge_ew_long: {
+    type: 'bridge_ew_long', name: 'Long bridge (east–west)', icon: '🌉', w: 5, h: 2,
+    cost: { wood: 40, stone: 15 }, requires: ['workbench'], minDay: 1, buildMinutes: 0, max: 8,
+    color: '#a0703f', roof: '#7a5230', description: 'Crosses three tiles of water running north–south.',
+  },
   dock: {
     type: 'dock', name: 'Dock', icon: '⚓', w: 2, h: 3, cost: {}, requires: [], minDay: 1, buildMinutes: 0, max: 1,
     color: '#8b6b47', roof: '#8b6b47', description: 'Travel to other islands from here.', fixed: true,

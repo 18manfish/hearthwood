@@ -101,7 +101,7 @@ export const clientMessageParser = s.union('t', {
     biome: s.guard(isBiome, 'biome'),
     geo: s.obj({ lat: s.num(-90, 90), lon: s.num(-180, 180), tz: s.str(1, 64, /^[A-Za-z0-9_+\-/]+$/) }),
   }),
-  move: s.obj({ t: s.lit('move'), seq: s.int(0), x: s.num(-10, 300), z: s.num(-10, 300), r: s.num(-10, 10) }),
+  move: s.obj({ t: s.lit('move'), seq: s.int(0), x: s.num(-10, 300), z: s.num(-10, 300), r: s.num(-1e6, 1e6) }),
   act: s.obj({ t: s.lit('act'), seq: s.int(0), a: actionParser }),
   travel: s.obj({ t: s.lit('travel'), to: travelTarget }),
   chat: s.obj({ t: s.lit('chat'), text: s.str(1, 140) }),

@@ -159,25 +159,25 @@ class Bot {
     return best;
   }
 
-  freeSpot(type: BuildingType) {
+  freeSpots(type: BuildingType) {
     const { w, h } = BUILDINGS[type];
-    let best: [number, number] | null = null;
-    let bd = Infinity;
-    for (let z = 1; z < this.grid.size - h; z++)
-      for (let x = 1; x < this.grid.size - w; x++) {
+    const out: [number, number, number][] = [];
+    for (let z = 1; z < this.grid.size - h - 1; z++)
+      for (let x = 2; x < this.grid.size - w; x++) {
         if (!this.grid.canPlace(x - 1, z - 1, w + 2, h + 2)) continue;
-        if (this.grid.level(x, z) !== this.grid.level(Math.floor(this.x), Math.floor(this.z))) continue;
         const d = Math.hypot(x + w / 2 - this.x, z + h / 2 - this.z);
-        if (d < bd && d > 2.5) { bd = d; best = [x, z]; }
+        if (d > 2.5) out.push([x, z, d]);
       }
-    return best;
+    return out.sort((a, b) => a[2] - b[2]);
   }
 
+  /** Walk next to a free spot we can actually reach, then build there. */
   async build(type: BuildingType) {
-    const spot = this.freeSpot(type);
-    if (!spot) return { ok: false, err: 'no spot' };
-    await this.walkTo(spot[0] - 1, spot[1] + Math.floor(BUILDINGS[type].h / 2), false);
-    return this.act({ k: 'build', type, x: spot[0], z: spot[1] });
+    for (const [x, z] of this.freeSpots(type).slice(0, 80)) {
+      if (!(await this.walkTo(x - 1, z + Math.floor(BUILDINGS[type].h / 2), false))) continue;
+      return this.act({ k: 'build', type, x, z });
+    }
+    return { ok: false, err: 'no reachable spot' };
   }
 
   async chat(text: string) {

@@ -688,6 +688,12 @@ export function nearBuilding(b: Building, px: number, pz: number, reach = 1.6): 
   return dx * dx + dz * dz <= reach * reach;
 }
 
+/** Wrap an angle into [-π, π). */
+export function wrapAngle(a: number): number {
+  const t = Math.PI * 2;
+  return ((((a + Math.PI) % t) + t) % t) - Math.PI;
+}
+
 export function distToTile(px: number, pz: number, tx: number, tz: number): number {
   const dx = px - (tx + 0.5);
   const dz = pz - (tz + 0.5);

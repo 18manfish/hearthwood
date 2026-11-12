@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   BIOMES, BUILDINGS, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
-  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, Rng, nearBuilding, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
+  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
   type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
@@ -453,7 +453,7 @@ export class Game {
     if (dist > 0.0001 || Math.abs(r - s.r) > 0.01) {
       s.x = x;
       s.z = z;
-      s.r = r;
+      s.r = wrapAngle(r);
       s.moved = true;
     }
   }

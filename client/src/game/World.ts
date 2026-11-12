@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
   BIOMES, BUILDINGS, ITEMS, Grid, Tile, TREES, CLIFF, ENTERABLE, daylight, decodeTiles, distToTile, isWaterTile, nearBuilding,
-  slideMove, sunPosition, villagerDef, visualSeason, hashString, baseHeight,
+  slideMove, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle,
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season,
 } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
@@ -755,7 +755,7 @@ export class World {
       let diff = want - me.r;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      me.r += diff * Math.min(1, dt * 14);
+      me.r = wrapAngle(me.r + diff * Math.min(1, dt * 14));
     } else me.speed = 0;
     me.rig.root.position.set(me.x, this.groundY(me.x, me.z), me.z);
     me.rig.root.rotation.y = me.r;
@@ -791,7 +791,7 @@ export class World {
     let diff = m.tr - m.r;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    m.r += diff * a;
+    m.r = wrapAngle(m.r + diff * a);
     m.speed = Math.hypot(m.x - px, m.z - pz) / Math.max(dt, 0.001);
     m.swing = Math.max(0, m.swing - dt * 2.5);
     m.rig.root.position.set(m.x, this.groundY(m.x, m.z), m.z);

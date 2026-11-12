@@ -482,9 +482,16 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
   },
 
   mail(ctx, a) {
-    if (ctx.room.kind !== 'island' || !ctx.room.isOwner(ctx.p.id)) return fail('Send mail from your own post office.');
-    if (!nearCompleted(ctx, ['post_office'])) return fail('Stand next to the Post Office.');
-    if (!ctx.p.friends.includes(a.to)) return fail('You can only send mail to friends.');
+    if (ctx.room.kind !== 'island') return fail('Find a mailbox on an island.');
+    if (!nearCompleted(ctx, ['mailbox'])) return fail('Stand next to a mailbox.');
+    if (ctx.room.isOwner(ctx.p.id)) {
+      // Your own mailbox: write to any friend.
+      if (!ctx.p.friends.includes(a.to)) return fail('You can only send mail to friends.');
+    } else if (a.to !== ctx.room.ownerId) {
+      // Someone else's mailbox: you can leave a letter for its owner.
+      return fail('This mailbox only takes letters for its owner.');
+    }
+    if (a.to === ctx.p.id) return fail('You can’t write to yourself.');
     const to = ctx.game.store.players.get(a.to);
     if (!to) return fail('Unknown player.');
     if (to.mail.length >= 50) return fail(`${to.name}’s mailbox is full.`);

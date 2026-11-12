@@ -449,6 +449,25 @@ async function main() {
     check(B.room.id === A.room.id && !B.room.canHarvest, 'friend can visit but not harvest');
     const pAdd = await A.wait('pAdd');
     check(pAdd.p.name === 'Bob', 'Alice sees Bob arrive');
+
+    console.log('Mailbox');
+    const mb = await A.build('mailbox');
+    check(mb.ok, `mailbox built ${mb.err ?? ''}`);
+    const box = A.room.buildings.find((b) => b.type === 'mailbox');
+    if (box) {
+      await A.walkTo(box.x, box.z + 1, false);
+      const sent = await A.act({ k: 'mail', to: B.self.id, text: 'Welcome to my island!', item: 'stone', n: 1 });
+      check(sent.ok, `Alice mails Bob from her mailbox ${sent.err ?? ''}`);
+      const got = await B.wait('mail', (m) => m.list.some((x) => x.text === 'Welcome to my island!')).catch(() => null);
+      check(!!got, 'Bob receives the letter with a gift');
+      await B.walkTo(box.x, box.z + 1, false);
+      const toOther = await B.act({ k: 'mail', to: 'p_000000000000', text: 'x' });
+      check(!toOther.ok, 'a visitor can only post letters to the mailbox owner');
+      const back = await B.act({ k: 'mail', to: A.self.id, text: 'Thanks Alice!' });
+      check(back.ok, `Bob leaves a letter in Alice’s mailbox ${back.err ?? ''}`);
+      const gotA = await A.wait('mail', (m) => m.list.some((x) => x.text === 'Thanks Alice!')).catch(() => null);
+      check(!!gotA, 'Alice gets the visitor’s letter');
+    }
     const bt = B.nearest('tree', (o) => o.stage === 2)!;
     await B.walkTo(bt.x, bt.z);
     check(!(await B.act({ k: 'shake', id: bt.id })).ok, 'visitor cannot shake trees');

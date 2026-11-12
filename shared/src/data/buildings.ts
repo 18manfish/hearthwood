@@ -8,7 +8,7 @@ export type BuildingType =
   | 'cabin'
   | 'town_hall'
   | 'villager_house'
-  | 'post_office'
+  | 'mailbox'
   | 'travel_agent'
   | 'clothing_shop'
   | 'restaurant'
@@ -95,7 +95,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     cost: { wood: 25, stone: 10, clay: 5 }, requires: ['town_hall'], minDay: 7, buildMinutes: 180, max: 7,
     color: '#f3d9b1', roof: '#6aa84f', description: 'A home for a new neighbour. A villager moves in once it is finished.',
   },
-  post_office: shop('post_office', 'Post Office', '📮', '#f5e6d0', '#d64541', 'Send letters and gifts to friends on other islands.'),
+  mailbox: {
+    type: 'mailbox', name: 'Mailbox', icon: '📮', w: 1, h: 1,
+    cost: { wood: 4, stone: 2, clay: 1 }, requires: ['cabin'], minDay: 2, buildMinutes: 0, max: 1,
+    color: '#d64541', roof: '#5d4037', description: 'Send letters & gifts to friends. Visitors can leave you a letter, and the flag goes up when you have mail.',
+  },
   travel_agent: shop('travel_agent', 'Travel Agent', '✈️', '#e1f0f7', '#2a9d8f', 'Book mystery tours to resource-rich islands.'),
   clothing_shop: shop('clothing_shop', 'Clothing Shop', '👕', '#fbe3ec', '#c2185b', 'Hats and a full wardrobe makeover.'),
   restaurant: shop('restaurant', 'Restaurant', '🍽️', '#fff2d6', '#e67e22', 'Cook hearty meals from what you gather.'),
@@ -107,7 +111,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   },
   exit: fixture('exit', 'Door', '🚪', 1, 1, 'Head back outside.'),
   bed: fixture('bed', 'Bed', '🛏️', 1, 2, 'Have a little rest.'),
-  chest: fixture('chest', 'Storage Chest', '🧰', 1, 1, 'Your sell box (and mailbox).'),
+  chest: fixture('chest', 'Storage Chest', '🧰', 1, 1, 'Your sell box.'),
 };
 
 function fixture(type: BuildingType, name: string, icon: string, w: number, h: number, description: string): BuildingDef {
@@ -121,7 +125,7 @@ export const NON_BLOCKING: BuildingType[] = ['dock', 'exit'];
 
 export const BUILDABLE: BuildingType[] = (Object.keys(BUILDINGS) as BuildingType[]).filter((t) => !BUILDINGS[t].fixed);
 
-export const SHOP_TYPES: BuildingType[] = ['post_office', 'travel_agent', 'clothing_shop', 'restaurant', 'tool_store', 'furniture_store'];
+export const SHOP_TYPES: BuildingType[] = ['travel_agent', 'clothing_shop', 'restaurant', 'tool_store', 'furniture_store'];
 
 export const MAX_VILLAGERS = 7;
 /** Villager houses 4–7 open up in month two. */

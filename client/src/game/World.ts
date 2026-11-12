@@ -17,7 +17,7 @@ import { windTime } from './bend.ts';
 import { animateRig, makePlayer, makeVillager, setHat, setTool, type Rig } from './characters.ts';
 import { buildingModel, furnitureModel, mat, objectModel, part } from './models.ts';
 import { net } from '../net.ts';
-import { state } from '../state.ts';
+import { state, watch } from '../state.ts';
 
 export const PLAYER_SPEED = 4.2;
 
@@ -226,6 +226,10 @@ export class World {
     });
     this.scene.add(this.footprints.mesh);
     this.renderer.setAnimationLoop(() => this.frame());
+    // Raise / lower the mailbox flag when mail arrives or is taken.
+    watch(['mail'], () => {
+      for (const b of this.buildings.values()) if (b.type === 'mailbox') this.upsertBuildingMesh(b);
+    });
   }
 
   zoom(delta: number) {
@@ -513,7 +517,8 @@ export class World {
   upsertBuildingMesh(b: Building) {
     const prev = this.bldMeshes.get(b.id);
     if (prev) this.world.remove(prev);
-    const mesh = buildingModel(b, net.serverNow(), this.room?.interior ?? 'cabin');
+    const flagUp = b.type === 'mailbox' && this.room?.ownerId === state.self?.id && state.mail.length > 0;
+    const mesh = buildingModel(b, net.serverNow(), this.room?.interior ?? 'cabin', { flagUp });
     const y = b.type === 'dock' ? 0 : this.room?.kind === 'interior' ? baseHeight(Tile.Floor) : baseHeight(Tile.Ground) + (this.grid?.level(b.x, b.z) ?? 0) * CLIFF;
     mesh.position.set(b.x + b.w / 2, y, b.z + b.h / 2);
     mesh.userData.done = b.completeAt <= net.serverNow();
@@ -836,6 +841,7 @@ export class World {
         : b.type === 'exit' ? 'Go outside'
         : b.type === 'bed' ? 'Rest'
         : b.type === 'chest' ? 'Open storage chest'
+        : b.type === 'mailbox' ? (this.room.ownerId === state.self?.id ? `Check mailbox${state.mail.length ? ` (${state.mail.length})` : ''}` : `Leave ${this.room.ownerName ?? 'them'} a letter`)
         : `Use ${def.name}`;
       const cx = Math.max(b.x, Math.min(px, b.x + b.w)), cz = Math.max(b.z, Math.min(pz, b.z + b.h));
       consider({ kind: 'building', b, label }, cx - px, cz - pz, 1.8);

@@ -35,8 +35,11 @@ export const CHAPTERS: Chapter[] = [
     id: 2,
     title: 'First Week: A Home of Your Own',
     byDay: 7,
-    intro: 'Camp life is fun, but a real house would be nicer. Gather clay from rocks and build your starter house.',
-    goals: [{ kind: 'build', building: 'cabin', label: 'Build your Starter House' }],
+    intro: 'Camp life is fun, but a real house would be nicer. Gather clay from rocks, build your starter house and put up a mailbox so friends can write to you.',
+    goals: [
+      { kind: 'build', building: 'cabin', label: 'Build your Starter House' },
+      { kind: 'build', building: 'mailbox', label: 'Put up a Mailbox' },
+    ],
     reward: { coins: 1000, items: { bench: 1, lamp: 1 } },
   },
   {
@@ -55,10 +58,9 @@ export const CHAPTERS: Chapter[] = [
     id: 4,
     title: 'Month Two: A Thriving Town',
     byDay: 60,
-    intro: 'Word is spreading! Grow to seven villagers and open every shop in town.',
+    intro: 'Word is spreading! Grow to seven villagers and open all five shops in town.',
     goals: [
       { kind: 'villagers', count: 7, label: 'Grow to 7 villagers' },
-      { kind: 'build', building: 'post_office', label: 'Open the Post Office' },
       { kind: 'build', building: 'travel_agent', label: 'Open the Travel Agent' },
       { kind: 'build', building: 'clothing_shop', label: 'Open the Clothing Shop' },
       { kind: 'build', building: 'restaurant', label: 'Open the Restaurant' },

@@ -306,7 +306,7 @@ function houseBody(g: THREE.Group, w: number, d: number, wallH: number, wall: st
   }
 }
 
-export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' = 'cabin'): THREE.Group {
+export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' = 'cabin', opts: { flagUp?: boolean } = {}): THREE.Group {
   const def = BUILDINGS[b.type];
   const g = new THREE.Group();
   const done = b.completeAt <= now;
@@ -389,10 +389,23 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
     case 'cabin':
       houseBody(g, b.w, b.h, 1.4, def.color, def.roof);
       g.add(part('box', '#5d4037', 0.25, 0.7, 0.25, b.w / 4, 2.3, -0.2));
-      // Mailbox
-      g.add(part('cyl', '#5d4037', 0.04, 0.6, 0.04, b.w / 2 - 0.3, 0.3, b.h / 2));
-      g.add(part('box', '#d64541', 0.22, 0.18, 0.3, b.w / 2 - 0.3, 0.65, b.h / 2));
       break;
+    case 'mailbox': {
+      // Post + rounded-top box, door facing south, flag on the side.
+      g.add(part('box', '#7a5230', 0.09, 0.75, 0.09, 0, 0.375, 0));
+      g.add(part('box', def.color, 0.34, 0.24, 0.5, 0, 0.85, 0));
+      const top = part('cyl', def.color, 0.17, 0.5, 0.17, 0, 0.97, 0);
+      top.rotation.x = Math.PI / 2;
+      g.add(top);
+      g.add(part('box', '#f5ecd7', 0.2, 0.14, 0.02, 0, 0.88, 0.255, false));
+      const flag = new THREE.Group();
+      flag.position.set(0.19, 0.82, -0.1);
+      flag.add(part('box', '#555555', 0.02, 0.32, 0.02, 0, 0.16, 0, false));
+      flag.add(part('box', '#f6c445', 0.02, 0.1, 0.16, 0, 0.28, 0.08, false));
+      flag.rotation.x = opts.flagUp ? 0 : -Math.PI / 2; // up = you've got mail
+      g.add(flag);
+      break;
+    }
     case 'town_hall': {
       houseBody(g, b.w, b.h, 1.8, def.color, def.roof);
       // Clock tower rising through the roof ridge.

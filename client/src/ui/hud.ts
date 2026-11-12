@@ -266,7 +266,10 @@ export class Hud {
         net.send({ t: 'map' });
         return this.live('World map', id, (b) => this.map(b));
       case 'friends': return this.live('Friends', id, (b) => this.friends(b));
-      case 'mail': return this.live('Mailbox', id, (b) => this.mail(b, false));
+      case 'mail': return this.live('Letters', id, (b) => {
+        b.append(h('p', { class: 'muted' }, 'Read your letters anywhere. To send one, walk up to your mailbox 📮 (build it from the Build menu).'));
+        this.mail(b, false);
+      });
       case 'island': return this.live('Island & visitors', id, (b) => this.island(b));
       case 'debug': return this.debugPanel();
     }
@@ -511,7 +514,7 @@ export class Hud {
 
   private mail(b: HTMLElement, compose: boolean) {
     if (compose) {
-      if (!state.friends.length) b.append(h('p', { class: 'muted' }, 'Add friends to send them letters.'));
+      if (!state.friends.length) b.append(h('p', { class: 'muted' }, 'Add friends (O) to send them letters. Visitors can also leave you letters here.'));
       else {
         const to = h('select', {}, state.friends.map((f) => h('option', { value: f.id }, f.name))) as HTMLSelectElement;
         const item = h('select', {}, h('option', { value: '' }, '(no gift)'), Object.entries(state.inv).filter(([id]) => ITEMS[id].category !== 'tool').map(([id, n]) => h('option', { value: id }, `${ITEMS[id].icon} ${ITEMS[id].name} (${n})`))) as HTMLSelectElement;
@@ -526,6 +529,19 @@ export class Hud {
     b.append(h('div', { class: 'list' }, state.mail.map((m) => h('div', { class: 'item' },
       h('div', {}, h('b', {}, `From ${m.fromName}`), h('div', {}, m.text || h('i', { class: 'muted' }, '(no message)')), m.item ? h('div', { class: 'muted' }, `Gift: ${ITEMS[m.item]?.icon} ${m.n}× ${ITEMS[m.item]?.name}`) : null),
       h('button', { class: 'btn small', onclick: () => this.act({ k: 'takeMail', mailId: m.id }) }, m.item ? 'Take gift' : 'Discard')))));
+  }
+
+  /** Leave a letter (and optional gift) in someone else's mailbox. */
+  private letterTo(b: HTMLElement, ownerId: string, ownerName: string) {
+    const item = h('select', {}, h('option', { value: '' }, '(no gift)'), Object.entries(state.inv).filter(([id]) => ITEMS[id].category !== 'tool').map(([id, n]) => h('option', { value: id }, `${ITEMS[id].icon} ${ITEMS[id].name} (${n})`))) as HTMLSelectElement;
+    const text = h('textarea', { rows: 3, maxlength: 280, placeholder: `Write ${ownerName} a letter…` }) as HTMLTextAreaElement;
+    b.append(h('div', { class: 'col' },
+      h('p', { class: 'muted' }, `Drop a letter into ${ownerName}’s mailbox – they’ll find it next time they check their mail.`),
+      h('div', { class: 'field' }, 'Attach a gift', item), h('div', { class: 'field' }, 'Message', text),
+      h('button', { class: 'btn', onclick: async () => {
+        const r = await this.act({ k: 'mail', to: ownerId, text: text.value, item: item.value || undefined, n: item.value ? 1 : undefined });
+        if (r.ok) this.close();
+      } }, '✉️ Post letter')));
   }
 
   private island(b: HTMLElement) {
@@ -587,7 +603,6 @@ export class Hud {
         return this.live('🧰 Storage chest', null, (b) => {
           b.append(h('h3', {}, 'Sell box'));
           this.bag(b);
-          if (room.interior === 'cabin') { b.append(h('hr')); this.mail(b, false); }
         });
       case 'town_hall':
         return this.live('🏛️ Town Hall', null, (b) => {
@@ -612,8 +627,9 @@ export class Hud {
         this.shop(body, bld.type);
         return this.frame(`${def.icon} ${def.name}`, body);
       }
-      case 'post_office':
-        return this.live('📮 Post Office', null, (b) => this.mail(b, own));
+      case 'mailbox':
+        if (own) return this.live('📮 Your mailbox', null, (b) => this.mail(b, true));
+        return this.live(`📮 ${room.ownerName}’s mailbox`, null, (b) => this.letterTo(b, room.ownerId!, room.ownerName ?? 'them'));
       case 'travel_agent':
         return this.live('✈️ Travel Agent', null, (b) => {
           b.append(h('p', {}, 'Fancy an adventure? A mystery tour takes you to a random, untouched island packed with resources. Gather everything you like, then return via the dock.'),

@@ -73,8 +73,9 @@ The game works with any controller the browser supports, including Xbox, PlaySta
 ### Progression (follows the real calendar)
 1. **Day 1: Make Camp.** Shake trees for branches, pick up loose stones and pick bushes for fibre. Craft a stone axe, shovel and fishing rod. Then build a tent, campfire and workbench.
 2. **Week 1: Starter House.** Unlocks on day 2. Break rocks with the shovel to get clay.
+   Then put up a **mailbox** (4 wood, 2 stone, 1 clay). From it you can send letters and gifts to friends, and visitors can drop a letter in it for you. Its flag goes up when you have unread mail. Letters can be read anywhere (L).
 3. **Month 1: Village.** The Town Hall unlocks on day 7. Build three villager houses, and a villager moves into each one when it's finished.
-4. **Month 2: Thriving Town.** From day 31 you can have up to **7 villagers** and build the Post Office, Travel Agent, Clothing Shop, Restaurant, Tool Store and Furniture Store.
+4. **Month 2: Thriving Town.** From day 31 you can have up to **7 villagers** and build the Travel Agent, Clothing Shop, Restaurant, Tool Store and Furniture Store.
 
 **Resources.** Used-up resources **disappear and respawn later**:
 - A **rock** crumbles after 6 shovel hits (8 with the iron shovel) and comes back after about a day. Rocks sometimes give clay or iron ore.
@@ -108,7 +109,7 @@ In snowy winters everyone who walks leaves footprints in the snow, and on beache
 
 **Cliffs & ramps.** New islands have up to two cliff levels. You can only go up or down using the ramps; you can't climb or drop off a cliff edge. Each building has to sit on one level. Ramp landings are kept clear so that a plateau can never be cut off.
 
-**Homes you can enter.** Walk up to your tent (or your starter house) and press **E** to go inside. Each has a bed and a storage chest, which is your sell box, plus the mailbox in the house. You can place furniture inside, and the door takes you back out.
+**Homes you can enter.** Walk up to your tent (or your starter house) and press **E** to go inside. Each has a bed and a storage chest, which is your sell box. You can place furniture inside, and the door takes you back out.
 
 **The rolling-log world.** The whole world curves away from the camera, like in Animal Crossing. This is a vertex-shader bend that is applied to every mesh, sprite and shadow. You can tune it in the debug menu.
 

@@ -301,6 +301,7 @@ export class Game {
     const rec = this.store.islands.get(id);
     if (!rec) return null;
     const owner = this.store.players.get(rec.ownerId);
+    migrateIsland(rec);
     const room = new Room({
       id: rec.id, kind: 'island', name: rec.name, biome: rec.biome, ownerId: rec.ownerId, ownerName: owner?.name ?? null,
       geo: owner?.geo ?? { lat: 47, lon: 8, tz: 'UTC' }, seed: rec.seed, record: rec, elevation: (rec.gen ?? 1) >= 2,
@@ -767,6 +768,20 @@ export class Game {
     }
     this.store.markPlayer(p.id);
     this.sendInv(s);
+  }
+}
+
+/** One-off upgrades for islands saved by older versions. */
+function migrateIsland(rec: IslandRecord) {
+  for (const b of rec.buildings) {
+    // The 3×3 Post Office became a 1×1 Mailbox (placed at its front-centre).
+    if ((b.type as string) === 'post_office') {
+      b.type = 'mailbox';
+      b.x += 1;
+      b.z += 2;
+      b.w = 1;
+      b.h = 1;
+    }
   }
 }
 

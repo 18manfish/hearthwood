@@ -8,6 +8,8 @@ import { World, type Tool } from './game/World.ts';
 import { Hud } from './ui/hud.ts';
 import { showCreator } from './ui/creator.ts';
 import { h, clear } from './ui/dom.ts';
+import { GamepadInput, type PadButton } from './input/gamepad.ts';
+import { activate, clearPadFocus, focusRoot, navigate, scrollMenu } from './input/padnav.ts';
 
 const app = document.getElementById('app')!;
 let world: World | null = null;
@@ -126,6 +128,17 @@ async function interact() {
   }
 }
 
+/** Escape / Ⓑ: cancel placement, close dialog or menu (shared by keyboard and controller). */
+function back() {
+  if (!world || !hud) return;
+  if (world.paint) world.stopPaint();
+  else if (world.ghost) world.cancelGhost();
+  else if (hud.talkingTo) hud.closeDialog();
+  else hud.close();
+  clearPadFocus();
+  hud.setPrompt(world.target?.label ?? null);
+}
+
 function bindKeys() {
   const toolKeys: Record<string, Tool> = { Digit1: 'hand', Digit2: 'axe', Digit3: 'shovel', Digit4: 'rod', Digit5: 'sapling' };
   window.addEventListener('keydown', (e) => {
@@ -140,14 +153,9 @@ function bindKeys() {
       e.preventDefault();
       return hud.toggle('debug');
     }
-    if (e.code === 'Escape') {
-      if (world.paint) world.stopPaint();
-      else if (world.ghost) world.cancelGhost();
-      else if (hud.talkingTo) hud.closeDialog();
-      else hud.close();
-      hud.setPrompt(world.target?.label ?? null);
-      return;
-    }
+    hud.setPadMode(false);
+    if (world) world.padAim = false;
+    if (e.code === 'Escape') return back();
     const panelKeys: Record<string, Parameters<Hud['toggle']>[0]> = { KeyG: 'goals', KeyI: 'bag', KeyC: 'craft', KeyB: 'build', KeyM: 'map', KeyO: 'friends', KeyL: 'mail', KeyV: 'island' };
     if (panelKeys[e.code]) return hud.toggle(panelKeys[e.code]);
     if (hud.panel) return; // menus open: no world input
@@ -167,6 +175,100 @@ function bindKeys() {
   window.addEventListener('keyup', (e) => world?.keys.delete(e.code));
   window.addEventListener('blur', () => world?.keys.clear());
 }
+
+// ── Controller ────────────────────────────────────────────────────────────
+// Layout (Animal Crossing style):
+//   Left stick / D-pad  move (hold Ⓑ to run) · navigate menus
+//   Ⓐ interact / confirm / hold to paint paths   Ⓑ back / cancel (hold while moving to run)
+//   Ⓧ pockets   Ⓨ pick up furniture / rotate while placing
+//   LB / RB cycle tools   LT build menu   RT craft menu
+//   START goals   SELECT world map   R3 debug menu   Right stick zoom / scroll menus
+const TOOLS: Tool[] = ['hand', 'axe', 'shovel', 'rod', 'sapling'];
+let bMoved = false;
+const menuOpen = () => !world || !!document.querySelector('.panel-back') || !!hud?.talkingTo;
+
+new GamepadInput({
+  connected(name) {
+    hud?.toast(`🎮 Controller connected${name ? '' : ''} – press START for goals`, 'good');
+  },
+  disconnected() {
+    hud?.toast('🎮 Controller disconnected', 'warn');
+    hud?.setPadMode(false);
+    if (world) world.analog = { x: 0, z: 0, run: false };
+  },
+  down(b: PadButton) {
+    hud?.setPadMode(true);
+    if (world) world.padAim = true;
+    // Menus (and the character creator) take the input first.
+    if (menuOpen()) {
+      if (b === 'A') activate();
+      else if (b === 'B') {
+        const a = document.activeElement as HTMLElement | null;
+        if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) a.blur();
+        else if (world) back();
+      } else if (world && hud) {
+        if (b === 'X') hud.toggle('bag');
+        if (b === 'START') hud.toggle('goals');
+        if (b === 'SELECT') hud.toggle('map');
+        if (b === 'R3') hud.toggle('debug');
+        if (b === 'LT') hud.toggle('build');
+        if (b === 'RT') hud.toggle('craft');
+      }
+      return;
+    }
+    if (!world || !hud) return;
+    switch (b) {
+      case 'A':
+        if (world.paint) {
+          world.paint.down = true;
+          world.paint.last = '';
+          world.paintFacing();
+        } else interact();
+        break;
+      case 'B':
+        bMoved = false;
+        break;
+      case 'X': hud.toggle('bag'); break;
+      case 'Y':
+        if (world.ghost?.type === 'place') world.rotateGhost();
+        else if (world.target?.kind === 'object' && world.target.o.kind === 'furniture') hud.act({ k: 'pickup', id: world.target.o.id });
+        break;
+      case 'LB':
+      case 'RB': {
+        const i = TOOLS.indexOf(world.tool);
+        hud.selectTool(TOOLS[(i + (b === 'RB' ? 1 : TOOLS.length - 1)) % TOOLS.length]);
+        break;
+      }
+      case 'LT': hud.toggle('build'); break;
+      case 'RT': hud.toggle('craft'); break;
+      case 'START': hud.toggle('goals'); break;
+      case 'SELECT': hud.toggle('map'); break;
+      case 'R3': hud.toggle('debug'); break;
+    }
+  },
+  up(b: PadButton) {
+    if (!world) return;
+    if (b === 'A' && world.paint) world.paint.down = false;
+    // A quick tap of Ⓑ (without running) means "back".
+    if (b === 'B' && !bMoved && !menuOpen()) back();
+  },
+  nav(dir) {
+    if (menuOpen()) navigate(dir);
+  },
+  frame(s) {
+    if (!world) return;
+    if (menuOpen()) {
+      world.analog = { x: 0, z: 0, run: false };
+      if (s.ry) scrollMenu(s.ry * 14);
+      if (!focusRoot()) clearPadFocus();
+      return;
+    }
+    const moving = Math.hypot(s.lx, s.ly) > 0;
+    if (moving && s.held.has('B')) bMoved = true;
+    world.analog = { x: s.lx, z: s.ly, run: s.held.has('B') };
+    if (s.ry) world.zoom(s.ry * 0.25);
+  },
+});
 
 net.on((m: ServerMessage) => {
   switch (m.t) {

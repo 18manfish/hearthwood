@@ -86,6 +86,10 @@ export class World {
   me: Mover | null = null;
   tool: Tool = 'hand';
   keys = new Set<string>();
+  /** Analog movement from a controller (x right, z down the screen), magnitude 0..1. */
+  analog = { x: 0, z: 0, run: false };
+  /** True while the controller is the active input: placement aims in front of the player. */
+  padAim = false;
   target: Target | null = null;
   private lastSent = { x: 0, z: 0, r: 0, at: 0 };
   private camDist = 13;
@@ -201,6 +205,7 @@ export class World {
     container.addEventListener('pointermove', (e) => {
       const r = this.renderer.domElement.getBoundingClientRect();
       this.mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      if (Math.abs(e.movementX) + Math.abs(e.movementY) > 2) this.padAim = false;
       if (this.paint?.down) {
         this.updatePaintGhost();
         this.paintHere();
@@ -221,6 +226,10 @@ export class World {
     });
     this.scene.add(this.footprints.mesh);
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  zoom(delta: number) {
+    this.camDist = Math.max(8, Math.min(24, this.camDist + delta));
   }
 
   resize() {
@@ -398,10 +407,16 @@ export class World {
   private updatePaintGhost() {
     const p = this.paint;
     if (!p || !this.grid || !this.me) return;
-    const hit = this.pickGround();
-    if (!hit) return;
-    p.tx = Math.floor(hit.x);
-    p.tz = Math.floor(hit.z);
+    if (this.padAim) {
+      const f = this.facingTile();
+      p.tx = f.x;
+      p.tz = f.z;
+    } else {
+      const hit = this.pickGround();
+      if (!hit) return;
+      p.tx = Math.floor(hit.x);
+      p.tz = Math.floor(hit.z);
+    }
     p.ok = this.paintOk(p.tx, p.tz);
     p.group.position.set(p.tx, this.grid.surfaceY(p.tx + 0.5, p.tz + 0.5), p.tz);
     const box = p.group.getObjectByName('box') as THREE.Mesh;
@@ -745,10 +760,18 @@ export class World {
       const def = BUILDINGS[g.building];
       w = def.w;
       h = def.h;
-      const hit = this.pickGround();
-      if (!hit) return;
-      tx = Math.floor(hit.x - w / 2 + 0.5);
-      tz = Math.floor(hit.z - h / 2 + 0.5);
+      if (this.padAim) {
+        // Controller: put the footprint just in front of the player.
+        const { fx, fz } = this.facing();
+        const ahead = 1.2 + Math.max(w, h) / 2;
+        tx = Math.floor(this.me.x + fx * ahead - w / 2 + 0.5);
+        tz = Math.floor(this.me.z + fz * ahead - h / 2 + 0.5);
+      } else {
+        const hit = this.pickGround();
+        if (!hit) return;
+        tx = Math.floor(hit.x - w / 2 + 0.5);
+        tz = Math.floor(hit.z - h / 2 + 0.5);
+      }
     } else {
       const f = this.facingTile();
       tx = f.x;
@@ -880,7 +903,8 @@ export class World {
       if (changed) this.onTarget(tgt);
     }
     this.updateGhost();
-    if (this.paint && !this.paint.down) this.updatePaintGhost();
+    if (this.paint && (!this.paint.down || this.padAim)) this.updatePaintGhost();
+    if (this.paint?.down && this.padAim) this.paintHere(); // hold A and walk to paint a trail
     this.updateEnvironment(dt, t);
     this.animateProps(t);
     // Fishing bobber.
@@ -915,13 +939,22 @@ export class World {
     if (k.has('KeyS') || k.has('ArrowDown')) dz += 1;
     if (k.has('KeyA') || k.has('ArrowLeft')) dx -= 1;
     if (k.has('KeyD') || k.has('ArrowRight')) dx += 1;
+    let amount = 1;
+    let running = k.has('ShiftLeft') || k.has('ShiftRight');
+    const am = Math.hypot(this.analog.x, this.analog.z);
+    if (am > 0 && !dx && !dz) {
+      dx = this.analog.x;
+      dz = this.analog.z;
+      amount = Math.max(0.35, Math.min(1, am));
+      running = this.analog.run;
+    }
     const len = Math.hypot(dx, dz);
     if (this.cast && len > 0) {
       this.endCast(); // walking away cancels fishing
     }
     if (len > 0) {
       dx /= len; dz /= len;
-      const run = k.has('ShiftLeft') || k.has('ShiftRight') ? 1 : 0.62;
+      const run = (running ? 1 : 0.62) * amount;
       const step = PLAYER_SPEED * run * dt;
       const res = slideMove(this.grid!, me.x, me.z, dx * step, dz * step);
       me.speed = Math.hypot(res.x - me.x, res.z - me.z) / dt;

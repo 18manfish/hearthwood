@@ -51,6 +51,25 @@ The server buttons are sent as a schema-checked `dev` message, and the server re
 | R / Esc | Rotate / cancel placement |
 | F3 or ` | Developer debug menu |
 
+### Controller
+
+The game works with any controller the browser supports, including Xbox, PlayStation, Switch Pro and most USB or Bluetooth pads. Plug it in and press any button. On-screen hints switch to controller glyphs, and back again as soon as you use the keyboard or mouse.
+
+| Button | Action |
+|---|---|
+| Left stick / D-pad | Walk; hold **Ⓑ** to run |
+| **Ⓐ** | Use / talk / reel in / confirm placement; hold while walking to paint a path |
+| **Ⓑ** (tap) | Back: close a menu or dialog, cancel placement or painting |
+| **Ⓧ** | Pockets |
+| **Ⓨ** | Pick up furniture / rotate while placing |
+| LB / RB | Previous / next tool |
+| LT / RT | Build menu / craft menu |
+| START / SELECT | Goals / world map |
+| Right stick | Zoom the camera (scrolls when a menu is open) |
+| R3 | Developer debug menu |
+
+**In menus**, including character creation, the D-pad or left stick moves a highlight between controls and **Ⓐ** presses the highlighted one. Left/right change sliders and dropdowns. **When placing** a building, furniture or a path with the controller, the spot right in front of your character is used.
+
 ### Progression (follows the real calendar)
 1. **Day 1: Make Camp.** Shake trees for branches, pick up loose stones and pick bushes for fibre. Craft a stone axe, shovel and fishing rod. Then build a tent, campfire and workbench.
 2. **Week 1: Starter House.** Unlocks on day 2. Break rocks with the shovel to get clay.

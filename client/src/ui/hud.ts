@@ -49,6 +49,9 @@ export class Hud {
   panel: PanelId | null = null;
   private panelRefresh: (() => void) | null = null;
   talkingTo: string | null = null;
+  /** Show controller button glyphs instead of keyboard keys. */
+  padMode = false;
+  private lastPrompt: { text: string | null; bite: boolean } = { text: null, bite: false };
 
   constructor(app: HTMLElement, private world: World) {
     const btn = (icon: string, key: string, id: PanelId, title: string) => {
@@ -117,11 +120,16 @@ export class Hud {
   }
 
   setPrompt(text: string | null, bite = false) {
+    this.lastPrompt = { text, bite };
+    const pad = this.padMode;
     if (this.world.paint) {
       const t = this.world.paint.type;
-      text = t ? `Click & drag to lay ${PATHS[t - 1].name} (or E in front of you) · Esc to stop` : 'Click & drag to remove paths · Esc to stop';
+      const what = t ? `lay ${PATHS[t - 1].name}` : 'remove paths';
+      text = pad ? `Hold Ⓐ and walk to ${what} · Ⓑ to stop` : t ? `Click & drag to ${what} (or E in front of you) · Esc to stop` : `Click & drag to ${what} · Esc to stop`;
     } else if (this.world.ghost) {
-      text = this.world.ghost.type === 'build' ? 'Click to build here · Esc to cancel' : 'E / click to place · R to rotate · Esc to cancel';
+      text = this.world.ghost.type === 'build'
+        ? pad ? 'Ⓐ build in front of you · Ⓑ cancel' : 'Click to build here · Esc to cancel'
+        : pad ? 'Ⓐ place · Ⓨ rotate · Ⓑ cancel' : 'E / click to place · R to rotate · Esc to cancel';
     }
     if (!text) {
       this.prompt.style.display = 'none';
@@ -130,7 +138,16 @@ export class Hud {
     this.prompt.style.display = '';
     this.prompt.className = `prompt${bite ? ' bite' : ''}`;
     clear(this.prompt);
-    this.prompt.append(h('kbd', {}, 'E'), text);
+    if (!text.includes('Ⓐ')) this.prompt.append(h('kbd', {}, this.padMode ? 'Ⓐ' : 'E'));
+    this.prompt.append(text);
+  }
+
+  /** Switch hints between keyboard and controller glyphs. */
+  setPadMode(on: boolean) {
+    if (on === this.padMode) return;
+    this.padMode = on;
+    this.root.classList.toggle('pad', on);
+    this.setPrompt(this.world.target?.label ?? this.lastPrompt.text, this.lastPrompt.bite);
   }
 
   isTyping() {

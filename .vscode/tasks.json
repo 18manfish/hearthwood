@@ -1,0 +1,9 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Hearthwood: dev (server + client)", "type": "npm", "script": "dev", "isBackground": true, "problemMatcher": [], "group": { "kind": "build", "isDefault": true } },
+    { "label": "Hearthwood: dev FAST (time ×60, dev commands)", "type": "npm", "script": "dev:fast", "isBackground": true, "problemMatcher": [] },
+    { "label": "Hearthwood: typecheck", "type": "npm", "script": "typecheck", "problemMatcher": ["$tsc"] },
+    { "label": "Hearthwood: test (bot players)", "type": "npm", "script": "test", "problemMatcher": [] }
+  ]
+}

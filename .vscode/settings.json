@@ -1,0 +1,7 @@
+{
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": false,
+  "files.exclude": { "**/node_modules": true },
+  "search.exclude": { "**/node_modules": true, "server/data": true, "client/dist": true }
+}

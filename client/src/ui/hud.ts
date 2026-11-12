@@ -9,7 +9,7 @@ import {
 import { net } from '../net.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
-import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, ENTERABLE, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
+import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, ENTERABLE, TERRA_INFO, TERRA_OPS, TERRA_TOOL, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
 import { lookEditor, Preview } from './creator.ts';
@@ -124,7 +124,8 @@ export class Hud {
     const pad = this.padMode;
     if (this.world.paint) {
       const t = this.world.paint.type;
-      const what = t ? `lay ${PATHS[t - 1].name}` : 'remove paths';
+      const op = this.world.paint.terra;
+      const what = op ? TERRA_INFO[op].name.toLowerCase() : t ? `lay ${PATHS[t - 1].name}` : 'remove paths';
       text = pad ? `Hold Ⓐ and walk to ${what} · Ⓑ to stop` : t ? `Click & drag to ${what} (or E in front of you) · Esc to stop` : `Click & drag to ${what} · Esc to stop`;
     } else if (this.world.ghost) {
       text = this.world.ghost.type === 'build'
@@ -436,7 +437,18 @@ export class Hud {
     pathGrid.append(h('div', { class: 'tile' },
       h('div', { class: 'row' }, h('span', { class: 'ico' }, '🧽'), h('div', {}, h('div', { class: 'nm' }, 'Remove paths'), h('div', { class: 'muted' }, 'Materials are refunded'))),
       h('button', { class: 'btn ghost small', onclick: () => { this.close(); this.world.startPaint(0); this.setPrompt(''); } }, 'Eraser')));
-    b.append(h('h3', {}, '🛤️ Paths'), pathGrid, h('h3', { style: 'margin-top:14px' }, '🏗️ Buildings'));
+    // Terraforming – needs the tools and a Town Hall.
+    const terraGrid = h('div', { class: 'grid' });
+    const hall = done('town_hall') > 0 || state.dev;
+    for (const op of TERRA_OPS) {
+      const info = TERRA_INFO[op];
+      const tool = TERRA_TOOL[op] === 'pick' ? 'landscaping_pick' : 'water_spade';
+      const lock = !hall ? 'Needs a Town Hall' : have(tool) < 1 ? `Needs a ${ITEMS[tool].name} (workbench)` : null;
+      terraGrid.append(h('div', { class: `tile${lock ? ' locked' : ''}` },
+        h('div', { class: 'row' }, h('span', { class: 'ico' }, info.icon), h('div', {}, h('div', { class: 'nm' }, info.name), h('div', { class: 'muted' }, lock ?? info.hint))),
+        h('button', { class: 'btn small', disabled: !!lock, onclick: () => { this.close(); this.world.startTerra(op); this.setPrompt(''); } }, 'Use')));
+    }
+    b.append(h('h3', {}, '🛤️ Paths'), pathGrid, h('h3', { style: 'margin-top:14px' }, '⛰️ Terraforming'), terraGrid, h('h3', { style: 'margin-top:14px' }, '🏗️ Buildings'));
 
     const grid = h('div', { class: 'grid' });
     for (const t of BUILDABLE) {

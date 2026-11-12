@@ -8,12 +8,12 @@ import { BUILDINGS, type BuildingType } from './data/buildings.ts';
 import type { TreeSpecies } from './data/biomes.ts';
 import { fbm2D, hashString, Rng } from './rng.ts';
 import {
-  DIRS, Grid, ISLAND_SIZE, Tile, connectPlateaus, smoothLevels, tileAt,
+  DIRS, Grid, LEGACY_ISLAND_SIZE, Tile, connectPlateaus, smoothLevels, tileAt,
   type Building, type IslandLayout, type WorldObject,
 } from './world.ts';
 
 export function generateHarbor(): IslandLayout {
-  const size = ISLAND_SIZE;
+  const size = LEGACY_ISLAND_SIZE; // hand-designed layout
   const seed = hashString('harbor-town-v1');
   const rng = new Rng(seed);
   const tiles = new Uint8Array(size * size);

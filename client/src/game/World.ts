@@ -6,6 +6,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import {
   BIOMES, BUILDINGS, ITEMS, Grid, Tile, TREES, CLIFF, ENTERABLE, daylight, decodeTiles, distToTile, isWaterTile, nearBuilding,
   slideMove, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
+  TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, terraformError, type TerraOp,
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season,
 } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
@@ -114,8 +115,10 @@ export class World {
   cast: { id: string | null; x: number; z: number; bite: boolean; window: number; at: number } | null = null;
   ghost: { group: THREE.Group; type: 'build'; building: BuildingType; tx: number; tz: number; ok: boolean } | { group: THREE.Group; type: 'place'; item: string; rot: number; tx: number; tz: number; ok: boolean } | null = null;
   /** Path painting: type 1..5, or 0 for the eraser. */
-  paint: { type: number; group: THREE.Group; tx: number; tz: number; ok: boolean; down: boolean; last: string } | null = null;
+  paint: { type: number; terra?: TerraOp; dir: number; group: THREE.Group; tx: number; tz: number; ok: boolean; down: boolean; last: string } | null = null;
   onPaint: (x: number, z: number, type: number) => void = () => {};
+  onTerra: (x: number, z: number, op: TerraOp, dir: number) => void = () => {};
+  private terrainTimer: ReturnType<typeof setTimeout> | null = null;
   private pathLayer: THREE.Group | null = null;
   private foliage: THREE.Group | null = null;
   private foliageTimer: ReturnType<typeof setTimeout> | null = null;
@@ -362,6 +365,19 @@ export class World {
     this.foliageTimer = setTimeout(() => this.rebuildFoliage(), ms);
   }
 
+  /** Terraforming: rebuild the terrain mesh (and what sits on it) once a burst of edits settles. */
+  private scheduleTerrain() {
+    if (this.terrainTimer) clearTimeout(this.terrainTimer);
+    this.terrainTimer = setTimeout(() => {
+      this.terrainTimer = null;
+      this.buildTerrain();
+      this.rebuildPaths();
+      this.rebuildFoliage();
+      for (const o of this.objects.values()) this.upsertObjectMesh(o);
+      if (this.gridOverlay) this.toggleGridOverlay(true);
+    }, 70);
+  }
+
   private schedulePaths() {
     if (this.pathTimer) return;
     this.pathTimer = setTimeout(() => {
@@ -378,7 +394,30 @@ export class World {
     box.name = 'box';
     group.add(box);
     this.scene.add(group);
-    this.paint = { type, group, tx: 0, tz: 0, ok: false, down: false, last: '' };
+    this.paint = { type, dir: -1, group, tx: 0, tz: 0, ok: false, down: false, last: '' };
+  }
+
+  /** Terraforming uses the same click-and-drag tile cursor as path painting. */
+  startTerra(op: TerraOp) {
+    this.startPaint(0);
+    const p = this.paint!;
+    p.terra = op;
+    p.type = -1;
+  }
+
+  private paintColor(ok: boolean) {
+    const p = this.paint!;
+    if (!ok) return '#9e9e9e';
+    if (p.terra) return TERRA_INFO[p.terra].color;
+    return p.type ? PATHS[p.type - 1].color : '#ff6b6b';
+  }
+
+  /** Uphill direction for a ramp: away from the player if that fits. */
+  private rampDir(tx: number, tz: number) {
+    if (!this.grid || !this.me) return -1;
+    const dx = tx + 0.5 - this.me.x, dz = tz + 0.5 - this.me.z;
+    const prefer = Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? 1 : 3) : dz > 0 ? 2 : 0;
+    return autoRampDir(this.grid, tx, tz, prefer);
   }
 
   stopPaint() {
@@ -399,6 +438,12 @@ export class World {
 
   private paintOk(tx: number, tz: number) {
     if (!this.grid || !this.me) return false;
+    const op = this.paint!.terra;
+    if (op) {
+      if (distToTile(this.me.x, this.me.z, tx, tz) > TERRA_REACH) return false;
+      this.paint!.dir = op === 'ramp' ? this.rampDir(tx, tz) : -1;
+      return terraformError(this.grid, op, tx, tz, this.paint!.dir) === null;
+    }
     if (distToTile(this.me.x, this.me.z, tx, tz) > PATH_REACH) return false;
     return this.paint!.type ? this.grid.canPave(tx, tz) && this.grid.path(tx, tz) !== this.paint!.type : this.grid.path(tx, tz) > 0;
   }
@@ -409,7 +454,8 @@ export class World {
     const key = `${p.tx},${p.tz}`;
     if (key === p.last) return;
     p.last = key;
-    this.onPaint(p.tx, p.tz, p.type);
+    if (p.terra) this.onTerra(p.tx, p.tz, p.terra, p.dir);
+    else this.onPaint(p.tx, p.tz, p.type);
   }
 
   /**
@@ -447,7 +493,11 @@ export class World {
     p.group.position.set(p.tx, this.grid.surfaceY(p.tx + 0.5, p.tz + 0.5), p.tz);
     const box = p.group.getObjectByName('box') as THREE.Mesh;
     box.visible = this.grid.inBounds(p.tx, p.tz);
-    box.material = mat(!p.ok ? '#9e9e9e' : p.type ? PATHS[p.type - 1].color : '#ff6b6b', { opacity: 0.55 });
+    box.material = mat(this.paintColor(p.ok), { opacity: 0.55 });
+    // Raising previews the new block; everything else is a flat marker.
+    const tall = p.terra === 'raise' && p.ok;
+    box.scale.y = tall ? CLIFF : 0.04;
+    box.position.y = tall ? CLIFF / 2 : 0.03;
   }
 
   private removeMover(m: Mover) {
@@ -631,6 +681,10 @@ export class World {
       case 'board':
         if (this.room) this.room.board = m.posts;
         for (const b of this.buildings.values()) if (b.type === 'billboard') this.upsertBuildingMesh(b);
+        break;
+      case 'terrain':
+        applyTerrain(this.grid!, m.l);
+        this.scheduleTerrain();
         break;
       case 'paths':
         for (const [x, z, t] of m.l) this.grid!.paths[z * this.grid!.size + x] = t;

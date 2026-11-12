@@ -1,7 +1,7 @@
 // Entry point: connects to the server and switches between screens.
 
 import './style.css';
-import { type ServerMessage } from '@hearthwood/shared';
+import { type Action, type ServerMessage } from '@hearthwood/shared';
 import { net } from './net.ts';
 import { set, state } from './state.ts';
 import { World, type Tool } from './game/World.ts';
@@ -37,7 +37,8 @@ function startGame() {
   world = new World(container);
   hud = new Hud(app, world);
   world.onGhostClick = () => confirmGhost();
-  world.onPaint = (x, z, type) => queuePaint(x, z, type);
+  world.onPaint = (x, z, type) => queuePaint(x, z, type ? { k: 'pave', x, z, path: type } : { k: 'unpave', x, z });
+  world.onTerra = (x, z, op, dir) => queuePaint(x, z, { k: 'terra', op, x, z, dir });
   // Debug handle for the browser console when the server runs in dev mode.
   if (state.dev) (window as unknown as Record<string, unknown>).hearthwood = { world, hud, state, net };
   bindKeys();
@@ -57,11 +58,11 @@ function confirmGhost() {
 }
 
 // Path painting: tiles are queued and sent at a steady pace the server accepts.
-const paintQueue: [number, number, number][] = [];
+const paintQueue: [number, number, Action][] = [];
 let paintTimer: ReturnType<typeof setInterval> | null = null;
 let lastPaintError = 0;
-function queuePaint(x: number, z: number, type: number) {
-  if (!paintQueue.some((p) => p[0] === x && p[1] === z)) paintQueue.push([x, z, type]);
+function queuePaint(x: number, z: number, action: Action) {
+  if (!paintQueue.some((p) => p[0] === x && p[1] === z)) paintQueue.push([x, z, action]);
   if (paintTimer) return;
   paintTimer = setInterval(async () => {
     const next = paintQueue.shift();
@@ -70,14 +71,13 @@ function queuePaint(x: number, z: number, type: number) {
       paintTimer = null;
       return;
     }
-    const [px, pz, pt] = next;
-    const r = await net.act(pt ? { k: 'pave', x: px, z: pz, path: pt } : { k: 'unpave', x: px, z: pz });
+    const r = await net.act(next[2]);
     if (!r.ok && r.err && Date.now() - lastPaintError > 1500) {
       lastPaintError = Date.now();
       hud?.toast(r.err, 'warn');
-      if (/materials|shovel/i.test(r.err)) paintQueue.length = 0;
+      if (/materials|shovel|Pick|Spade|Town Hall/i.test(r.err)) paintQueue.length = 0;
     }
-  }, 70);
+  }, paintQueue[0]?.[2].k === 'terra' ? 130 : 70);
 }
 
 /** Context-sensitive interaction (E / Space). */

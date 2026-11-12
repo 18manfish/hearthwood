@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
-  BIOMES, BUILDINGS, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
+  BIOMES, BUILDINGS, ISLAND_SIZE, LEGACY_ISLAND_SIZE, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
   ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, interiorSpecFor, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
@@ -251,6 +251,7 @@ export class Game {
     const seed = hashString(`${p.id}:${now}`);
     const island: IslandRecord = {
       gen: 2,
+      size: ISLAND_SIZE,
       id: `i_${crypto.randomBytes(6).toString('hex')}`,
       ownerId: p.id,
       name: this.sanitize(m.islandName),
@@ -268,7 +269,7 @@ export class Game {
       nextId: 100000,
     };
     // Materialise the generated layout into the record.
-    const tmp = new Room({ id: island.id, kind: 'island', name: island.name, biome: island.biome, ownerId: p.id, ownerName: p.name, geo: p.geo, seed, elevation: true });
+    const tmp = new Room({ id: island.id, kind: 'island', name: island.name, biome: island.biome, ownerId: p.id, ownerName: p.name, geo: p.geo, seed, elevation: true, size: ISLAND_SIZE });
     island.objects = [...tmp.objects.values()];
     island.buildings = [...tmp.buildings.values()];
     this.store.addIsland(island);
@@ -311,7 +312,7 @@ export class Game {
     migrateIsland(rec);
     const room = new Room({
       id: rec.id, kind: 'island', name: rec.name, biome: rec.biome, ownerId: rec.ownerId, ownerName: owner?.name ?? null,
-      geo: owner?.geo ?? { lat: 47, lon: 8, tz: 'UTC' }, seed: rec.seed, record: rec, elevation: (rec.gen ?? 1) >= 2,
+      geo: owner?.geo ?? { lat: 47, lon: 8, tz: 'UTC' }, seed: rec.seed, record: rec, elevation: (rec.gen ?? 1) >= 2, size: rec.size ?? LEGACY_ISLAND_SIZE,
     });
     room.onBuildingComplete = (r, b) => this.buildingCompleted(r, b);
     this.rooms.set(id, room);

@@ -29,7 +29,7 @@ export type ItemTag =
   | 'plant'
   | 'tool';
 
-export type ToolKind = 'axe' | 'shovel' | 'rod';
+export type ToolKind = 'axe' | 'shovel' | 'rod' | 'pick' | 'spade';
 
 export interface ItemDef {
   id: string;
@@ -64,6 +64,8 @@ const list: ItemDef[] = [
   { id: 'fishing_rod', name: 'Fishing Rod', icon: '🎣', category: 'tool', tags: ['tool'], sell: 40, stack: 1, tool: { kind: 'rod', power: 1 } },
   { id: 'iron_axe', name: 'Iron Axe', icon: '🪓', category: 'tool', tags: ['tool'], sell: 200, buy: 600, stack: 1, tool: { kind: 'axe', power: 2 } },
   { id: 'iron_shovel', name: 'Iron Shovel', icon: '⛏️', category: 'tool', tags: ['tool'], sell: 200, buy: 600, stack: 1, tool: { kind: 'shovel', power: 2 } },
+  { id: 'landscaping_pick', name: 'Landscaping Pick', icon: '⛰️', category: 'tool', tags: ['tool'], sell: 250, stack: 1, tool: { kind: 'pick', power: 1 } },
+  { id: 'water_spade', name: 'Waterscaping Spade', icon: '💧', category: 'tool', tags: ['tool'], sell: 250, stack: 1, tool: { kind: 'spade', power: 1 } },
   { id: 'pro_rod', name: 'Pro Fishing Rod', icon: '🎣', category: 'tool', tags: ['tool'], sell: 180, buy: 550, stack: 1, tool: { kind: 'rod', power: 2 } },
 
   // ── Foraged food ─────────────────────────────────────────

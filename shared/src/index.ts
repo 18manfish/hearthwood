@@ -3,6 +3,7 @@ export * from './schema.ts';
 export * from './env.ts';
 export * from './world.ts';
 export * from './harbor.ts';
+export * from './terraform.ts';
 export * from './interiors.ts';
 export * from './protocol.ts';
 export * from './data/items.ts';

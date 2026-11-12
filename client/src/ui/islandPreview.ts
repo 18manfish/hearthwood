@@ -41,7 +41,7 @@ function islandScene(biome: BiomeId, season: Season) {
     scene.add(m);
   }
   const water = new THREE.Mesh(
-    new THREE.PlaneGeometry(90, 90).rotateX(-Math.PI / 2),
+    new THREE.PlaneGeometry(layout.size * 2, layout.size * 2).rotateX(-Math.PI / 2),
     new THREE.MeshStandardMaterial({ color: waterColor(biome), transparent: true, opacity: 0.85, roughness: 0.3 }),
   );
   water.position.set(layout.size / 2, -0.12, layout.size / 2);
@@ -76,8 +76,10 @@ export class IslandPreviewer {
   }
 
   private draw(scene: THREE.Scene, center: number, angle: number) {
-    const r = 52;
-    this.camera.position.set(center + Math.sin(angle) * r, 42, center + Math.cos(angle) * r);
+    // Framing scales with the island (tuned for 48-tile islands).
+    const k = center / 24;
+    const r = 52 * k;
+    this.camera.position.set(center + Math.sin(angle) * r, 42 * k, center + Math.cos(angle) * r);
     this.camera.lookAt(center, 0, center);
     // The previews are shown flat (no world bend).
     const prev = bendStrength.value;

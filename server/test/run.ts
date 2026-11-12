@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION,
+  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 
@@ -18,6 +18,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearthwood-test-'));
 
 let failures = 0;
+/** Terraformed tile (and its island) – checked in the save file at the end. */
+let terraSpot: [number, number] | null = null;
+let terraIsland = '';
 function check(cond: unknown, label: string) {
   if (cond) console.log(`  ✔ ${label}`);
   else {
@@ -83,6 +86,7 @@ class Bot {
     }
     if (m.t === 'inv') this.inv = m.inv;
     if (m.t === 'paths') for (const [x, z, t] of m.l) this.grid.paths[z * this.grid.size + x] = t;
+    if (m.t === 'terrain') applyTerrain(this.grid, m.l);
     if (m.t === 'welcome' || m.t === 'self') this.self = m.you;
     if (m.t === 'corr') {
       this.x = m.x;
@@ -343,6 +347,58 @@ async function main() {
     const q = await A.wait('quest', (m) => m.q.chapter === 2, 3000).catch(() => null);
     check(!!q, 'chapter 1 complete → chapter 2 (starter house)');
 
+    console.log('Terraforming');
+    check(A.grid.size === ISLAND_SIZE && ISLAND_SIZE === 72, 'new islands are 72×72 (1.5× the old 48)');
+    {
+      // Find a flat, empty 5×6 patch near the player: T gets raised, R below it becomes a ramp.
+      const g = A.grid;
+      const flat = (x: number, z: number) => g.tile(x, z) === Tile.Ground && g.level(x, z) === 0 && g.occupied[z * g.size + x] === 0 && !g.reserved[z * g.size + x] && !g.path(x, z);
+      let spot: [number, number] | null = null;
+      for (let r = 2; r <= 5 && !spot; r++)
+        for (let dz = -r; dz <= r && !spot; dz++)
+          for (let dx = -r; dx <= r && !spot; dx++) {
+            const x = Math.floor(A.x) + dx, z = Math.floor(A.z) + dz;
+            let ok = true;
+            for (let zz = z - 2; zz <= z + 3 && ok; zz++) for (let xx = x - 2; xx <= x + 2 && ok; xx++) ok = flat(xx, zz);
+            const away = (tx: number, tz: number) => Math.hypot(tx + 0.5 - A.x, tz + 0.5 - A.z) > 1.3;
+            if (ok && away(x, z) && away(x, z + 1) && distToTile(A.x, A.z, x, z) <= TERRA_REACH - 0.5 && distToTile(A.x, A.z, x, z + 1) <= TERRA_REACH - 0.5) spot = [x, z];
+          }
+      check(!!spot, 'found a flat spot to terraform');
+      if (spot) {
+        const [tx, tz] = spot;
+        const noTool = await A.act({ k: 'terra', op: 'raise', x: tx, z: tz });
+        check(!noTool.ok && /Pick/.test(noTool.err ?? ''), 'terraforming needs a Landscaping Pick');
+        A.send({ t: 'dev', cmd: 'give', args: ['landscaping_pick', '1'] });
+        A.send({ t: 'dev', cmd: 'give', args: ['water_spade', '1'] });
+        await sleep(300);
+        const me = await A.act({ k: 'terra', op: 'raise', x: Math.floor(A.x), z: Math.floor(A.z) });
+        check(!me.ok, 'cannot raise the ground you stand on');
+        const up = await A.act({ k: 'terra', op: 'raise', x: tx, z: tz });
+        check(up.ok, `cliff raised${up.ok ? '' : ` (${up.err})`}`);
+        await A.wait('terrain', (m) => m.l.some((c) => c[0] === tx && c[1] === tz)).catch(() => null);
+        check(A.grid.level(tx, tz) === 1, 'raised tile is one level up');
+        const twice = await A.act({ k: 'terra', op: 'raise', x: tx, z: tz });
+        check(!twice.ok, 'cliffs rise one level at a time (neighbours first)');
+        const ramp = await A.act({ k: 'terra', op: 'ramp', x: tx, z: tz + 1, dir: 0 });
+        check(ramp.ok, `ramp built up to the new cliff${ramp.ok ? '' : ` (${ramp.err})`}`);
+        await sleep(150);
+        check(A.grid.ramp(tx, tz + 1) === 0 && A.grid.stepOk(tx, tz + 1, tx, tz), 'the ramp connects both levels');
+        check(!(await A.act({ k: 'terra', op: 'lower', x: tx, z: tz })).ok, 'cannot lower a ramp landing');
+        check((await A.act({ k: 'terra', op: 'unramp', x: tx, z: tz + 1 })).ok, 'ramp removed');
+        check((await A.act({ k: 'terra', op: 'lower', x: tx, z: tz })).ok, 'cliff lowered again');
+        check((await A.act({ k: 'terra', op: 'water', x: tx, z: tz })).ok, 'pond dug');
+        await sleep(150);
+        check(A.grid.tile(tx, tz) === Tile.Pond, 'tile is water now');
+        check((await A.act({ k: 'terra', op: 'land', x: tx, z: tz })).ok, 'pond filled in');
+        const far = await A.act({ k: 'terra', op: 'raise', x: Math.min(A.grid.size - 3, Math.floor(A.x) + 15), z: Math.floor(A.z) });
+        check(!far.ok, 'terraforming far away is refused');
+        // Leave one raised tile so persistence can be checked after a reload.
+        check((await A.act({ k: 'terra', op: 'raise', x: tx, z: tz })).ok, 'raised again (kept for the save check)');
+        terraSpot = spot;
+        terraIsland = A.room.id;
+      }
+    }
+
     console.log('Tent interior');
     const islandId = A.room.id;
     const tent = A.room.buildings.find((b) => b.type === 'tent')!;
@@ -599,6 +655,11 @@ async function main() {
     await sleep(400);
     const saved = fs.readdirSync(path.join(dataDir, 'islands')).length;
     check(saved >= 3, `state persisted to disk (${saved} islands)`);
+    if (terraSpot) {
+      const rec = JSON.parse(fs.readFileSync(path.join(dataDir, 'islands', `${terraIsland}.json`), 'utf8'));
+      const lv = rec.terrain ? decodeTiles(rec.terrain.levels)[terraSpot[1] * (rec.size ?? 48) + terraSpot[0]] : -1;
+      check(rec.size === 72 && lv === 1, 'terraformed terrain is saved with the island');
+    }
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
   console.log(failures ? `\n${failures} check(s) failed` : '\nAll checks passed');

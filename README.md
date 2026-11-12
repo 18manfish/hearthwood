@@ -98,6 +98,18 @@ Mushrooms (and rare glowing *glowcaps*) appear under trees, and flowers pop up i
 
 Adjacent tiles of the same path join up, and open edges get soft, bevelled borders. You can walk on paths and place furniture on them, but trees, flowers and respawning resources never appear on a path.
 
+**Terraforming.** Once your island has a Town Hall, craft a **Landscaping Pick** (3 iron ore, 8 stone, 4 wood) and a **Waterscaping Spade** (a shovel, 2 iron ore, 4 clay) at the workbench. Then open the Build menu (B), go to ⛰️ Terraforming, and click or drag tiles just like paths:
+
+| Tool | What it does |
+| --- | --- |
+| ⛰️ Raise / 🕳️ Lower cliff | Moves ground up or down one level, to a maximum of 3. Cliffs grow one level at a time and need solid ground all around them. |
+| 📐 Build / 🚧 Remove ramp | Adds a slope up to a cliff one level higher, or turns a ramp back into flat ground. |
+| 💧 Dig / 🟫 Fill water | Digs a pond tile at ground level, away from cliffs, or fills pond water back in. |
+
+The tile must be empty, and nobody can be standing on it. Reshaped terrain is saved with your island.
+
+New islands are **72 × 72 tiles**, 1.5× larger than before, with proportionally more trees, rocks and bushes. Islands created before this change keep their 48 × 48 layout so nothing on them moves.
+
 **Grass, foliage & footprints.** Grass tufts, tall grass, ferns, pond reeds, wildflowers, fallen leaves and snow clumps all sway in the wind. They follow the biome and the season:
 - **Spring:** fresh green with lots of flowers.
 - **Summer:** lush and tall.

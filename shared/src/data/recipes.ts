@@ -29,6 +29,8 @@ export const RECIPES: RecipeDef[] = [
   { id: 'lamp', output: 'lamp', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 3 }, { item: 'iron_ore', qty: 2 }] },
   { id: 'picnic_table', output: 'picnic_table', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 14 }, { item: 'fiber', qty: 4 }] },
   { id: 'iron_axe', output: 'iron_axe', qty: 1, station: 'workbench', ingredients: [{ item: 'stone_axe', qty: 1 }, { item: 'iron_ore', qty: 4 }, { item: 'wood', qty: 3 }] },
+  { id: 'landscaping_pick', output: 'landscaping_pick', qty: 1, station: 'workbench', ingredients: [{ item: 'iron_ore', qty: 3 }, { item: 'stone', qty: 8 }, { item: 'wood', qty: 4 }] },
+  { id: 'water_spade', output: 'water_spade', qty: 1, station: 'workbench', ingredients: [{ item: 'shovel', qty: 1 }, { item: 'iron_ore', qty: 2 }, { item: 'clay', qty: 4 }] },
   { id: 'iron_shovel', output: 'iron_shovel', qty: 1, station: 'workbench', ingredients: [{ item: 'shovel', qty: 1 }, { item: 'iron_ore', qty: 4 }, { item: 'wood', qty: 3 }] },
 
   // Campfire cooking.

@@ -1,4 +1,4 @@
-import { ITEMS, maxStack, type Ingredient } from '@hearthwood/shared';
+import { ITEMS, maxStack, type Ingredient, type ToolKind } from '@hearthwood/shared';
 import type { PlayerRecord } from '../types.ts';
 
 export function count(p: PlayerRecord, id: string) {
@@ -69,7 +69,7 @@ export function resolveIngredients(p: PlayerRecord, ings: Ingredient[], times: n
 }
 
 /** Best tool power the player owns for a kind (0 = none). */
-export function toolPower(p: PlayerRecord, kind: 'axe' | 'shovel' | 'rod'): number {
+export function toolPower(p: PlayerRecord, kind: ToolKind): number {
   let best = 0;
   for (const id of Object.keys(p.inv)) {
     const t = ITEMS[id]?.tool;

@@ -7,8 +7,9 @@ import { isItem } from './data/items.ts';
 import { isBuildingType, type BuildingType } from './data/buildings.ts';
 import type { Building, WorldObject } from './world.ts';
 import type { InteriorStyle, InteriorTheme } from './interiors.ts';
+import { TERRA_OPS, type TerrainChange } from './terraform.ts';
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -77,6 +78,7 @@ export const actionParser = s.union('k', {
   takeMail: s.obj({ k: s.lit('takeMail'), mailId: id }),
   pave: s.obj({ k: s.lit('pave'), x: tileCoord, z: tileCoord, path: s.int(1, 5) }),
   unpave: s.obj({ k: s.lit('unpave'), x: tileCoord, z: tileCoord }),
+  terra: s.obj({ k: s.lit('terra'), op: s.oneOf(TERRA_OPS), x: tileCoord, z: tileCoord, dir: s.opt(s.int(-1, 3)) }),
 });
 export type Action = ReturnType<typeof actionParser>;
 export type ActionKind = Action['k'];
@@ -283,6 +285,7 @@ export type ServerMessage =
   | { t: 'bDel'; ids: string[] }
   | { t: 'vAdd'; v: VillagerView[] }
   | { t: 'paths'; l: [number, number, number][] }
+  | { t: 'terrain'; l: TerrainChange[] }
   | { t: 'board'; posts: BoardPost[] }
   | { t: 'self'; you: SelfView }
   | { t: 'inv'; inv: Record<string, number>; coins: number }

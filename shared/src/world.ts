@@ -6,7 +6,12 @@ import { BIOMES, TREES, type BiomeId, type TreeSpecies } from './data/biomes.ts'
 import { BUILDINGS, NON_BLOCKING, type BuildingType } from './data/buildings.ts';
 import { fbm2D, Rng } from './rng.ts';
 
-export const ISLAND_SIZE = 48;
+/** Side length of new home islands (tiles). */
+export const ISLAND_SIZE = 72;
+/** Islands created before the 1.5× enlargement keep their original size. */
+export const LEGACY_ISLAND_SIZE = 48;
+/** Highest cliff level players can terraform to. */
+export const MAX_LEVEL = 3;
 /** Height of one cliff level in world units. */
 export const CLIFF = 1.0;
 
@@ -138,6 +143,13 @@ export class Grid {
     this.occupied = new Uint8Array(size * size);
     this.reserved = new Uint8Array(size * size);
     this.paths = paths ?? new Uint8Array(size * size);
+    this.recomputeReserved();
+  }
+
+  /** Mark ramps plus their approach and landing tiles as reserved. */
+  recomputeReserved() {
+    const size = this.size;
+    this.reserved.fill(0);
     for (let z = 0; z < size; z++)
       for (let x = 0; x < size; x++) {
         const d = this.ramp(x, z);
@@ -148,6 +160,15 @@ export class Grid {
           if (this.inBounds(tx, tz)) this.reserved[tz * size + tx] = 1;
         }
       }
+  }
+
+  /** Change one tile's terrain (terraforming). Call `recomputeReserved` afterwards. */
+  setTerrain(x: number, z: number, tile: Tile, level: number, ramp: number) {
+    if (!this.inBounds(x, z)) return;
+    const i = this.idx(x, z);
+    this.tiles[i] = tile;
+    this.levels[i] = level;
+    this.ramps[i] = ramp;
   }
 
   private idx(x: number, z: number) {
@@ -342,13 +363,17 @@ export interface GenOptions {
   variant?: 'home' | 'shared' | 'tour';
   /** Cliffs & ramps (new islands). */
   elevation?: boolean;
+  /** Side length in tiles (default ISLAND_SIZE). Features scale with it. */
+  size?: number;
 }
 
 /** Deterministic island generation from a seed. */
 export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = {}): IslandLayout {
   const variant = opts.variant ?? 'home';
   const def = BIOMES[biome];
-  const size = ISLAND_SIZE;
+  const size = opts.size ?? ISLAND_SIZE;
+  /** Feature scale relative to the original 48-tile islands. */
+  const S = size / LEGACY_ISLAND_SIZE;
   const tiles = new Uint8Array(size * size);
   const levels = new Uint8Array(size * size);
   const ramps = new Uint8Array(size * size);
@@ -361,7 +386,7 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
       const dx = (x + 0.5 - c) / c;
       const dz = (z + 0.5 - c) / c;
       const d = Math.sqrt(dx * dx + dz * dz);
-      const n = fbm2D(seed, x / 9, z / 9, 3) - 0.5;
+      const n = fbm2D(seed, x / (9 * S), z / (9 * S), 3) - 0.5;
       const v = d + n * 0.32;
       tiles[z * size + x] = v < 0.74 ? Tile.Ground : v < 0.83 ? Tile.Shore : Tile.Sea;
     }
@@ -382,22 +407,24 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
 
   // Water features.
   const water = variant === 'shared' ? 'pond' : def.water;
-  if (water === 'pond') carveDisc(c - 9, c - 7, 3.2, Tile.Pond);
+  const oasisX = c - 6 * S, oasisZ = c - 4 * S;
+  if (water === 'pond') carveDisc(c - 9 * S, c - 7 * S, 3.2 * S, Tile.Pond);
   if (water === 'oasis') {
-    carveDisc(c - 6, c - 4, 6.5, Tile.Ground);
-    carveDisc(c - 6, c - 4, 5, Tile.Pond);
+    carveDisc(oasisX, oasisZ, 6.5 * S, Tile.Ground);
+    carveDisc(oasisX, oasisZ, 5 * S, Tile.Pond);
   }
   if (water === 'lagoon') {
-    carveDisc(c + 13, c - 2, 7, Tile.Shore, true);
-    carveDisc(c + 14, c - 2, 5.5, Tile.Sea, false);
+    carveDisc(c + 13 * S, c - 2 * S, 7 * S, Tile.Shore, true);
+    carveDisc(c + 14 * S, c - 2 * S, 5.5 * S, Tile.Sea, false);
   }
   if (water === 'river') {
-    let rx = c - 4 + rng.range(-3, 3);
-    for (let z = 0; z <= c - 8; z++) {
+    let rx = c - 4 * S + rng.range(-3, 3);
+    const end = c - 8 * S;
+    for (let z = 0; z <= end; z++) {
       rx += (fbm2D(seed + 77, z / 6, 0, 2) - 0.5) * 1.6;
       for (let w = -1; w <= 0; w++) if (get(Math.floor(rx) + w, z) !== Tile.Sea) set(Math.floor(rx) + w, z, Tile.Pond);
     }
-    carveDisc(rx, c - 8, 2.6, Tile.Pond);
+    carveDisc(rx, end, 2.6 * S, Tile.Pond);
   }
 
   // Dock on the south coast, straight below the centre.
@@ -452,9 +479,9 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
       const clump = fbm2D(seed + 31, x / 7, z / 7, 2);
       let p = density * (0.4 + clump * 1.6) * 2.2;
       if (water === 'oasis') {
-        const ddx = x + 0.5 - (c - 6), ddz = z + 0.5 - (c - 4);
+        const ddx = x + 0.5 - oasisX, ddz = z + 0.5 - oasisZ;
         const d = Math.sqrt(ddx * ddx + ddz * ddz);
-        if (d > 5 && d < 7.5) p = 0.35;
+        if (d > 5 * S && d < 7.5 * S) p = 0.35;
       }
       if (!rng.chance(p) || nearTaken(x, z)) continue;
       const species = rng.weighted(def.trees, (t) => t.weight)!.species;
@@ -473,17 +500,18 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
     return null;
   };
 
-  const rocks = variant === 'tour' ? def.rockCount + 6 : variant === 'shared' ? 2 : def.rockCount;
+  const area = S * S;
+  const rocks = Math.round((variant === 'tour' ? def.rockCount + 6 : variant === 'shared' ? 2 : def.rockCount) * area);
   for (let i = 0; i < rocks; i++) {
     const p = randomFreeGround(true, 2);
     if (p) place({ kind: 'rock', ...p, hits: 0 });
   }
-  const bushes = variant === 'tour' ? 18 : variant === 'shared' ? 4 : 12;
+  const bushes = Math.round((variant === 'tour' ? 18 : variant === 'shared' ? 4 : 12) * area);
   for (let i = 0; i < bushes; i++) {
     const p = randomFreeGround(true, 1);
     if (p) place({ kind: 'bush', ...p, ripe: true });
   }
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < Math.round(6 * area); i++) {
     const p = randomFreeGround(false, 1);
     if (p) place({ kind: 'flower', ...p });
   }
@@ -523,7 +551,8 @@ function carveCliffs(
     for (let x = 0; x < size; x++) {
       if (T(x, z) !== Tile.Ground) continue;
       const dx = (x + 0.5 - c) / c, dz = (z + 0.5 - c) / c;
-      const v = fbm2D(seed + 500, x / 10, z / 10, 3) + (0.6 - Math.sqrt(dx * dx + dz * dz)) * 0.55;
+      const S = size / LEGACY_ISLAND_SIZE;
+      const v = fbm2D(seed + 500, x / (10 * S), z / (10 * S), 3) + (0.6 - Math.sqrt(dx * dx + dz * dz)) * 0.55;
       score[idx(x, z)] = v;
       scores.push(v);
     }
@@ -656,7 +685,8 @@ export function connectPlateaus(seed: number, size: number, tiles: Uint8Array, l
     return true;
   };
 
-  for (let iter = 0; iter < 24; iter++) {
+  // (48-tile islands keep their original iteration budget so saved islands regenerate identically.)
+  for (let iter = 0, n = size > 48 ? 40 : 24; iter < n; iter++) {
     const g = grid();
     // Flood fill from spawn using the same step rules as movement.
     const reach = new Uint8Array(size * size);

@@ -3,7 +3,7 @@
 // receive each other's updates (interest management).
 
 import {
-  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot,
+  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot, applyTerrain, type TerrainChange,
   Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
   type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
 } from '@hearthwood/shared';
@@ -38,6 +38,8 @@ export interface RoomOptions {
   record?: IslandRecord;
   /** Cliffs & ramps. */
   elevation?: boolean;
+  /** Island side length (defaults to the current ISLAND_SIZE). */
+  size?: number;
   /** For interiors: the building we're inside and the room we came from. */
   interior?: { spec: InteriorSpec; buildingId: string; parentId: string };
   /** Hand-designed shared locations. */
@@ -76,6 +78,8 @@ export class Room {
   seasonOverride: Season | null = null;
   emptySince = Date.now();
   dirty = false;
+  /** Terrain was reshaped since load (so it gets saved). */
+  private terraformed = false;
   dayKey = '';
   /** Callbacks the game layer hooks into. */
   onBuildingComplete?: (room: Room, b: Building) => void;
@@ -100,7 +104,15 @@ export class Room {
       this.layout = generateHarbor();
     } else {
       const variant = o.kind === 'island' ? 'home' : o.kind === 'shared' ? 'shared' : 'tour';
-      this.layout = generateIsland(o.seed, o.biome, { variant, elevation: o.elevation });
+      this.layout = generateIsland(o.seed, o.biome, { variant, elevation: o.elevation, size: o.size });
+      // Terraformed islands keep their reshaped terrain.
+      const t = o.record?.terrain;
+      const n = this.layout.size * this.layout.size;
+      if (t && t.tiles.length === n && t.levels.length === n && t.ramps.length === n) {
+        this.layout.tiles.set(decodeTiles(t.tiles));
+        this.layout.levels.set(decodeTiles(t.levels));
+        this.layout.ramps.set(decodeTiles(t.ramps));
+      }
     }
     const paths = !o.interior && o.record?.paths && o.record.paths.length === this.layout.size * this.layout.size ? decodeTiles(o.record.paths) : this.layout.paths;
     this.grid = new Grid(this.layout.size, this.layout.tiles, this.layout.levels, this.layout.ramps, paths);
@@ -285,6 +297,14 @@ export class Room {
     this.touch();
   }
 
+  /** Reshape terrain (already validated) and tell everyone in the room. */
+  setTerrain(changes: TerrainChange[]) {
+    applyTerrain(this.grid, changes);
+    this.terraformed = true;
+    this.broadcast({ t: 'terrain', l: changes });
+    this.touch();
+  }
+
   completedCount(type: string, now = Date.now()) {
     let n = 0;
     for (const b of this.buildings.values()) if (b.type === type && b.completeAt <= now) n++;
@@ -313,6 +333,9 @@ export class Room {
       this.record.lastDayKey = this.dayKey;
       this.record.respawns = this.respawns;
       this.record.paths = encodeTiles(this.grid.paths);
+      if (this.terraformed || this.record.terrain) {
+        this.record.terrain = { tiles: encodeTiles(this.grid.tiles), levels: encodeTiles(this.grid.levels), ramps: encodeTiles(this.grid.ramps) };
+      }
     }
     this.dirty = false;
     return true;

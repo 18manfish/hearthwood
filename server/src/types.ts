@@ -63,6 +63,10 @@ export interface IslandRecord {
   interiors?: Record<string, WorldObject[]>;
   /** Path type per tile, as digits (0 = none). */
   paths?: string;
+  /** Side length in tiles; missing = 48 (islands made before the enlargement). */
+  size?: number;
+  /** Reshaped terrain (terraforming), encoded like `paths`. */
+  terrain?: { tiles: string; levels: string; ramps: string };
   /** Pending resource respawns. */
   respawns?: Respawn[];
   id: string;

@@ -119,6 +119,14 @@ export function seasonFor(model: SeasonModel, month: number, lat: number): Seaso
   }
 }
 
+/** The seasons each climate model cycles through. */
+export const SEASONS_BY_MODEL: Record<SeasonModel, Season[]> = {
+  temperate: ['spring', 'summer', 'autumn', 'winter'],
+  boreal: ['spring', 'summer', 'autumn', 'winter'],
+  tropical: ['wet', 'dry'],
+  arid: ['hot', 'cool'],
+};
+
 /** Collapse a season into the four-season palette used for visuals. */
 export function visualSeason(season: Season): 'spring' | 'summer' | 'autumn' | 'winter' {
   switch (season) {
@@ -160,10 +168,13 @@ export interface Environment {
  * Compute the environment for a location. Deterministic: every observer of the
  * same island at the same moment gets the same weather.
  */
-export function computeEnvironment(ms: number, biome: BiomeId, geo: GeoInfo, seedKey: string): Environment {
+export function computeEnvironment(ms: number, biome: BiomeId, geo: GeoInfo, seedKey: string, override?: { season?: Season }): Environment {
   const lt = localTime(ms, geo.tz);
   const def = BIOMES[biome];
-  const season = seasonFor(def.seasonModel, lt.month, geo.lat);
+  // A season override (dev tool) only applies if it exists in this climate.
+  const season = override?.season && SEASONS_BY_MODEL[def.seasonModel].includes(override.season)
+    ? override.season
+    : seasonFor(def.seasonModel, lt.month, geo.lat);
   const block = Math.floor(lt.hour / 3);
   // Weather persists: 55% chance to carry over the previous block.
   const keep = new Rng(hashMany('keep', seedKey, lt.dayKey, block)).chance(0.55);

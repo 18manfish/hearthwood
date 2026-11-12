@@ -9,7 +9,7 @@ import {
 import { net } from '../net.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
-import { DEV_COMMANDS, type DevCommand, type Weather } from '@hearthwood/shared';
+import { DEV_COMMANDS, SEASONS_BY_MODEL, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
 import { lookEditor, Preview } from './creator.ts';
@@ -284,11 +284,30 @@ export class Hud {
     const toggle = (label: string, get: () => boolean, set: (v: boolean) => void) =>
       h('label', { class: 'row', style: 'cursor:pointer' }, h('input', { type: 'checkbox', checked: get(), onchange: (e: Event) => set((e.target as HTMLInputElement).checked) }), label);
     const weathers: Weather[] = ['clear', 'cloudy', 'rain', 'storm', 'snow', 'fog', 'sandstorm', 'heatwave'];
+    const dev = (cmd: DevCommand, ...args: (string | number)[]) => net.send({ t: 'dev', cmd, args: args.map(String) });
     const visWeather = h('select', { onchange: (e: Event) => { const v = (e.target as HTMLSelectElement).value; debug.weather = v ? (v as Weather) : null; } },
       h('option', { value: '' }, '(real weather)'), weathers.map((x) => h('option', { value: x, selected: debug.weather === x }, x))) as HTMLSelectElement;
 
+    // Season: on a dev server this changes the island for real (fish, weather,
+    // visuals for everyone); otherwise it is a local visual preview.
+    const model = state.room ? BIOMES[state.room.biome].seasonModel : 'temperate';
+    const seasonSel = h('select', {
+      onchange: (e: Event) => {
+        const v = (e.target as HTMLSelectElement).value;
+        if (state.dev) {
+          debug.season = null;
+          dev('season', v || 'normal');
+        } else debug.season = v ? (v as Season) : null;
+      },
+    }, h('option', { value: '' }, `(real: ${state.env?.season ?? '?'})`),
+      SEASONS_BY_MODEL[model].map((x) => h('option', { value: x, selected: (debug.season ?? null) === x }, x))) as HTMLSelectElement;
+    const seasonRow = h('div', { class: 'row' }, h('b', { style: 'width:150px' }, 'Season'), seasonSel,
+      h('span', { class: 'muted' }, state.dev ? 'applies to the whole island (fish, weather, visuals)' : 'visual preview only'));
+
     body.append(
       stats,
+      h('h3', {}, 'Season'),
+      seasonRow,
       h('h3', {}, 'Client (visual only)'),
       slider('World bend', 0, 0.03, 0.0005, () => debug.bend, (v) => (debug.bend = v)),
       slider('Time of day shift', -12, 12, 0.25, () => debug.timeOffsetH, (v) => (debug.timeOffsetH = v), (v) => `${v >= 0 ? '+' : ''}${v}h`),
@@ -299,7 +318,6 @@ export class Hud {
         toggle('Collision grid', () => debug.grid, (v) => { debug.grid = v; w.toggleGridOverlay(v); })),
     );
 
-    const dev = (cmd: DevCommand, ...args: (string | number)[]) => net.send({ t: 'dev', cmd, args: args.map(String) });
     const give = h('select', {}, ITEM_LIST.map((it) => h('option', { value: it.id }, `${it.icon} ${it.name}`))) as HTMLSelectElement;
     const qty = h('input', { type: 'number', value: '10', min: 1, max: 999, style: 'width:70px' }) as HTMLInputElement;
     const srvWeather = h('select', {}, h('option', { value: 'normal' }, '(normal)'), weathers.map((x) => h('option', { value: x }, x))) as HTMLSelectElement;

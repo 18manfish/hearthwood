@@ -5,10 +5,10 @@ import crypto from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   BIOMES, BUILDINGS, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
-  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, Rng, nearBuilding, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
+  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, Rng, nearBuilding, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
-  type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather,
+  type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
 import type { Store } from '../store.ts';
@@ -736,6 +736,22 @@ export class Game {
         room.invalidateEnv();
         room.broadcast({ t: 'env', env: room.env() });
         reply(room.weatherOverride ? `Weather set to ${w} for 30 minutes.` : 'Weather back to normal.');
+        break;
+      }
+      case 'season': {
+        // Applies to the island and its interiors (and is reflected in fish, weather & visuals).
+        const base = room?.interior ? this.rooms.get(room.interior.parentId) : room;
+        if (!room || !base) return;
+        const model = BIOMES[base.biome].seasonModel;
+        const want = args[0] as Season;
+        const valid = SEASONS_BY_MODEL[model].includes(want);
+        for (const r of this.rooms.values()) {
+          if (r !== base && r.interior?.parentId !== base.id) continue;
+          r.seasonOverride = valid ? want : null;
+          r.invalidateEnv();
+          r.broadcast({ t: 'env', env: r.env() });
+        }
+        reply(valid ? `Season forced to ${want}.` : `Season back to the real calendar (valid here: ${SEASONS_BY_MODEL[model].join(', ')}).`);
         break;
       }
       case 'tp': {

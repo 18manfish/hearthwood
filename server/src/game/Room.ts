@@ -5,7 +5,7 @@
 import {
   BIOMES, TREES, Grid, computeEnvironment, daysBetween, encodeTiles, generateIsland, generateInterior, findFreeSpot,
   Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
-  type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type InteriorStyle,
+  type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type InteriorStyle, type Season,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
@@ -65,6 +65,8 @@ export class Room {
   private envAt = 0;
   private completed = new Set<string>();
   weatherOverride: { weather: Weather; until: number } | null = null;
+  /** Dev tool: force a season (until cleared or the server restarts). */
+  seasonOverride: Season | null = null;
   emptySince = Date.now();
   dirty = false;
   dayKey = '';
@@ -288,7 +290,7 @@ export class Room {
 
   env(now = Date.now()): EnvView {
     if (this.envCache && now - this.envAt < 10000 && now >= this.envAt) return this.envCache;
-    const e = computeEnvironment(now, this.biome, this.geo, `${this.envKey()}:${this.seed}`);
+    const e = computeEnvironment(now, this.biome, this.geo, `${this.envKey()}:${this.seed}`, { season: this.seasonOverride ?? undefined });
     if (this.weatherOverride) {
       if (now < this.weatherOverride.until) e.weather = this.weatherOverride.weather;
       else this.weatherOverride = null;

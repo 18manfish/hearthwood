@@ -30,10 +30,11 @@ In VS Code, press **Ctrl+Shift+B** to run the dev task. Use **F5 → "Debug game
 
 **Developer debug menu: press F3 (or `)**, or click 🐞.
 - **Live stats:** FPS, ping, position, tile, cliff level, ramp, room, environment and draw calls.
+- **Season picker:** lists only the seasons that exist in the island's climate. On a `dev:fast` server it changes the real season of the island and its interiors, so fish, weather and visuals all change for everyone there. Otherwise it's a visual preview for you only.
 - **Client-only visual controls:** world-bend strength, a time-of-day shift, a weather preview, and shadows, labels and collision-grid overlay on or off.
 - **Server buttons (need `dev:fast`):** material kit, coins, day +1/+7/+30, finish construction and growth, respawn resources now, give any item, set the island's weather, teleport to spawn.
 
-The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /tp /clearinv`.
+The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /season /tp /clearinv`.
 
 ---
 
@@ -74,7 +75,7 @@ Mushrooms (and rare glowing *glowcaps*) appear under trees, and flowers pop up i
 **Villagers.** Talk to each villager once a day and give them one gift a day. They love some specific items, like whole categories of others (shown as a hint) and dislike some. Their friendship goes through five levels, and they give you a present at each new level.
 
 ### Locations, time & weather
-- Pick one of 7 starting biomes: **Grassland, Tropical Island, Nordic Forest, Edge of the Forest, Desert Oasis, Jungle or Desert**. The world map also has three **shared hubs** open to everyone: Harbor Town Square, Aurora Lookout and Sunset Bazaar.
+- The location picker shows a small 3D preview of an example island for each biome, in the season it has right now. Pick one of 7 starting biomes: **Grassland, Tropical Island, Nordic Forest, Edge of the Forest, Desert Oasis, Jungle or Desert**. The world map also has three **shared hubs** open to everyone: Harbor Town Square, Aurora Lookout and Sunset Bazaar.
 - **Sun and calendar** come from the island owner's real location. You can share it with the browser's geolocation, which is rounded to about 50 km; otherwise it's estimated from your time zone. The sun's real position drives day and night, dawn, dusk and stars.
 - **Climate** comes from the biome. Temperate and Nordic islands have four seasons (Nordic winters are long, with snow and auroras). The tropics have wet and dry seasons, and deserts have hot and cool seasons. Weather (clear, cloudy, rain, storm, snow, fog, sandstorm or heatwave) is the same for everyone on an island at the same moment. It's computed from the island seed, the date and a 3-hour block.
 

@@ -2,12 +2,13 @@
 
 import * as THREE from 'three';
 import {
-  BIOMES, CLOTH_COLORS, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, NAME_RE, SKIN_TONES, guessGeoFromTimeZone,
-  type BiomeId, type Gender, type Look,
+  BIOMES, BIOME_IDS, CLOTH_COLORS, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, NAME_RE, SKIN_TONES, guessGeoFromTimeZone, computeEnvironment,
+  type BiomeId, type Gender, type Look, type Season,
 } from '@hearthwood/shared';
 import { makePlayer, animateRig, type Rig } from '../game/characters.ts';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
+import { IslandPreviewer } from './islandPreview.ts';
 
 export interface CreatorResult {
   name: string;
@@ -166,21 +167,51 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
         { maximumAge: 3600_000, timeout: 8000 },
       );
     } }, '📍 Use my location');
-    const mapHolder = h('div', { class: 'map-wrap', style: 'width:min(1000px,92vw)' });
+    const mapHolder = h('div', { class: 'map-wrap', style: 'width:var(--pick-w)' });
+    const previewer = new IslandPreviewer();
+    // The season each location has right now, for the player's calendar & hemisphere.
+    const seasonOf = (b: BiomeId): Season => computeEnvironment(Date.now(), b, geo, 'preview').season;
+    const thumbs = h('div', { class: 'thumbs' });
+    const thumbEls = new Map<BiomeId, HTMLElement>();
+    for (const id of BIOME_IDS) {
+      const img = h('div', { class: 'thumb-img' }, h('span', { class: 'muted' }, '…'));
+      const card = h('button', { class: 'thumb', title: BIOMES[id].name, onclick: () => { biome = id; drawMap(); drawInfo(); } },
+        img, h('div', { class: 'thumb-name' }, `${BIOME_ICON[id]} ${BIOMES[id].name}`));
+      thumbEls.set(id, card);
+      thumbs.appendChild(card);
+    }
+    // Render thumbnails one per frame so the page stays responsive.
+    const queue = [...BIOME_IDS];
+    const next = () => {
+      const id = queue.shift();
+      if (!id || !thumbs.isConnected) return;
+      const img = thumbEls.get(id)!.querySelector('.thumb-img')!;
+      clear(img);
+      img.appendChild(h('img', { src: previewer.thumbnail(id, seasonOf(id)), alt: BIOMES[id].name }));
+      requestAnimationFrame(next);
+    };
+    requestAnimationFrame(next);
+    const markThumbs = () => thumbEls.forEach((el, id) => el.classList.toggle('sel', id === biome));
     const drawInfo = () => {
       clear(info);
+      markThumbs();
       if (!biome) {
         info.append(h('h3', {}, 'Where will you settle?'), h('p', { class: 'muted' }, 'Pick a region on the map. Each has its own trees, fish, weather and seasons. The ⭐ locations are shared by every player.'));
         return;
       }
       const b = BIOMES[biome];
+      const season = seasonOf(biome);
+      const live = h('div', { class: 'preview-live' });
+      previewer.show(live, biome, season);
       info.append(
+        live,
+        h('div', { class: 'muted', style: 'margin:4px 0 6px' }, `Example island · right now it’s ${season} there`),
         h('h3', {}, `${BIOME_ICON[biome]} ${b.name}`),
         h('p', {}, b.blurb),
         h('div', { class: 'muted' }, `Seasons: ${b.seasonModel === 'tropical' ? 'wet & dry' : b.seasonModel === 'arid' ? 'hot & cool' : b.seasonModel === 'boreal' ? 'long winters' : 'four seasons'}`),
         h('div', { class: 'col', style: 'margin-top:10px' },
-          h('button', { class: 'btn', onclick: () => onDone({ name, islandName, gender, look, biome: biome!, geo }) }, `Settle on ${islandName}!`),
-          h('button', { class: 'btn ghost small', onclick: () => stepLook() }, '← Back'),
+          h('button', { class: 'btn', onclick: () => { previewer.dispose(); onDone({ name, islandName, gender, look, biome: biome!, geo }); } }, `Settle on ${islandName}!`),
+          h('button', { class: 'btn ghost small', onclick: () => { previewer.dispose(); stepLook(); } }, '← Back'),
         ),
       );
     };
@@ -191,9 +222,10 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
     };
     drawMap();
     drawInfo();
-    screen.appendChild(h('div', { class: 'col', style: 'align-items:center' },
+    screen.appendChild(h('div', { class: 'col', style: 'align-items:center;margin:auto;padding:16px 0' },
       h('div', { class: 'title', style: 'font-size:30px' }, 'Choose your starting location'),
       mapHolder,
+      thumbs,
       h('div', { class: 'row' }, locBtn, geoNote),
     ));
   };

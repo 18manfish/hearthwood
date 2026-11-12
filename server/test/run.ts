@@ -284,13 +284,16 @@ async function main() {
     for (let i = 0; i < 4; i++) felled = (await A.act({ k: 'chop', id: t2.id })).msg === 'Timber!' || felled;
     check(felled && A.objects.get(t2.id)?.kind === 'stump', 'tree felled into a stump after 4 hits');
     check((await A.act({ k: 'dig', id: t2.id })).ok && !A.objects.has(t2.id), 'stump dug up');
-    const r2rock = A.nearest('rock', (o) => !o.hits)!;
-    await A.walkTo(r2rock.x, r2rock.z);
+    const rocks = [...A.objects.values()].filter((o) => o.kind === 'rock' && !o.hits).sort((p, q) => Math.hypot(p.x - A.x, p.z - A.z) - Math.hypot(q.x - A.x, q.z - A.z));
+    let r2rock = rocks[0];
+    for (const r of rocks) if (await A.walkTo(r.x, r.z)) { r2rock = r; break; }
     let crumbled = false;
     for (let i = 0; i < 8 && !crumbled; i++) crumbled = (await A.act({ k: 'hit', id: r2rock.id })).msg === 'The rock crumbled away.';
     check(crumbled && !A.objects.has(r2rock.id), 'depleted rock disappears');
-    const bush = A.nearest('bush')!;
-    await A.walkTo(bush.x, bush.z);
+    // Nearest bush we can actually walk to (cliffs may be in the way).
+    const bushes = [...A.objects.values()].filter((o) => o.kind === 'bush').sort((p, q) => Math.hypot(p.x - A.x, p.z - A.z) - Math.hypot(q.x - A.x, q.z - A.z));
+    let bush = bushes[0];
+    for (const b of bushes) if (await A.walkTo(b.x, b.z)) { bush = b; break; }
     const picked = await A.act({ k: 'forage', id: bush.id });
     check(picked.ok && !A.objects.has(bush.id), 'picked bush disappears');
     // Block the bush's old spot with furniture so the respawn must move.
@@ -454,6 +457,14 @@ async function main() {
     C.send({ t: 'map' });
     const map = await C.wait('map');
     check(map.islands.some((i) => i.mine) && !map.islands.some((i) => i.name === 'Alice Isle'), 'map hides non-public islands from strangers');
+
+    console.log('Dev season override');
+    A.send({ t: 'dev', cmd: 'season', args: ['winter'] });
+    const envW = await A.wait('env', (m) => m.env.season === 'winter').catch(() => null);
+    check(!!envW, 'dev command forces the island season');
+    A.send({ t: 'dev', cmd: 'season', args: ['wet'] });
+    const envN = await A.wait('env').catch(() => null);
+    check(envN?.env.season !== 'wet', 'season not valid for the climate is refused (back to real calendar)');
 
     console.log('Abuse protection');
     for (let i = 0; i < 200; i++) C.send({ t: 'ping', ct: i });

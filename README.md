@@ -158,6 +158,8 @@ Visitors can walk around, chat, fish and befriend your villagers, but only the o
 
 ## Architecture
 
+Full guide with diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ```
 hearthwood/
 ├─ shared/        Pure TypeScript used by both sides (no I/O)

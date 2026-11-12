@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import {
   BIOMES, Grid, generateIsland, hashString, visualSeason, type BiomeId, type Season,
 } from '@hearthwood/shared';
-import { buildTerrainMesh, waterColor } from '../game/terrain.ts';
+import { buildDocks, buildTerrainMesh, waterColor } from '../game/terrain.ts';
 import { buildingModel, objectModel } from '../game/models.ts';
 import { bendStrength } from '../game/bend.ts';
 
@@ -28,6 +28,7 @@ function islandScene(biome: BiomeId, season: Season) {
   const snowy = snowyFor(biome, season);
   const terrain = buildTerrainMesh(grid, { biome, season, vs, snowy, pad: 3 });
   scene.add(terrain);
+  scene.add(buildDocks(grid));
   const def = BIOMES[biome];
   for (const o of layout.objects) {
     const m = objectModel(o, season, vs, snowy, def.bushColor, def.bushItem);

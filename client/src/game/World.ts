@@ -9,7 +9,7 @@ import {
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season,
 } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
-import { buildTerrainMesh, waterColor } from './terrain.ts';
+import { buildDocks, buildTerrainMesh, waterColor } from './terrain.ts';
 import { buildPaths, disposePaths, setPathSnow } from './paths.ts';
 import { buildFoliage, disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
@@ -162,19 +162,26 @@ export class World {
     this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#ffffff', size: 1.2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false }));
     this.scene.add(this.stars);
 
-    // Aurora ribbons.
+    // Northern lights: curtains of light hung in the sky band above the
+    // curved horizon. They live in camera space (always in view, behind the
+    // land) and ripple slowly.
     this.aurora = new THREE.Group();
+    const curtainTex = auroraTexture();
+    const tints = ['#5dffa8', '#3cf0c0', '#9d7dff'];
     for (let i = 0; i < 3; i++) {
-      const g = new THREE.PlaneGeometry(160, 26, 40, 1);
-      const pos = g.attributes.position as THREE.BufferAttribute;
-      for (let v = 0; v < pos.count; v++) pos.setZ(v, Math.sin(pos.getX(v) * 0.06 + i) * 10);
-      const m = new THREE.MeshBasicMaterial({ color: i === 1 ? '#7dffb2' : '#3cf0a0', transparent: true, opacity: 0, side: THREE.DoubleSide, fog: false, depthWrite: false, blending: THREE.AdditiveBlending });
+      const g = new THREE.PlaneGeometry(420, 70, 90, 1);
+      const tex = curtainTex.clone();
+      tex.needsUpdate = true;
+      const m = new THREE.MeshBasicMaterial({ map: tex, color: tints[i], transparent: true, opacity: 0, side: THREE.DoubleSide, fog: false, depthWrite: false, blending: THREE.AdditiveBlending });
       const mesh = new THREE.Mesh(g, m);
-      mesh.position.set(0, 55 + i * 6, -110 - i * 8);
-      mesh.rotation.x = -0.25;
+      mesh.position.set(-30 + i * 40, 30 + i * 12, -220 - i * 25);
+      mesh.renderOrder = -10;
+      mesh.frustumCulled = false;
+      mesh.userData.base = Float32Array.from((g.attributes.position as THREE.BufferAttribute).array as Float32Array);
       this.aurora.add(mesh);
     }
-    this.scene.add(this.aurora);
+    this.camera.add(this.aurora);
+    this.scene.add(this.camera);
 
     // Weather particles.
     const N = 1600;
@@ -466,6 +473,7 @@ export class World {
       this.terrain.geometry.dispose();
     }
     const m = buildTerrainMesh(this.grid, { biome: this.room.biome, ...this.visual(), interior: this.room.interior });
+    m.add(buildDocks(this.grid)); // boardwalks & piers ride along with the terrain mesh
     this.terrain = m;
     this.world.add(m);
     (this.water.material as THREE.MeshStandardMaterial).color.set(waterColor(this.room.biome));
@@ -518,7 +526,8 @@ export class World {
     const prev = this.bldMeshes.get(b.id);
     if (prev) this.world.remove(prev);
     const flagUp = b.type === 'mailbox' && this.room?.ownerId === state.self?.id && state.mail.length > 0;
-    const mesh = buildingModel(b, net.serverNow(), this.room?.interior ?? 'cabin', { flagUp });
+    const notes = b.type === 'billboard' ? state.room?.board?.length ?? 0 : 0;
+    const mesh = buildingModel(b, net.serverNow(), this.room?.interior ?? 'cabin', { flagUp, notes });
     const y = b.type === 'dock' ? 0 : this.room?.kind === 'interior' ? baseHeight(Tile.Floor) : baseHeight(Tile.Ground) + (this.grid?.level(b.x, b.z) ?? 0) * CLIFF;
     mesh.position.set(b.x + b.w / 2, y, b.z + b.h / 2);
     mesh.userData.done = b.completeAt <= net.serverNow();
@@ -594,6 +603,10 @@ export class World {
   handle(m: ServerMessage) {
     if (!this.room) return;
     switch (m.t) {
+      case 'board':
+        if (this.room) this.room.board = m.posts;
+        for (const b of this.buildings.values()) if (b.type === 'billboard') this.upsertBuildingMesh(b);
+        break;
       case 'paths':
         for (const [x, z, t] of m.l) this.grid!.paths[z * this.grid!.size + x] = t;
         this.schedulePaths();
@@ -832,7 +845,7 @@ export class World {
       consider({ kind: 'villager', id, label: `Talk to ${def.name}` }, v.x - px, v.z - pz, 2.2);
     }
     for (const b of this.buildings.values()) {
-      if (!nearBuilding(b, px, pz, 1.7)) continue;
+      if (BUILDINGS[b.type].decor || !nearBuilding(b, px, pz, 1.7)) continue;
       const done = b.completeAt <= net.serverNow();
       const def = BUILDINGS[b.type];
       const label = !done ? `${def.name} (under construction)`
@@ -841,7 +854,8 @@ export class World {
         : b.type === 'exit' ? 'Go outside'
         : b.type === 'bed' ? 'Rest'
         : b.type === 'chest' ? 'Open storage chest'
-        : b.type === 'mailbox' ? (this.room.ownerId === state.self?.id ? `Check mailbox${state.mail.length ? ` (${state.mail.length})` : ''}` : `Leave ${this.room.ownerName ?? 'them'} a letter`)
+        : b.type === 'mailbox' ? (this.room.kind === 'shared' ? 'Send a letter' : this.room.ownerId === state.self?.id ? `Check mailbox${state.mail.length ? ` (${state.mail.length})` : ''}` : `Leave ${this.room.ownerName ?? 'them'} a letter`)
+        : b.type === 'billboard' ? `Read the billboard${this.room.board?.length ? ` (${this.room.board.length})` : ''}`
         : `Use ${def.name}`;
       const cx = Math.max(b.x, Math.min(px, b.x + b.w)), cz = Math.max(b.z, Math.min(pz, b.z + b.h));
       consider({ kind: 'building', b, label }, cx - px, cz - pz, 1.8);
@@ -922,13 +936,17 @@ export class World {
     const fx = this.me?.x ?? 24, fz = this.me?.z ?? 24;
     const fy = this.me ? this.groundY(this.me.x, this.me.z) : 0;
     const target = new THREE.Vector3(fx, fy + 0.5, fz);
-    const desired = new THREE.Vector3(fx, fy + this.camDist * 0.85, fz + this.camDist * 0.78);
+    // Outdoors the camera sits lower (~36°) so the rolling-log horizon and a
+    // band of sky show at the top; indoors it looks more steeply down.
+    const inside = this.room?.kind === 'interior';
+    const desired = inside
+      ? new THREE.Vector3(fx, fy + this.camDist * 0.85, fz + this.camDist * 0.78)
+      : new THREE.Vector3(fx, fy + this.camDist * 0.66, fz + this.camDist * 0.92);
     this.camera.position.lerp(desired, 1 - Math.exp(-dt * 6));
-    this.camera.lookAt(target.x, target.y, target.z - 0.5);
+    this.camera.lookAt(target.x, target.y, target.z - (inside ? 0.5 : 1.5));
     this.sun.target.position.set(fx, 0, fz);
     this.moon.target.position.set(fx, 0, fz);
     this.stars.position.copy(this.camera.position);
-    this.aurora.position.set(fx, 0, fz);
     this.rain.position.set(fx, fy, fz);
     this.water.position.x = Math.round(fx / 2) * 2;
     this.water.position.z = Math.round(fz / 2) * 2;
@@ -1020,13 +1038,33 @@ export class World {
   }
 
   private animateProps(t: number) {
+    const night = 1 - this.day;
     for (const mesh of this.bldMeshes.values()) {
+      const beam = mesh.getObjectByName('beam');
+      if (beam) {
+        beam.rotation.y = t * 0.9;
+        const bm = (beam.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        bm.opacity = night * 0.22;
+        const ll = mesh.getObjectByName('lighthouse-light') as THREE.PointLight | undefined;
+        if (ll) ll.intensity = night * 6;
+      }
+      const spout = mesh.getObjectByName('spout');
+      if (spout) spout.scale.y = 0.35 + Math.sin(t * 6) * 0.05;
       const flame = mesh.getObjectByName('flame');
       if (flame) {
         flame.scale.y = 0.45 + Math.sin(t * 13) * 0.06 + Math.sin(t * 7.3) * 0.04;
         const l = mesh.getObjectByName('firelight') as THREE.PointLight | undefined;
         if (l) l.intensity = 1.6 + Math.sin(t * 11) * 0.3 + (1 - this.day) * 2.5;
       }
+    }
+    // Moored boats bob on the swell.
+    for (const [id, mesh] of this.objMeshes) {
+      const boat = mesh.getObjectByName('boat');
+      if (!boat) continue;
+      const ph = (id.charCodeAt(id.length - 1) % 7) * 0.9;
+      boat.position.y = Math.sin(t * 1.3 + ph) * 0.03;
+      boat.rotation.z = Math.sin(t * 1.1 + ph) * 0.04;
+      boat.rotation.x = Math.sin(t * 0.8 + ph) * 0.025;
     }
     // Buildings finishing construction while we watch.
     const now = net.serverNow();
@@ -1089,11 +1127,27 @@ export class World {
     // Stars & aurora.
     const clearNight = (1 - d) * (1 - overcast);
     (this.stars.material as THREE.PointsMaterial).opacity = clearNight;
+    const auroraOn = env.aurora ? Math.max(0, clearNight - 0.15) / 0.85 : 0;
+    this.aurora.visible = auroraOn > 0.01;
     for (const [i, a] of this.aurora.children.entries()) {
-      const mm = (a as THREE.Mesh).material as THREE.MeshBasicMaterial;
-      mm.opacity = env.aurora ? clearNight * (0.25 + Math.sin(t * 0.4 + i) * 0.12) : 0;
-      a.position.x = Math.sin(t * 0.05 + i) * 8;
+      const mesh = a as THREE.Mesh;
+      const mm = mesh.material as THREE.MeshBasicMaterial;
+      // Slow pulsing brightness, drifting curtains and rippling folds.
+      mm.opacity = auroraOn * (0.55 + Math.sin(t * 0.35 + i * 2.1) * 0.25 + Math.sin(t * 1.3 + i) * 0.08);
+      if (mm.map) mm.map.offset.x = (t * 0.004 * (i + 1)) % 1;
+      if (!this.aurora.visible) continue;
+      const pos = mesh.geometry.attributes.position as THREE.BufferAttribute;
+      const base = mesh.userData.base as Float32Array;
+      for (let v = 0; v < pos.count; v++) {
+        const x = base[v * 3], y = base[v * 3 + 1];
+        const top = y > 0 ? 1 : 0;
+        pos.setZ(v, Math.sin(x * 0.012 + t * 0.25 + i) * 28 + Math.sin(x * 0.035 - t * 0.6 + i * 3) * 9);
+        pos.setY(v, y + top * Math.sin(x * 0.02 + t * 0.4 + i) * 10);
+      }
+      pos.needsUpdate = true;
     }
+    // A faint green glow on the land under a strong aurora.
+    if (auroraOn > 0) this.hemi.color.lerp(new THREE.Color('#7dffb2'), auroraOn * 0.35);
 
     // Precipitation.
     const kind = w === 'rain' || w === 'storm' ? 'rain' : w === 'snow' ? 'snow' : w === 'sandstorm' ? 'sand' : null;
@@ -1150,6 +1204,32 @@ export class World {
     this.water.visible = false;
     mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }).emissiveIntensity = 0.8;
   }
+}
+
+/** Vertical curtain texture: bright hem fading upwards, with fine rays. */
+function auroraTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  const grad = g.createLinearGradient(0, 128, 0, 0);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.08, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 512, 128);
+  // Rays: vertical streaks of varying strength.
+  g.globalCompositeOperation = 'destination-in';
+  for (let x = 0; x < 512; x += 2) {
+    const a = 0.25 + 0.75 * Math.pow(Math.abs(Math.sin(x * 0.07) * Math.sin(x * 0.013 + 1.3)), 0.6);
+    g.fillStyle = `rgba(0,0,0,${a})`;
+    g.fillRect(x, 0, 2, 128);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 function round2(n: number) {

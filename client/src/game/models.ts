@@ -32,6 +32,18 @@ const G = {
   cyl6: new THREE.CylinderGeometry(1, 1, 1, 6),
   cone: new THREE.ConeGeometry(1, 1, 8),
   cone4: new THREE.ConeGeometry(1, 1, 4),
+  /** Gable roof: triangular prism, ridge along x, 1 wide (x), 1 deep (z), 1 tall. */
+  gable: (() => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.5, 0);
+    sh.lineTo(0.5, 0);
+    sh.lineTo(0, 1);
+    sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false });
+    g.translate(0, 0, -0.5);
+    g.rotateY(Math.PI / 2); // ridge along x, slopes face north/south
+    return g;
+  })(),
   /** Square pyramid with its base edges aligned to x/z, half-width 1. */
   roof: new THREE.ConeGeometry(Math.SQRT2, 1, 4).rotateY(Math.PI / 4),
   sphere: new THREE.SphereGeometry(1, 10, 8),
@@ -253,6 +265,42 @@ export function furnitureModel(item: string, rot = 0): THREE.Object3D {
       g.add(part('cyl', wood, 0.04, 0.9, 0.04, 0, 0.45, 0));
       g.add(part('box', '#d7b98e', 0.6, 0.25, 0.04, 0.1, 0.75, 0));
       break;
+    case 'barrel':
+      g.add(part('cyl', '#9a6a3c', 0.26, 0.62, 0.26, 0, 0.31, 0));
+      g.add(part('cyl', '#a8784a', 0.285, 0.34, 0.285, 0, 0.31, 0));
+      for (const y of [0.1, 0.52]) g.add(part('cyl', '#4a4a4a', 0.27, 0.04, 0.27, 0, y, 0, false));
+      g.add(part('cyl', '#7a5230', 0.24, 0.02, 0.24, 0, 0.62, 0, false));
+      break;
+    case 'crate':
+      g.add(part('box', '#c49a62', 0.6, 0.55, 0.6, 0, 0.275, 0));
+      for (const y of [0.04, 0.51]) for (const z of [-0.29, 0.29]) g.add(part('box', '#8b6338', 0.62, 0.06, 0.04, 0, y, z, false));
+      for (const x of [-0.29, 0.29]) g.add(part('box', '#8b6338', 0.04, 0.55, 0.04, x, 0.275, 0.3, false));
+      const brace = part('box', '#8b6338', 0.04, 0.75, 0.04, 0, 0.275, 0.305, false);
+      brace.rotation.z = 0.8;
+      g.add(brace);
+      break;
+    case 'rowboat': {
+      // Hull tapers to a bow; striped gunwale; bench and oars. Floats at water level.
+      const hulls = ['#e8604c', '#3fa7d6', '#f2c14e', '#59cd90'];
+      const c0 = hulls[Math.abs(Math.floor(rot * 7 + 3)) % hulls.length];
+      const hull = new THREE.Group();
+      hull.add(part('box', '#f5ecd7', 0.62, 0.22, 1.25, 0, 0.12, 0));
+      hull.add(part('box', c0, 0.66, 0.08, 1.29, 0, 0.26, 0));
+      const bow = part('cone4', '#f5ecd7', 0.44, 0.5, 0.44, 0, 0.12, 0.8);
+      bow.rotation.x = Math.PI / 2;
+      bow.rotation.y = Math.PI / 4;
+      bow.scale.set(0.44, 0.5, 0.17);
+      hull.add(bow);
+      hull.add(part('box', '#8b6338', 0.58, 0.04, 0.18, 0, 0.27, 0));
+      for (const sx of [-1, 1]) {
+        const oar = part('box', '#a0703f', 0.04, 0.03, 1.0, sx * 0.42, 0.3, -0.05);
+        oar.rotation.y = sx * 0.35;
+        hull.add(oar);
+      }
+      hull.name = 'boat';
+      g.add(hull);
+      break;
+    }
     default:
       g.add(part('box', wood, 0.5, 0.5, 0.5, 0, 0.25, 0));
   }
@@ -306,7 +354,7 @@ function houseBody(g: THREE.Group, w: number, d: number, wallH: number, wall: st
   }
 }
 
-export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' = 'cabin', opts: { flagUp?: boolean } = {}): THREE.Group {
+export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' = 'cabin', opts: { flagUp?: boolean; notes?: number } = {}): THREE.Group {
   const def = BUILDINGS[b.type];
   const g = new THREE.Group();
   const done = b.completeAt <= now;
@@ -346,6 +394,114 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       g.add(part('box', '#8b5e34', 0.84, 0.12, 0.59, 0, 0.53, 0));
       g.add(part('box', '#f6c445', 0.12, 0.14, 0.04, 0, 0.42, 0.29, false));
       break;
+    case 'shack': {
+      // Colourful plank house with a gable roof, porch light and flower box.
+      const h = hashString(b.id);
+      const walls = ['#e8604c', '#f2c14e', '#3fa7d6', '#59cd90', '#ee6c4d', '#9b5de5', '#f7a072', '#4ecdc4'];
+      const roofs = ['#2b4c7e', '#3d5a80', '#9a3b3b', '#5a7d9a', '#7f5539', '#2a9d8f'];
+      const wall = walls[h % walls.length], roofC = roofs[(h >> 4) % roofs.length];
+      const ww = b.w - 0.35, dd = b.h - 0.5, wh = 1.25;
+      g.add(part('box', '#6d4c2f', ww + 0.2, 0.18, dd + 0.25, 0, 0.09, 0.05)); // porch deck
+      g.add(part('box', wall, ww, wh, dd, 0, 0.18 + wh / 2, 0));
+      // Vertical plank lines + darker corner trims.
+      const plankLine = mat('#000000', { opacity: 0.12 });
+      for (let i = 1; i < 6; i++) g.add(part('box', plankLine, 0.015, wh - 0.05, 0.01, -ww / 2 + (ww / 6) * i, 0.18 + wh / 2, dd / 2 + 0.006, false));
+      for (const sx of [-1, 1]) g.add(part('box', '#5d4037', 0.08, wh, 0.08, (sx * ww) / 2, 0.18 + wh / 2, dd / 2));
+      const roof = part('gable', roofC, ww + 0.45, 0.75, dd + 0.5, 0, 0.18 + wh, 0);
+      g.add(roof);
+      g.add(part('box', '#f5ecd7', ww + 0.5, 0.06, 0.08, 0, 0.18 + wh + 0.74, 0, false)); // ridge cap
+      // Door, window with shutters, flower box, lantern, stove pipe.
+      g.add(part('box', '#6d4c2f', 0.36, 0.72, 0.05, -ww / 4, 0.18 + 0.36, dd / 2 + 0.03));
+      g.add(part('sphere', '#f6c445', 0.03, 0.03, 0.03, -ww / 4 + 0.12, 0.55, dd / 2 + 0.07, false));
+      const win = part('box', mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }), 0.34, 0.3, 0.05, ww / 4, 0.18 + 0.78, dd / 2 + 0.03, false);
+      win.name = 'window';
+      g.add(win);
+      for (const sx of [-1, 1]) g.add(part('box', roofC, 0.1, 0.32, 0.04, ww / 4 + sx * 0.23, 0.96, dd / 2 + 0.05, false));
+      g.add(part('box', '#8b5e34', 0.4, 0.09, 0.12, ww / 4, 0.76, dd / 2 + 0.1, false));
+      for (let i = 0; i < 4; i++) g.add(part('sphere', ['#ff6f91', '#ffd166', '#ffffff', '#c77dff'][(h + i) % 4], 0.045, 0.045, 0.045, ww / 4 - 0.14 + i * 0.09, 0.83, dd / 2 + 0.12, false));
+      const lamp = part('box', mat('#fff3c4', { emissive: '#ffcf6b', ei: 0.2 }), 0.1, 0.14, 0.1, 0.02, 1.15, dd / 2 + 0.12, false);
+      g.add(lamp);
+      g.add(part('cyl', '#9e9e9e', 0.05, 0.5, 0.05, ww / 3, 0.18 + wh + 0.6, -dd / 4));
+      break;
+    }
+    case 'stall': {
+      // Market stall with a striped awning and produce crates.
+      const h = hashString(b.id);
+      const stripe = ['#e8604c', '#3fa7d6', '#59cd90', '#f2c14e'][h % 4];
+      g.add(part('box', '#a0703f', b.w - 0.3, 0.55, 0.55, 0, 0.275, 0.05));
+      g.add(part('box', '#c49a62', b.w - 0.2, 0.06, 0.65, 0, 0.58, 0.05));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(part('box', '#6d4c2f', 0.06, 1.5, 0.06, (sx * (b.w - 0.35)) / 2, 0.75, sz * 0.32));
+      for (let i = 0; i < 6; i++) {
+        const st = part('box', i % 2 ? '#ffffff' : stripe, (b.w - 0.1) / 6, 0.05, 0.95, -b.w / 2 + 0.05 + ((b.w - 0.1) / 6) * (i + 0.5), 1.5, 0.05);
+        st.rotation.x = -0.25;
+        g.add(st);
+      }
+      const goods = [['#e53935', '#ff7043'], ['#f6d743', '#9ccc65'], ['#8ecae6', '#cfd8dc']][h % 3];
+      for (let i = 0; i < 3; i++) {
+        g.add(part('box', '#8b6338', 0.4, 0.12, 0.3, -0.55 + i * 0.55, 0.67, 0.05));
+        for (let k = 0; k < 4; k++) g.add(part('sphere', goods[(i + k) % 2], 0.06, 0.06, 0.06, -0.65 + i * 0.55 + (k % 2) * 0.16, 0.76, -0.02 + Math.floor(k / 2) * 0.12, false));
+      }
+      break;
+    }
+    case 'lighthouse': {
+      // Striped tower, gallery, glowing lamp room and a sweeping beam.
+      for (let i = 0; i < 5; i++) g.add(part('cyl', i % 2 ? '#ffffff' : '#d64541', 0.62 - i * 0.05, 0.62, 0.62 - i * 0.05, 0, 0.31 + i * 0.62, 0));
+      g.add(part('cyl', '#3b3b48', 0.6, 0.08, 0.6, 0, 3.14, 0));
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        g.add(part('box', '#3b3b48', 0.03, 0.25, 0.03, Math.cos(a) * 0.56, 3.3, Math.sin(a) * 0.56, false));
+      }
+      const lampRoom = part('cyl', mat('#fff3c4', { emissive: '#ffcf6b', ei: 0.2 }), 0.32, 0.45, 0.32, 0, 3.42, 0, false);
+      g.add(lampRoom);
+      g.add(part('cone', '#d64541', 0.42, 0.4, 0.42, 0, 3.85, 0));
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(0.9, 9, 12, 1, true).translate(0, -4.5, 0).rotateZ(Math.PI / 2), bend(new THREE.MeshBasicMaterial({ color: '#fff3c4', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })));
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 3.42, 0);
+      pivot.add(beam);
+      pivot.name = 'beam';
+      g.add(pivot);
+      const light = new THREE.PointLight('#ffe2a8', 0, 12, 1.5);
+      light.position.set(0, 3.4, 0);
+      light.name = 'lighthouse-light';
+      g.add(light);
+      g.add(part('box', '#6d4c2f', 0.4, 0.62, 0.05, 0, 0.31, 0.6)); // door
+      break;
+    }
+    case 'fountain': {
+      g.add(part('cyl', '#b8b2a7', 0.95, 0.35, 0.95, 0, 0.175, 0));
+      const water = part('cyl', mat('#6fc3e8', { emissive: '#3fa7d6', ei: 0.15, opacity: 0.85 }), 0.82, 0.04, 0.82, 0, 0.34, 0, false);
+      water.name = 'fwater';
+      g.add(water);
+      g.add(part('cyl', '#a7a196', 0.14, 0.9, 0.14, 0, 0.6, 0));
+      g.add(part('cyl', '#b8b2a7', 0.38, 0.1, 0.38, 0, 1.02, 0));
+      g.add(part('cyl', mat('#6fc3e8', { emissive: '#3fa7d6', ei: 0.15, opacity: 0.85 }), 0.32, 0.03, 0.32, 0, 1.07, 0, false));
+      const spout = part('cone', mat('#bfe6ff', { opacity: 0.6 }), 0.08, 0.35, 0.08, 0, 1.25, 0, false);
+      spout.name = 'spout';
+      g.add(spout);
+      break;
+    }
+    case 'billboard': {
+      // Cork board on posts with a little roof; paper notes appear as players pin them.
+      for (const sx of [-1, 1]) g.add(part('box', '#6d4c2f', 0.1, 1.9, 0.1, sx * 0.85, 0.95, 0));
+      g.add(part('box', '#8b5e34', 1.8, 1.05, 0.08, 0, 1.2, 0.02));
+      g.add(part('box', '#c99a5b', 1.62, 0.88, 0.04, 0, 1.2, 0.07));
+      const roof = part('gable', '#9a3b3b', 2.0, 0.35, 0.4, 0, 1.75, 0.02);
+      g.add(roof);
+      const notes = Math.min(opts.notes ?? 0, 12);
+      const colors = ['#fff8b5', '#ffd6e0', '#cdeffd', '#d9f7c8', '#ffffff'];
+      for (let i = 0; i < notes; i++) {
+        const nh = hashString(`${b.id}:${i}`);
+        const nx = -0.65 + (i % 4) * 0.43 + ((nh % 7) - 3) * 0.01, ny = 1.48 - Math.floor(i / 4) * 0.3;
+        const n = part('box', colors[nh % colors.length], 0.3, 0.22, 0.01, nx, ny, 0.1, false);
+        n.rotation.z = ((nh % 11) - 5) * 0.03;
+        g.add(n);
+        g.add(part('sphere', '#e53935', 0.02, 0.02, 0.02, nx, ny + 0.08, 0.11, false));
+      }
+      const s = emojiSprite('📌', 0.5);
+      s.position.set(0, 2.25, 0.1);
+      g.add(s);
+      break;
+    }
     case 'campfire': {
       for (let i = 0; i < 7; i++) {
         const a = (i / 7) * Math.PI * 2;
@@ -379,8 +535,8 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       g.add(part('cyl', '#7a5230', 0.03, 0.3, 0.03, -0.2, 0.62, 0.05));
       break;
     case 'dock': {
-      for (let i = 0; i < 6; i++) g.add(part('box', i % 2 ? '#8b6b47' : '#9c7a52', b.w - 0.1, 0.08, 0.48, 0, 0.12, -b.h / 2 + 0.25 + i * 0.5));
-      for (const x of [-b.w / 2 + 0.1, b.w / 2 - 0.1]) for (const z of [-b.h / 2 + 0.2, b.h / 2 - 0.2]) g.add(part('cyl', '#5d4037', 0.07, 1.0, 0.07, x, -0.2, z));
+      // The deck itself is part of the boardwalk mesh; add mooring posts and a sign.
+      for (const x of [-b.w / 2 + 0.1, b.w / 2 - 0.1]) g.add(part('cyl', '#5d4037', 0.08, 0.6, 0.08, x, 0.35, b.h / 2 - 0.15));
       const s = emojiSprite('⚓', 0.6);
       s.position.set(0, 1.2, b.h / 2 - 0.3);
       g.add(s);

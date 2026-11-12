@@ -3,9 +3,9 @@
 // receive each other's updates (interest management).
 
 import {
-  BIOMES, TREES, Grid, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot,
+  BIOMES, TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot,
   Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
-  type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type InteriorStyle, type Season,
+  type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type InteriorStyle, type Season, type BoardPost,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
@@ -40,6 +40,8 @@ export interface RoomOptions {
   elevation?: boolean;
   /** For interiors: the building we're inside and the room we came from. */
   interior?: { style: InteriorStyle; buildingId: string; parentId: string };
+  /** Hand-designed shared locations. */
+  design?: 'harbor' | 'aurora';
 }
 
 export class Room {
@@ -53,6 +55,9 @@ export class Room {
   readonly seed: number;
   readonly record?: IslandRecord;
   readonly interior?: RoomOptions['interior'];
+  readonly design?: RoomOptions['design'];
+  /** Billboard notes (shared with the store, so they persist). */
+  board: BoardPost[] | null = null;
   readonly layout: IslandLayout;
   readonly grid: Grid;
   readonly objects = new Map<string, WorldObject>();
@@ -84,13 +89,16 @@ export class Room {
     this.seed = o.seed;
     this.record = o.record;
     this.interior = o.interior;
+    this.design = o.design;
     if (o.interior) {
       this.layout = generateInterior(o.interior.style);
+    } else if (o.design === 'harbor') {
+      this.layout = generateHarbor();
     } else {
       const variant = o.kind === 'island' ? 'home' : o.kind === 'shared' ? 'shared' : 'tour';
       this.layout = generateIsland(o.seed, o.biome, { variant, elevation: o.elevation });
     }
-    const paths = !o.interior && o.record?.paths && o.record.paths.length === this.layout.size * this.layout.size ? decodeTiles(o.record.paths) : undefined;
+    const paths = !o.interior && o.record?.paths && o.record.paths.length === this.layout.size * this.layout.size ? decodeTiles(o.record.paths) : this.layout.paths;
     this.grid = new Grid(this.layout.size, this.layout.tiles, this.layout.levels, this.layout.ramps, paths);
 
     let objs: WorldObject[];
@@ -173,6 +181,7 @@ export class Room {
       canHarvest: this.canHarvest(pid),
       canBuild: this.canBuild(pid),
       canDecorate: this.canDecorate(pid),
+      board: this.board ?? undefined,
     };
   }
 
@@ -301,6 +310,11 @@ export class Room {
   env(now = Date.now()): EnvView {
     if (this.envCache && now - this.envAt < 10000 && now >= this.envAt) return this.envCache;
     const e = computeEnvironment(now, this.biome, this.geo, `${this.envKey()}:${this.seed}`, { season: this.seasonOverride ?? undefined });
+    if (this.design === 'aurora') {
+      // The lookout is famous for its clear, starry nights – and the northern lights.
+      e.aurora = true;
+      if (e.hour >= 15 || e.hour < 8) e.weather = 'clear';
+    }
     if (this.weatherOverride) {
       if (now < this.weatherOverride.until) e.weather = this.weatherOverride.weather;
       else this.weatherOverride = null;

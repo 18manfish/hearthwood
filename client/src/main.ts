@@ -319,6 +319,10 @@ net.on((m: ServerMessage) => {
       hud!.close();
       hud!.closeDialog();
       return;
+    case 'board':
+      world?.handle(m);
+      if (state.room) set('room', state.room); // refresh an open billboard panel
+      return;
     case 'env':
       set('env', m.env);
       world?.handle(m);

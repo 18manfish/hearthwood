@@ -2,6 +2,7 @@ export * from './rng.ts';
 export * from './schema.ts';
 export * from './env.ts';
 export * from './world.ts';
+export * from './harbor.ts';
 export * from './protocol.ts';
 export * from './data/items.ts';
 export * from './data/biomes.ts';

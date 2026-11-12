@@ -24,6 +24,8 @@ export const RECIPES: RecipeDef[] = [
   { id: 'bench', output: 'bench', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 8 }] },
   { id: 'flower_pot', output: 'flower_pot', qty: 1, station: 'workbench', ingredients: [{ item: 'clay', qty: 3 }, { item: 'flower', qty: 1 }] },
   { id: 'signpost', output: 'signpost', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 4 }] },
+  { id: 'barrel', output: 'barrel', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 6 }, { item: 'iron_ore', qty: 1 }] },
+  { id: 'crate', output: 'crate', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 5 }] },
   { id: 'lamp', output: 'lamp', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 3 }, { item: 'iron_ore', qty: 2 }] },
   { id: 'picnic_table', output: 'picnic_table', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 14 }, { item: 'fiber', qty: 4 }] },
   { id: 'iron_axe', output: 'iron_axe', qty: 1, station: 'workbench', ingredients: [{ item: 'stone_axe', qty: 1 }, { item: 'iron_ore', qty: 4 }, { item: 'wood', qty: 3 }] },

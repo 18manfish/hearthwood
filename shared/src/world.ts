@@ -70,6 +70,8 @@ export interface IslandLayout {
   levels: Uint8Array;
   /** Ramp direction + 1 per tile (0 = no ramp). */
   ramps: Uint8Array;
+  /** Pre-laid paths (designed locations). */
+  paths?: Uint8Array;
   objects: WorldObject[];
   buildings: Building[];
   spawn: { x: number; z: number };
@@ -528,6 +530,16 @@ function carveCliffs(
       levels[idx(x, z)] = v > t2 ? 2 : v > t1 ? 1 : 0;
     }
 
+  smoothLevels(size, tiles, levels);
+  connectPlateaus(seed, size, tiles, levels, ramps, spawn);
+}
+
+/** Smooth cliff levels: no plateau touches water/sand, no thin spurs or pits, no tiny plateaus. */
+export function smoothLevels(size: number, tiles: Uint8Array, levels: Uint8Array) {
+  const idx = (x: number, z: number) => z * size + x;
+  const inB = (x: number, z: number) => x >= 0 && z >= 0 && x < size && z < size;
+  const T = (x: number, z: number) => (inB(x, z) ? tiles[idx(x, z)] : Tile.Sea);
+  const Lv = (x: number, z: number) => (inB(x, z) ? levels[idx(x, z)] : 0);
   // 2. Constraints & smoothing.
   for (let pass = 0; pass < 4; pass++) {
     for (let z = 0; z < size; z++)
@@ -587,6 +599,15 @@ function carveCliffs(
     }
   }
 
+}
+
+/** Add ramps until every walkable tile is reachable from the spawn (flatten what can't be reached). */
+export function connectPlateaus(seed: number, size: number, tiles: Uint8Array, levels: Uint8Array, ramps: Uint8Array, spawn: { x: number; z: number }) {
+  const idx = (x: number, z: number) => z * size + x;
+  const inB = (x: number, z: number) => x >= 0 && z >= 0 && x < size && z < size;
+  const T = (x: number, z: number) => (inB(x, z) ? tiles[idx(x, z)] : Tile.Sea);
+  const Lv = (x: number, z: number) => (inB(x, z) ? levels[idx(x, z)] : 0);
+  const c = size / 2;
   // 4. Ramps until everything is reachable (max a handful of iterations).
   const grid = () => new Grid(size, tiles, levels, ramps);
   const tryRamp = (comp: Set<number>): boolean => {

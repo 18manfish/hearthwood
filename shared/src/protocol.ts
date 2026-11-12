@@ -7,7 +7,7 @@ import { isItem } from './data/items.ts';
 import { isBuildingType, type BuildingType } from './data/buildings.ts';
 import type { Building, WorldObject } from './world.ts';
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -118,6 +118,8 @@ export const clientMessageParser = s.union('t', {
   kick: s.obj({ t: s.lit('kick'), id }),
   map: s.obj({ t: s.lit('map') }),
   ping: s.obj({ t: s.lit('ping'), ct: s.num() }),
+  /** Billboard: pin a note / take down one of your own. */
+  board: s.obj({ t: s.lit('board'), op: s.oneOf(['post', 'delete'] as const), text: s.opt(s.str(1, 140)), id: s.opt(id) }),
   /** Developer commands – rejected unless the server runs with DEV_FAST=1. */
   dev: s.obj({ t: s.lit('dev'), cmd: s.oneOf(DEV_COMMANDS), args: s.arr(s.str(0, 40, /^[A-Za-z0-9_.\-]*$/), 4) }),
 });
@@ -184,6 +186,16 @@ export interface RoomView {
   canBuild: boolean;
   /** Place / pick up furniture (own island and its interiors). */
   canDecorate: boolean;
+  /** Notes pinned to this location's billboard (if it has one), newest first. */
+  board?: BoardPost[];
+}
+
+export interface BoardPost {
+  id: string;
+  by: string;
+  name: string;
+  text: string;
+  at: number;
 }
 
 export interface MailView {
@@ -269,6 +281,7 @@ export type ServerMessage =
   | { t: 'bDel'; ids: string[] }
   | { t: 'vAdd'; v: VillagerView[] }
   | { t: 'paths'; l: [number, number, number][] }
+  | { t: 'board'; posts: BoardPost[] }
   | { t: 'self'; you: SelfView }
   | { t: 'inv'; inv: Record<string, number>; coins: number }
   | { t: 'res'; seq: number; ok: boolean; err?: string; msg?: string; gained?: Record<string, number> }

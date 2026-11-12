@@ -18,7 +18,13 @@ export type BuildingType =
   // Interior fixtures (not buildable)
   | 'exit'
   | 'bed'
-  | 'chest';
+  | 'chest'
+  // Shared-location set pieces (not buildable)
+  | 'shack'
+  | 'stall'
+  | 'lighthouse'
+  | 'fountain'
+  | 'billboard';
 
 export interface BuildingDef {
   type: BuildingType;
@@ -39,6 +45,8 @@ export interface BuildingDef {
   description: string;
   /** Not player buildable (e.g. the dock). */
   fixed?: boolean;
+  /** Pure scenery: not interactive. */
+  decor?: boolean;
 }
 
 const shop = (
@@ -112,6 +120,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   exit: fixture('exit', 'Door', '🚪', 1, 1, 'Head back outside.'),
   bed: fixture('bed', 'Bed', '🛏️', 1, 2, 'Have a little rest.'),
   chest: fixture('chest', 'Storage Chest', '🧰', 1, 1, 'Your sell box.'),
+  shack: { ...fixture('shack', 'Harbour House', '🏠', 2, 2, 'A colourful fisher’s house.'), decor: true },
+  stall: { ...fixture('stall', 'Market Stall', '🏪', 2, 1, 'Fresh fish and fruit, every morning.'), decor: true },
+  lighthouse: { ...fixture('lighthouse', 'Lighthouse', '🗼', 2, 2, 'Guides boats home at night.'), decor: true },
+  fountain: { ...fixture('fountain', 'Fountain', '⛲', 2, 2, 'Toss in a coin for luck.'), decor: true },
+  billboard: fixture('billboard', 'Billboard', '📌', 2, 1, 'Pin a note for everyone to read.'),
 };
 
 function fixture(type: BuildingType, name: string, icon: string, w: number, h: number, description: string): BuildingDef {
@@ -122,6 +135,10 @@ function fixture(type: BuildingType, name: string, icon: string, w: number, h: n
 export const ENTERABLE: BuildingType[] = ['tent', 'cabin'];
 /** Fixtures that do not block movement. */
 export const NON_BLOCKING: BuildingType[] = ['dock', 'exit'];
+
+/** Billboard posts. */
+export const BOARD_MAX_POSTS = 60;
+export const BOARD_POST_COOLDOWN_MS = 20_000;
 
 export const BUILDABLE: BuildingType[] = (Object.keys(BUILDINGS) as BuildingType[]).filter((t) => !BUILDINGS[t].fixed);
 
@@ -139,7 +156,7 @@ export function isBuildingType(v: unknown): v is BuildingType {
 /** Shop inventories (coins). */
 export const SHOP_STOCK: Partial<Record<BuildingType, string[]>> = {
   tool_store: ['iron_axe', 'iron_shovel', 'pro_rod', 'sapling'],
-  furniture_store: ['bench', 'lamp', 'flower_pot', 'fence', 'picnic_table', 'gnome'],
+  furniture_store: ['bench', 'lamp', 'flower_pot', 'fence', 'picnic_table', 'barrel', 'crate', 'gnome'],
   clothing_shop: ['straw_hat', 'beanie', 'cap', 'flower_crown'],
 };
 

@@ -95,6 +95,9 @@ const list: ItemDef[] = [
   { id: 'picnic_table', name: 'Picnic Table', icon: '🧺', category: 'furniture', tags: ['furniture', 'cozy'], sell: 100, buy: 500, placeable: true },
   { id: 'gnome', name: 'Garden Gnome', icon: '🧙', category: 'furniture', tags: ['furniture', 'rare'], sell: 150, buy: 800, placeable: true },
   { id: 'signpost', name: 'Signpost', icon: '🪧', category: 'furniture', tags: ['furniture'], sell: 30, placeable: true },
+  { id: 'barrel', name: 'Barrel', icon: '🛢️', category: 'furniture', tags: ['furniture', 'wood'], sell: 40, buy: 220, placeable: true },
+  { id: 'crate', name: 'Wooden Crate', icon: '📦', category: 'furniture', tags: ['furniture', 'wood'], sell: 30, buy: 160, placeable: true },
+  { id: 'rowboat', name: 'Rowboat', icon: '🛶', category: 'furniture', tags: ['furniture', 'rare'], sell: 500, placeable: false },
 
   // ── Clothing ─────────────────────────────────────────────
   { id: 'straw_hat', name: 'Straw Hat', icon: '👒', category: 'clothing', tags: ['clothing'], sell: 50, buy: 250, wear: 'hat', stack: 1, color: '#e8c872' },

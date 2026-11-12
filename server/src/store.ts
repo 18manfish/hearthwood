@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { IslandRecord, PlayerRecord } from './types.ts';
+import type { BoardPost } from '@hearthwood/shared';
 
 export class Store {
   readonly players = new Map<string, PlayerRecord>();
@@ -14,6 +15,9 @@ export class Store {
   private byInvite = new Map<string, string>();
   private dirtyPlayers = new Set<string>();
   private dirtyIslands = new Set<string>();
+  /** Billboard notes per location id. */
+  boards: Record<string, BoardPost[]> = {};
+  private boardsDirty = false;
 
   constructor(private dir: string) {}
 
@@ -37,6 +41,12 @@ export class Store {
       } catch (e) {
         console.error('[store] failed to load island', f, e);
       }
+    }
+    try {
+      const f = path.join(this.dir, 'boards.json');
+      if (fs.existsSync(f)) this.boards = JSON.parse(fs.readFileSync(f, 'utf8'));
+    } catch (e) {
+      console.error('[store] failed to load boards', e);
     }
     console.log(`[store] loaded ${this.players.size} players, ${this.islands.size} islands from ${this.dir}`);
   }
@@ -87,6 +97,9 @@ export class Store {
   markIsland(id: string) {
     this.dirtyIslands.add(id);
   }
+  markBoards() {
+    this.boardsDirty = true;
+  }
 
   flush() {
     for (const id of this.dirtyPlayers) {
@@ -97,6 +110,8 @@ export class Store {
       const i = this.islands.get(id);
       if (i) this.writeAtomic(path.join(this.dir, 'islands', `${id}.json`), i);
     }
+    if (this.boardsDirty) this.writeAtomic(path.join(this.dir, 'boards.json'), this.boards);
+    this.boardsDirty = false;
     this.dirtyPlayers.clear();
     this.dirtyIslands.clear();
   }

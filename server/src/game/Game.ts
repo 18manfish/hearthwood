@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import type { WebSocket } from 'ws';
 import {
   BIOMES, BUILDINGS, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
-  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
+  ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, Rng, nearBuilding, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
   isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
   type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
@@ -190,6 +190,7 @@ export class Game {
         return;
       }
       case 'map': return s.send({ t: 'map', islands: this.mapFor(p) });
+      case 'board': return this.boardOp(s, m.op, m.text, m.id);
       case 'dev': {
         if (!config.devFast) return s.send({ t: 'toast', text: 'Dev commands need the server in dev mode (npm run dev:fast).', kind: 'warn' });
         return this.devCommand(s, m.cmd, m.args);
@@ -334,7 +335,9 @@ export class Game {
     if (existing) return existing;
     const loc = sharedLocation(id);
     if (!loc) return null;
-    const room = new Room({ id: key, kind: 'shared', name: loc.name, biome: loc.biome, ownerId: null, ownerName: null, geo: loc.geo, seed: hashString(key) });
+    const design = id === 'harbor' ? 'harbor' : id === 'aurora' ? 'aurora' : undefined;
+    const room = new Room({ id: key, kind: 'shared', name: loc.name, biome: loc.biome, ownerId: null, ownerName: null, geo: loc.geo, seed: hashString(key), design });
+    if ([...room.buildings.values()].some((b) => b.type === 'billboard')) room.board = this.store.boards[key] ??= [];
     room.slowTick(Date.now());
     this.rooms.set(key, room);
     return room;
@@ -658,6 +661,35 @@ export class Game {
     this.sendFriends(s);
     const os = this.online.get(other.id);
     if (os) this.sendFriends(os);
+  }
+
+  // ── Billboard ───────────────────────────────────────────────────────────
+  private lastPost = new Map<string, number>();
+  private boardOp(s: Session, op: 'post' | 'delete', text?: string, id?: string) {
+    const room = s.room;
+    const p = s.player!;
+    const board = room?.board;
+    if (!room || !board) return s.send({ t: 'toast', text: 'There’s no billboard here.', kind: 'warn' });
+    if (op === 'post') {
+      const bb = [...room.buildings.values()].find((b) => b.type === 'billboard')!;
+      if (!nearBuilding(bb, s.x, s.z, config.buildingReach + 0.5)) return s.send({ t: 'toast', text: 'Walk up to the billboard to pin a note.', kind: 'warn' });
+      const clean = this.sanitize(text ?? '');
+      if (!clean) return;
+      const now = Date.now();
+      const wait = (this.lastPost.get(p.id) ?? 0) + BOARD_POST_COOLDOWN_MS - now;
+      if (wait > 0) return s.send({ t: 'toast', text: `You can pin another note in ${Math.ceil(wait / 1000)}s.`, kind: 'warn' });
+      this.lastPost.set(p.id, now);
+      board.unshift({ id: `n${now.toString(36)}${crypto.randomBytes(3).toString('hex')}`, by: p.id, name: p.name, text: clean, at: now });
+      if (board.length > BOARD_MAX_POSTS) board.length = BOARD_MAX_POSTS;
+      s.send({ t: 'toast', text: '📌 Note pinned to the billboard!', kind: 'good' });
+    } else {
+      const i = board.findIndex((n) => n.id === id);
+      if (i < 0) return;
+      if (board[i].by !== p.id) return s.send({ t: 'toast', text: 'You can only take down your own notes.', kind: 'warn' });
+      board.splice(i, 1);
+    }
+    this.store.markBoards();
+    room.broadcast({ t: 'board', posts: board });
   }
 
   // ── Chat ────────────────────────────────────────────────────────────────

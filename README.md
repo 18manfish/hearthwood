@@ -120,6 +120,16 @@ In snowy winters everyone who walks leaves footprints in the snow, and on beache
 - **Sun and calendar** come from the island owner's real location. You can share it with the browser's geolocation, which is rounded to about 50 km; otherwise it's estimated from your time zone. The sun's real position drives day and night, dawn, dusk and stars.
 - **Climate** comes from the biome. Temperate and Nordic islands have four seasons (Nordic winters are long, with snow and auroras). The tropics have wet and dry seasons, and deserts have hot and cool seasons. Weather (clear, cloudy, rain, storm, snow, fog, sandstorm or heatwave) is the same for everyone on an island at the same moment. It's computed from the island seed, the date and a 3-hour block.
 
+### Shared locations
+- **Harbor Town Square** is a hand-built hillside harbour town.
+  - **Up the hill:** colourful plank houses with gabled roofs sit on two cliff terraces, joined to the town below by wide stairs.
+  - **The plaza:** a brick square with a fountain, market stalls, lanterns and picnic tables. A lily pond with reeds lies beside it.
+  - **The waterfront:** a sandy bay ringed by a wooden boardwalk, with rowboats bobbing in the water. A long pier leads out to the travel dock, and a lighthouse sweeps its beam across the water at night.
+  - **Town mailbox:** send letters and gifts to any of your friends from here.
+  - **Billboard:** pin a note of up to 140 characters for everyone to read (one note every 20 s). Notes are saved, appear live for everyone in town and show up as paper notes pinned to the board. You can take down your own notes, but not other people's. The board keeps the newest 60.
+- **Aurora Lookout** has clear skies every evening and night, with animated northern-light curtains rippling above the horizon. The light also gives the snow a faint green glow. On Nordic islands the aurora appears on clear winter nights.
+- **Sunset Bazaar** is a lantern-lit market on the edge of the desert.
+
 ### Visitors
 In **Island & visitors (V)** you choose who may visit your island:
 - 🔒 Nobody
@@ -140,6 +150,7 @@ hearthwood/
 │     ├─ protocol.ts   Message types + runtime schemas for every client message
 │     ├─ schema.ts     Tiny dependency-free validator (unknown keys are dropped)
 │     ├─ world.ts      Island generation (cliffs & ramps), interiors, level-aware collision, paths
+│     ├─ harbor.ts     Hand-designed Harbor Town Square layout
 │     ├─ env.ts        Solar position, seasons, weather, local time
 │     └─ data/         Items, biomes, buildings, recipes, villagers, chapters
 ├─ server/        Authoritative game server (Node + ws)

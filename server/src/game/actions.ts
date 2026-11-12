@@ -482,9 +482,10 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
   },
 
   mail(ctx, a) {
-    if (ctx.room.kind !== 'island') return fail('Find a mailbox on an island.');
+    if (ctx.room.kind !== 'island' && ctx.room.kind !== 'shared') return fail('Find a mailbox first.');
     if (!nearCompleted(ctx, ['mailbox'])) return fail('Stand next to a mailbox.');
-    if (ctx.room.isOwner(ctx.p.id)) {
+    if (ctx.room.kind === 'shared' || ctx.room.isOwner(ctx.p.id)) {
+      // Your own (or the town's public) mailbox: write to any friend.
       // Your own mailbox: write to any friend.
       if (!ctx.p.friends.includes(a.to)) return fail('You can only send mail to friends.');
     } else if (a.to !== ctx.room.ownerId) {

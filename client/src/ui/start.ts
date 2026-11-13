@@ -14,6 +14,8 @@ export interface NewsItem {
   author: string | null;
   pinned: boolean;
   published: boolean;
+  /** Show just the picture(s) from the body – no icon, title, date or text. */
+  imageOnly?: boolean;
 }
 
 /** The game's logo: a little island with a tree and the name. */
@@ -43,6 +45,15 @@ export function logo(size = 1): HTMLElement {
 }
 
 export function newsCard(n: NewsItem): HTMLElement {
+  if (n.imageOnly) {
+    // Picture only: the box holds just the first picture from the body.
+    const img = renderNewsBody(n.body).querySelector('img');
+    if (img) {
+      img.removeAttribute('class');
+      if (!img.alt) img.alt = n.title;
+      return h('article', { class: `news image-only${n.pinned ? ' pinned' : ''}`, title: n.title }, img);
+    }
+  }
   return h('article', { class: `news${n.pinned ? ' pinned' : ''}` },
     h('header', {}, h('span', { class: 'news-icon' }, n.icon || '📰'), h('div', {},
       h('h3', {}, n.title, n.pinned ? h('span', { class: 'pill', style: 'margin-left:8px' }, '📌 pinned') : null),
@@ -69,7 +80,8 @@ export async function showStart(app: HTMLElement, who: string | null): Promise<v
         h('div', { class: 'row', style: 'justify-content:center;gap:12px' }, play),
         who ? h('div', { class: 'muted', style: 'text-align:center' }, `Logged in as ${who} · `,
           h('a', { href: '#', onclick: async (e: Event) => { e.preventDefault(); await logout(); location.reload(); } }, 'log out')) : null,
-        h('section', { class: 'news-list' }, news.length ? news.map(newsCard) : h('p', { class: 'muted', style: 'text-align:center' }, 'No news yet.')))));
+      ),
+      h('aside', { class: 'news-list' }, news.length ? news.map(newsCard) : h('p', { class: 'muted', style: 'text-align:center' }, 'No news yet.'))));
     setTimeout(() => play.focus());
   });
 }

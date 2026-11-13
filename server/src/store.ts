@@ -37,6 +37,7 @@ export interface NewsRow {
   author: string | null;
   pinned: number;
   published: number;
+  image_only: number;
 }
 
 export interface AuditEntry {
@@ -134,6 +135,10 @@ export class Store {
       audit: p('INSERT INTO audit (at, actor, action, target, detail) VALUES (?, ?, ?, ?, ?)'),
       auditList: p('SELECT * FROM audit ORDER BY id DESC LIMIT ?'),
     };
+
+    // Columns added after the first release.
+    const newsCols = (this.db.prepare('PRAGMA table_info(news)').all() as { name: string }[]).map((c) => c.name);
+    if (!newsCols.includes('image_only')) this.db.exec('ALTER TABLE news ADD COLUMN image_only INTEGER NOT NULL DEFAULT 0');
 
     this.importLegacyJson();
 
@@ -400,15 +405,15 @@ export class Store {
   news(includeDrafts = false): NewsRow[] {
     return this.db.prepare(`SELECT * FROM news ${includeDrafts ? '' : 'WHERE published = 1'} ORDER BY pinned DESC, created DESC LIMIT 50`).all() as unknown as NewsRow[];
   }
-  saveNews(n: { id?: number; title: string; body: string; icon: string; pinned: boolean; published: boolean }, author: string): number {
+  saveNews(n: { id?: number; title: string; body: string; icon: string; pinned: boolean; published: boolean; imageOnly?: boolean }, author: string): number {
     const now = Date.now();
     if (n.id) {
-      this.db.prepare('UPDATE news SET title = ?, body = ?, icon = ?, pinned = ?, published = ?, updated = ?, author = ? WHERE id = ?')
-        .run(n.title, n.body, n.icon, n.pinned ? 1 : 0, n.published ? 1 : 0, now, author, n.id);
+      this.db.prepare('UPDATE news SET title = ?, body = ?, icon = ?, pinned = ?, published = ?, image_only = ?, updated = ?, author = ? WHERE id = ?')
+        .run(n.title, n.body, n.icon, n.pinned ? 1 : 0, n.published ? 1 : 0, n.imageOnly ? 1 : 0, now, author, n.id);
       return n.id;
     }
-    const r = this.db.prepare('INSERT INTO news (title, body, icon, created, updated, author, pinned, published) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(n.title, n.body, n.icon, now, now, author, n.pinned ? 1 : 0, n.published ? 1 : 0);
+    const r = this.db.prepare('INSERT INTO news (title, body, icon, created, updated, author, pinned, published, image_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(n.title, n.body, n.icon, now, now, author, n.pinned ? 1 : 0, n.published ? 1 : 0, n.imageOnly ? 1 : 0);
     return Number(r.lastInsertRowid);
   }
   deleteNews(id: number) {

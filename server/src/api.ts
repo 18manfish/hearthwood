@@ -113,7 +113,7 @@ export function buildApi(game: Game, store: Store): Router {
   });
 
   // ── News boxes on the start screen ─────────────────────────────────────
-  const newsView = (n: NewsRow) => ({ id: n.id, title: n.title, body: n.body, icon: n.icon ?? '📰', created: n.created, updated: n.updated, author: n.author, pinned: !!n.pinned, published: !!n.published });
+  const newsView = (n: NewsRow) => ({ id: n.id, title: n.title, body: n.body, icon: n.icon ?? '📰', created: n.created, updated: n.updated, author: n.author, pinned: !!n.pinned, published: !!n.published, imageOnly: !!n.image_only });
   r.on('GET', '/api/news', () => ({ news: store.news().map(newsView) }));
   r.on('GET', '/api/admin/news', ({ req }) => {
     admin(req);
@@ -127,6 +127,7 @@ export function buildApi(game: Game, store: Store): Router {
       icon: typeof b.icon === 'string' && b.icon.length <= 16 ? b.icon || '📰' : '📰',
       pinned: b.pinned === true,
       published: b.published !== false,
+      imageOnly: b.imageOnly === true,
     };
   };
   r.on('POST', '/api/admin/news', async ({ req }) => {

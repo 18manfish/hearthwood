@@ -144,7 +144,7 @@ table.data tr.sel td { background: #e9f6df; }
 /* News page: narrow list, wide editor. */
 .split-news { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .split-news { grid-template-columns: 1fr; } }
-.news-preview { max-width: 720px; margin: 0 auto; background: #f4efe4; border-radius: 18px; padding: 14px; }
+.news-preview { width: 360px; max-width: 100%; box-sizing: content-box; margin: 0 auto; background: linear-gradient(#bfe8f5, #e9f7d8); border-radius: 18px; padding: 14px; }
 
 /* WYSIWYG editor */
 .wy { border: 2px solid var(--line); border-radius: 14px; background: white; display: flex; flex-direction: column; }

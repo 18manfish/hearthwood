@@ -5,13 +5,15 @@ import '../style.css';
 import '../tools.css';
 import {
   BIOMES, BIOME_IDS, BUILDINGS, DEFAULT_HOTBAR, DIRS, HOTBAR_INFO, HOTBAR_SIZE, HOTBAR_TOOLS, ITEMS, ITEM_LIST, PATHS, PERMITS, TREES, Tile, VILLAGERS,
-  decodeTiles, encodeTiles, villagerDef,
+  FRIENDSHIP_MAX, decodeTiles, encodeTiles, friendshipLevel, villagerDef,
   type Building, type BuildingType, type TreeSpecies, type WorldObject,
 } from '@hearthwood/shared';
 import { api, clearToken, health, loadGameData, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
 import { newsCard, type NewsItem } from '../ui/start.ts';
 import { h, clear } from '../ui/dom.ts';
+import { bodyToEditorHtml } from '../ui/richtext.ts';
+import { createWysiwyg, fileToDataUrl } from './wysiwyg.ts';
 
 const app = document.getElementById('app')!;
 let me: { id: string; username: string | null; name: string; admin: boolean; dev: boolean };
@@ -49,7 +51,13 @@ const parseJson = (t: HTMLTextAreaElement, what: string) => {
 };
 
 // ── Shell ────────────────────────────────────────────────────────────────────
+/** The current page reports unsaved work here, so navigating away can ask first. */
+let unsaved: () => boolean = () => false;
+let currentHash = location.hash;
+
 function shell(active: string, body: HTMLElement) {
+  unsaved = () => false;
+  window.onbeforeunload = null;
   clear(app);
   const nav = (hash: string, label: string) => h('a', { class: `btn small${active === hash ? ' on' : ' ghost'}`, href: `#${hash}` }, label);
   app.append(
@@ -67,10 +75,12 @@ function shell(active: string, body: HTMLElement) {
 }
 
 async function route() {
-  const [page, id] = location.hash.replace(/^#/, '').split('/');
+  currentHash = location.hash;
+  const [page, id, ...rest] = location.hash.replace(/^#/, '').split('/');
   if (page === 'player' && id) return playerPage(id);
   if (page === 'islands') return islandsPage();
-  if (page === 'island' && id) return islandPage(id);
+  if (page === 'island' && id) return islandPage(id, rest[0]);
+  if (page === 'villager' && id && rest[0]) return villagerPage(id, rest[0]);
   if (page === 'audit') return auditPage();
   if (page === 'news') return newsPage(id ? Number(id) : null);
   return playersPage();
@@ -235,7 +245,7 @@ async function islandsPage() {
   const search = input('', { placeholder: 'Search island, owner or id…', style: 'width:300px' });
   const table = h('div', { class: 'scroll' });
   const load = async () => {
-    const r = await call<{ total: number; islands: { id: string; name: string; biome: string; owner: { id: string; name: string }; access: string; size: number; buildings: number; villagers: number; loaded: boolean; visitors: number; createdAt: number }[] }>('GET', `/api/admin/islands?q=${encodeURIComponent(search.value)}`);
+    const r = await call<{ total: number; islands: { id: string; name: string; biome: string; owner: { id: string; name: string }; access: string; size: number; buildings: number; villagers: number; villagerIds?: string[]; loaded: boolean; visitors: number; createdAt: number }[] }>('GET', `/api/admin/islands?q=${encodeURIComponent(search.value)}`);
     if (!r) return;
     clear(table);
     table.append(h('table', { class: 'data' },
@@ -244,7 +254,10 @@ async function islandsPage() {
         h('td', {}, h('b', {}, i.name), h('div', { class: 'muted' }, i.id)),
         h('td', {}, h('a', { href: `#player/${i.owner.id}`, onclick: (e: Event) => e.stopPropagation() }, i.owner.name)),
         h('td', {}, BIOMES[i.biome as keyof typeof BIOMES]?.name ?? i.biome), h('td', {}, `${i.size}×${i.size}`), h('td', {}, i.access),
-        h('td', {}, String(i.buildings)), h('td', {}, String(i.villagers)),
+        h('td', {}, String(i.buildings)),
+        h('td', { style: 'max-width:340px' }, i.villagerIds?.length
+          ? h('div', { class: 'chips' }, i.villagerIds.map((vid) => villagerChip(i.id, vid)))
+          : h('span', { class: 'muted' }, String(i.villagers))),
         h('td', { class: 'muted' }, i.loaded ? `loaded · ${i.visitors} here` : '')))));
   };
   search.oninput = () => load();
@@ -268,13 +281,13 @@ interface IslandView {
 const TILE_NAMES: [number, string][] = [[Tile.Sea, 'Sea'], [Tile.Shore, 'Beach'], [Tile.Ground, 'Ground'], [Tile.Pond, 'Pond'], [Tile.River, 'River'], [Tile.Dock, 'Dock'], [Tile.Ramp, 'Ramp']];
 const OBJ_COLORS: Record<string, string> = { tree: '#2f7d32', stump: '#7a5230', rock: '#8d8f93', bush: '#4f8f3a', mushroom: '#d84315', flower: '#ec6fa0', furniture: '#a0703f', decor: '#a0703f' };
 
-async function islandPage(id: string) {
+async function islandPage(id: string, focus?: string) {
   const v = await call<IslandView>('GET', `/api/admin/islands/${id}`);
   if (!v) return islandsPage();
-  islandEditor(v);
+  islandEditor(v, focus);
 }
 
-function islandEditor(v: IslandView) {
+function islandEditor(v: IslandView, focus?: string) {
   const rec = v.record;
   const size = v.size;
   const biome = BIOMES[rec.biome as keyof typeof BIOMES];
@@ -286,6 +299,8 @@ function islandEditor(v: IslandView) {
   };
   const dirty = new Set<'terrain' | 'paths' | 'objects' | 'buildings' | 'villagers'>();
   let sel: { kind: 'object'; o: WorldObject } | { kind: 'building'; b: Building } | null = null;
+  const focusB = focus ? d.buildings.find((b) => b.id === focus) : undefined;
+  if (focusB) sel = { kind: 'building', b: focusB };
   let tool: 'select' | 'terrain' | 'path' | 'object' | 'building' | 'erase' | 'move' = 'select';
   let cell = Math.max(6, Math.floor(760 / size));
   let nid = 1;
@@ -574,7 +589,7 @@ function islandEditor(v: IslandView) {
   // ── Side panel ───────────────────────────────────────────────────────────
   function drawSide() {
     clear(side);
-    side.append(detailsBox(), selectionBox(), villagersBox(), dangerBox());
+    side.append(villagersBox(), detailsBox(), selectionBox(), dangerBox());
     drawToolbar();
   }
 
@@ -625,7 +640,9 @@ function islandEditor(v: IslandView) {
       const vill = select([['', '– none –'], ...VILLAGERS.map((vd) => [vd.id, `${vd.name} (${vd.species})`] as [string, string])], b.villagerId ?? '');
       box.append(h('div', {}, h('b', {}, `${def.icon} ${def.name}`), h('span', { class: 'muted' }, ` · ${b.id} · ${b.w}×${b.h}`)),
         h('div', { class: 'form', style: 'margin-top:8px' }, field('Position', h('div', { class: 'row' }, x, z)), field('Finished', done),
-          b.type === 'villager_house' ? field('Villager', vill, 'Also add / remove them under Villagers') : null),
+          b.type === 'villager_house' ? field('Villager', vill, 'Also add / remove them under Villagers') : null,
+          b.type === 'villager_house' && b.villagerId && d.villagers.some((x) => x.defId === b.villagerId)
+            ? field('', h('a', { class: 'btn ghost small', href: `#villager/${rec.id}/${b.villagerId}` }, `Open ${villagerDef(b.villagerId)?.name ?? b.villagerId}’s page ›`)) : null),
         h('div', { class: 'row', style: 'margin-top:8px' },
           h('button', { class: 'btn small', onclick: () => {
             b.x = Number(x.value);
@@ -642,23 +659,31 @@ function islandEditor(v: IslandView) {
   }
 
   function villagersBox() {
-    const box = h('div', { class: 'box' }, h('h3', {}, `🦊 Villagers (${d.villagers.length})`));
+    const box = h('div', { class: 'box' }, h('h3', {}, `🦊 Villagers on this island (${d.villagers.length})`));
+    if (!d.villagers.length) box.append(h('p', { class: 'muted', style: 'margin:0' }, 'Nobody has moved in yet.'));
+    const list = h('div', { class: 'vlist' });
     for (const vr of d.villagers) {
       const def = villagerDef(vr.defId);
-      const fr = textarea(vr.friendship, 3);
-      box.append(h('div', { class: 'col', style: 'border-top:1px solid var(--line);padding-top:8px;margin-top:8px' },
-        h('div', { class: 'row' }, h('b', {}, `${def?.name ?? vr.defId}`), h('span', { class: 'muted' }, `${def?.species ?? ''} · house ${vr.houseId}`), h('span', { style: 'flex:1' }),
-          h('button', { class: 'btn ghost small', onclick: () => {
-            d.villagers.splice(d.villagers.indexOf(vr), 1);
-            const house = d.buildings.find((b) => b.id === vr.houseId);
-            if (house) { house.villagerId = undefined; dirty.add('buildings'); }
-            dirty.add('villagers');
-            drawSide();
-            draw();
-          } }, 'Move out')),
-        h('div', { class: 'muted' }, 'Friendship per player id: { pts, talkDay, giftDay }'), fr,
-        h('button', { class: 'btn ghost small', onclick: () => { try { vr.friendship = parseJson(fr, 'Friendship'); dirty.add('villagers'); draw(); } catch (e) { toast((e as Error).message, false); } } }, 'Apply friendship')));
+      const live = v.villagers.find((x) => x.id === vr.defId);
+      const where = !v.loaded ? '💤 island asleep' : !live ? '–' : live.home ? '🏠 at home' : `🚶 out at ${Math.floor(live.x)},${Math.floor(live.z)}`;
+      const friends = Object.keys(vr.friendship ?? {}).length;
+      const house = d.buildings.find((b) => b.id === vr.houseId);
+      list.append(h('div', { class: 'vrow' },
+        h('a', { class: 'vname', href: `#villager/${rec.id}/${vr.defId}`, title: 'Open this villager’s admin page' },
+          h('span', { class: 'vface', style: `background:${def?.color ?? '#ccc'};border-color:${def?.accent ?? '#fff'}` }, SPECIES_ICON[def?.species ?? ''] ?? '🐾'),
+          h('span', { class: 'col', style: 'gap:0' }, h('b', {}, def?.name ?? vr.defId), h('span', { class: 'muted small' }, `${def?.species ?? '?'} · ${def?.personality ?? '?'}`))),
+        h('span', { class: 'muted small', style: 'flex:1;text-align:right' }, where, h('br'), `${friends} friend${friends === 1 ? '' : 's'}`),
+        house ? h('button', { class: 'btn ghost small', title: 'Select their house on the map', onclick: () => { sel = { kind: 'building', b: house }; drawSide(); draw(); } }, '📍') : null,
+        h('a', { class: 'btn small', href: `#villager/${rec.id}/${vr.defId}` }, 'Open ›'),
+        h('button', { class: 'btn ghost small', title: 'Move out (saved with the island)', onclick: () => {
+          d.villagers.splice(d.villagers.indexOf(vr), 1);
+          if (house) { house.villagerId = undefined; dirty.add('buildings'); }
+          dirty.add('villagers');
+          drawSide();
+          draw();
+        } }, '✕')));
     }
+    box.append(list);
     const freeHouses = d.buildings.filter((b) => b.type === 'villager_house' && !d.villagers.some((x) => x.houseId === b.id));
     const who = select(VILLAGERS.filter((vd) => !d.villagers.some((x) => x.defId === vd.id)).map((vd) => [vd.id, `${vd.name} (${vd.species})`]), '');
     const house = select(freeHouses.map((b) => [b.id, `${b.id} at ${b.x},${b.z}`]), '');
@@ -711,8 +736,140 @@ function islandEditor(v: IslandView) {
   }
 
   window.onbeforeunload = () => (dirty.size ? 'Unsaved changes' : undefined);
+  unsaved = () => dirty.size > 0;
   drawSide();
   draw();
+  if (focusB) requestAnimationFrame(() => {
+    mapWrap.scrollTo({ left: (focusB.x + focusB.w / 2) * cell - mapWrap.clientWidth / 2, top: (focusB.z + focusB.h / 2) * cell - mapWrap.clientHeight / 2 });
+  });
+}
+
+// ── Villagers ────────────────────────────────────────────────────────────────
+const SPECIES_ICON: Record<string, string> = {
+  cat: '🐱', dog: '🐶', rabbit: '🐰', bear: '🐻', fox: '🦊', owl: '🦉', deer: '🦌', frog: '🐸',
+  penguin: '🐧', koala: '🐨', duck: '🦆', hamster: '🐹', wolf: '🐺', squirrel: '🐿️',
+};
+
+function villagerChip(islandId: string, vid: string) {
+  const def = villagerDef(vid);
+  return h('a', { class: 'vchip', href: `#villager/${islandId}/${vid}`, title: 'Open this villager’s admin page', onclick: (e: Event) => e.stopPropagation() },
+    h('span', { class: 'vdot', style: `background:${def?.color ?? '#ccc'}` }), def?.name ?? vid);
+}
+
+interface VillagerAdminView {
+  island: { id: string; name: string; biome: string; loaded: boolean };
+  owner: { id: string; name: string } | null;
+  villager: { defId: string; houseId: string; movedInAt: number; friendship: Record<string, { pts: number; talkDay?: string; giftDay?: string; level?: number }> };
+  live: { x: number; z: number; home: boolean } | null;
+  houses: { id: string; x: number; z: number; villagerId: string | null }[];
+  friends: { id: string; name: string | null; username: string | null; online: boolean; pts: number; talkDay?: string; giftDay?: string; level?: number }[];
+  others: string[];
+}
+
+async function villagerPage(islandId: string, vid: string) {
+  const r = await call<VillagerAdminView>('GET', `/api/admin/islands/${islandId}/villagers/${vid}`);
+  if (!r) return islandPage(islandId);
+  const def = villagerDef(vid);
+  const vr = r.villager;
+  const house = r.houses.find((b) => b.id === vr.houseId);
+  const left = h('div', { class: 'col', style: 'gap:16px' });
+  const right = h('div', { class: 'col', style: 'gap:16px' });
+  shell('islands', h('div', { class: 'col', style: 'gap:12px' },
+    h('div', { class: 'row' },
+      h('a', { class: 'btn ghost small', href: `#island/${r.island.id}` }, `← ${r.island.name}`),
+      h('span', { class: 'vface big', style: `background:${def?.color ?? '#ccc'};border-color:${def?.accent ?? '#fff'}` }, SPECIES_ICON[def?.species ?? ''] ?? '🐾'),
+      h('h2', { style: 'margin:0' }, def?.name ?? vid),
+      def ? h('span', { class: 'muted' }, `“${def.catchphrase}” · ${vid}`) : null,
+      r.others.length ? h('span', { style: 'flex:1' }) : null,
+      r.others.length ? h('div', { class: 'chips' }, h('span', { class: 'muted small' }, 'Neighbours:'), r.others.map((o) => villagerChip(r.island.id, o))) : null),
+    h('div', { class: 'split' }, left, right)));
+
+  // Profile (from game data – edit it in the game creation tool).
+  const tag = (t: string) => h('span', { class: 'pill' }, t);
+  if (def) left.append(h('div', { class: 'box' }, h('h3', {}, '🪪 Profile'),
+    h('div', { class: 'form' },
+      field('Species', h('span', {}, `${SPECIES_ICON[def.species] ?? ''} ${def.species}`)),
+      field('Personality', h('span', {}, def.personality)),
+      field('Birthday', h('span', {}, new Date(`2000-${def.birthday}T12:00`).toLocaleDateString(undefined, { month: 'long', day: 'numeric' }))),
+      field('Loves', h('div', { class: 'chips' }, def.loves.map((i) => tag(`${ITEMS[i]?.icon ?? '❓'} ${ITEMS[i]?.name ?? i}`)))),
+      field('Likes', h('div', { class: 'chips' }, def.likes.map(tag))),
+      field('Dislikes', h('div', { class: 'chips' }, def.dislikes.map(tag))),
+      field('Colours', h('div', { class: 'row' }, h('span', { class: 'vdot big', style: `background:${def.color}` }), h('span', { class: 'vdot big', style: `background:${def.accent}` }))),
+      field('Moved in', h('span', {}, `${new Date(vr.movedInAt).toLocaleDateString()} (${ago(vr.movedInAt)})`)))));
+
+  // Friendship with each player.
+  const rows = r.friends.map((f) => ({ ...f, input: input(f.pts, { type: 'number', min: 0, max: FRIENDSHIP_MAX, style: 'width:80px' }), removed: false }));
+  const fbox = h('div', { class: 'box' });
+  const drawFriends = () => {
+    clear(fbox);
+    fbox.append(h('h3', {}, `💛 Friendship (${rows.filter((x) => !x.removed).length})`));
+    if (!rows.length) fbox.append(h('p', { class: 'muted' }, 'No player has talked to them yet.'));
+    else fbox.append(h('div', { class: 'scroll' }, h('table', { class: 'data' },
+      h('tr', {}, ['', 'Player', 'Points', 'Level', 'Today', ''].map((t) => h('th', {}, t))),
+      rows.filter((x) => !x.removed).map((f) => {
+        const lvl = h('span', {}, friendshipLevel(Number(f.input.value) || 0).name);
+        f.input.oninput = () => (lvl.textContent = friendshipLevel(Number(f.input.value) || 0).name);
+        return h('tr', {},
+          h('td', {}, f.online ? '🟢' : '⚪'),
+          h('td', {}, f.name ? h('a', { href: `#player/${f.id}` }, f.name) : h('span', { class: 'muted' }, `${f.id} (deleted)`), f.username ? h('div', { class: 'muted small' }, f.username) : null),
+          h('td', {}, f.input), h('td', {}, lvl),
+          h('td', { class: 'muted small' }, [f.talkDay ? `talked ${f.talkDay}` : null, f.giftDay ? `gift ${f.giftDay}` : null].filter(Boolean).join(' · ') || '–'),
+          h('td', {}, h('button', { class: 'btn ghost small', title: 'Forget this player', onclick: () => { f.removed = true; drawFriends(); } }, '✕')));
+      }))));
+    fbox.append(h('div', { class: 'row', style: 'margin-top:10px' },
+      h('button', { class: 'btn', onclick: async () => {
+        const friendship: VillagerAdminView['villager']['friendship'] = {};
+        for (const f of rows) if (!f.removed) friendship[f.id] = { ...vr.friendship[f.id], pts: Math.max(0, Math.min(FRIENDSHIP_MAX, Math.round(Number(f.input.value) || 0))) };
+        if (await saveVillager(r.island.id, vid, (x) => { x.friendship = friendship; })) { toast('Friendship saved'); villagerPage(islandId, vid); }
+      } }, 'Save friendship'),
+      h('span', { class: 'muted small' }, `0–${FRIENDSHIP_MAX} points`)));
+  };
+  drawFriends();
+  left.append(fbox);
+
+  // Where they are right now.
+  right.append(h('div', { class: 'box' }, h('h3', {}, '🧭 Status'),
+    h('div', { class: 'col' },
+      h('div', {}, '🏝️ ', h('a', { href: `#island/${r.island.id}` }, r.island.name), r.owner ? h('span', { class: 'muted' }, ' · owner ', h('a', { href: `#player/${r.owner.id}` }, r.owner.name)) : null),
+      h('div', {}, !r.island.loaded ? '💤 The island isn’t loaded – nobody is there right now.' : !r.live ? 'Not spawned yet.' : r.live.home ? '🏠 At home' : `🚶 Out and about at ${Math.floor(r.live.x)},${Math.floor(r.live.z)}`),
+      house ? h('div', {}, `🏠 House ${house.id} at ${house.x},${house.z} `, h('a', { href: `#island/${r.island.id}/${house.id}` }, 'show on map ›')) : h('div', { class: 'errors' }, `Their house (${vr.houseId}) is missing.`))));
+
+  // Housing.
+  const free = r.houses.filter((b) => !b.villagerId || b.villagerId === vid);
+  const houseSel = select(free.map((b) => [b.id, `${b.id} at ${b.x},${b.z}${b.id === vr.houseId ? ' (current)' : ''}`]), vr.houseId);
+  right.append(h('div', { class: 'box' }, h('h3', {}, '🏡 Housing'),
+    h('div', { class: 'row' }, houseSel, h('button', { class: 'btn small', disabled: free.length < 2, onclick: async () => {
+      if (houseSel.value === vr.houseId) return;
+      const to = houseSel.value;
+      if (await saveVillager(r.island.id, vid, (x, bs) => {
+        for (const b of bs) if (b.id === x.houseId && b.villagerId === vid) b.villagerId = undefined;
+        const nb = bs.find((b) => b.id === to);
+        if (nb) nb.villagerId = vid;
+        x.houseId = to;
+      })) { toast('Moved house'); villagerPage(islandId, vid); }
+    } }, 'Move to this house')),
+    free.length < 2 ? h('div', { class: 'muted help' }, 'There’s no empty villager house on this island.') : null,
+    h('hr'),
+    h('button', { class: 'btn warn small', onclick: async () => {
+      if (!confirm(`Move ${def?.name ?? vid} off ${r.island.name}? Their friendships here are lost.`)) return;
+      if (await saveVillager(r.island.id, vid, null)) { toast('Moved out'); location.hash = `island/${r.island.id}`; }
+    } }, '📦 Move out')));
+}
+
+/** Change one villager (null = move them out) on top of the island's current state. */
+async function saveVillager(islandId: string, vid: string, change: ((v: IslandView['record']['villagers'][number], buildings: Building[]) => void) | null) {
+  const cur = await call<IslandView>('GET', `/api/admin/islands/${islandId}`);
+  if (!cur) return false;
+  const villagers = cur.record.villagers;
+  const buildings = cur.record.buildings;
+  const v = villagers.find((x) => x.defId === vid);
+  if (!v) return toast('That villager no longer lives here.', false), false;
+  if (change) change(v, buildings);
+  else {
+    villagers.splice(villagers.indexOf(v), 1);
+    for (const b of buildings) if (b.villagerId === vid) b.villagerId = undefined;
+  }
+  return !!(await call('PATCH', `/api/admin/islands/${islandId}`, { villagers, buildings }));
 }
 
 // ── News boxes on the start screen ──────────────────────────────────────────
@@ -721,42 +878,64 @@ async function newsPage(editId: number | null) {
   if (!r) return;
   const list = h('div', { class: 'box col' });
   const editor = h('div', { class: 'col', style: 'gap:16px' });
-  shell('news', h('div', { class: 'split' }, list, editor));
+  shell('news', h('div', { class: 'split-news' }, list, editor));
   list.append(h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, '📰 Start-screen news'), h('span', { style: 'flex:1' }),
     h('a', { class: 'btn small', href: '#news/0' }, '+ New box')),
     h('p', { class: 'muted' }, 'Shown on the start screen, pinned boxes first, then newest first. Drafts (unpublished) are only visible here.'),
-    h('table', { class: 'data' }, h('tr', {}, ['', 'Title', 'Date', ''].map((t) => h('th', {}, t))),
+    h('table', { class: 'data' }, h('tr', {}, ['', 'Title', 'Date'].map((t) => h('th', {}, t))),
       r.news.map((n) => h('tr', { class: `click${n.id === editId ? ' sel' : ''}`, onclick: () => (location.hash = `news/${n.id}`) },
-        h('td', { style: 'font-size:22px' }, n.icon), h('td', {}, h('b', {}, n.title), n.pinned ? h('span', { class: 'pill', style: 'margin-left:6px' }, '📌') : null, n.published ? null : h('span', { class: 'pill no', style: 'margin-left:6px' }, 'draft')),
-        h('td', { class: 'muted' }, new Date(n.created).toLocaleDateString()), h('td', { class: 'muted' }, n.author ?? '')))));
+        h('td', { style: 'font-size:22px' }, n.icon), h('td', {}, h('b', {}, n.title), n.pinned ? h('span', { class: 'pill', style: 'margin-left:6px' }, '📌') : null, n.published ? null : h('span', { class: 'pill no', style: 'margin-left:6px' }, 'draft'),
+          n.author ? h('div', { class: 'muted' }, n.author) : null),
+        h('td', { class: 'muted' }, new Date(n.created).toLocaleDateString())))));
   if (editId === null) return void editor.append(h('div', { class: 'box' }, h('p', { class: 'muted' }, 'Pick a news box, or create a new one.')));
   const n: NewsItem = r.news.find((x) => x.id === editId) ?? { id: 0, title: '', body: '', icon: '📰', created: Date.now(), updated: Date.now(), author: null, pinned: false, published: true };
-  const title = input(n.title, { maxlength: 120 });
-  const icon = input(n.icon, { maxlength: 16, style: 'width:70px' });
-  const body = h('textarea', { rows: 10, style: 'font-family:inherit;font-size:14px' }, n.body) as HTMLTextAreaElement;
+  const title = input(n.title, { maxlength: 120, style: 'flex:1;font-size:16px;font-weight:700', placeholder: 'Title' });
+  const icon = input(n.icon, { maxlength: 16, style: 'width:64px;font-size:22px;text-align:center', title: 'An emoji' });
   const pinned = h('input', { type: 'checkbox', checked: n.pinned }) as HTMLInputElement;
   const published = h('input', { type: 'checkbox', checked: n.published }) as HTMLInputElement;
   const preview = h('div');
+  let dirty = false;
+  const body = createWysiwyg({
+    html: bodyToEditorHtml(n.body),
+    upload: async (file) => {
+      const res = await api<{ url: string }>('POST', '/api/admin/news/images', { data: await fileToDataUrl(file) });
+      return res.url;
+    },
+    onChange: () => { dirty = true; draw(); },
+    onError: (m) => toast(m, false),
+  });
+  let raf = 0;
   const draw = () => {
-    clear(preview);
-    preview.append(newsCard({ ...n, title: title.value || 'Untitled', icon: icon.value || '📰', body: body.value, pinned: pinned.checked }));
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      clear(preview);
+      preview.append(newsCard({ ...n, title: title.value || 'Untitled', icon: icon.value || '📰', body: body.getHtml(), pinned: pinned.checked }));
+    });
   };
-  for (const el of [title, icon, body, pinned]) el.addEventListener('input', draw);
+  for (const el of [title, icon, pinned, published]) el.addEventListener('input', () => { dirty = true; draw(); });
   draw();
-  editor.append(h('div', { class: 'box' }, h('h3', {}, n.id ? 'Edit news box' : 'New news box'),
-    h('div', { class: 'form' }, field('Icon', icon, 'An emoji'), field('Title', title), field('Text', body, 'Blank line = new paragraph · **bold**'),
-      field('Pinned', pinned, 'Stays at the top'), field('Published', published, 'Untick to keep it as a draft')),
-    h('div', { class: 'row', style: 'margin-top:10px' },
-      h('button', { class: 'btn', onclick: async () => {
-        const payload = { title: title.value, icon: icon.value, body: body.value, pinned: pinned.checked, published: published.checked };
-        const res = await call<{ id: number }>(n.id ? 'PUT' : 'POST', n.id ? `/api/admin/news/${n.id}` : '/api/admin/news', payload);
-        if (res) { toast('Saved'); location.hash = `news/${res.id}`; newsPage(res.id); }
-      } }, '💾 Save'),
+  window.onbeforeunload = () => (dirty ? 'Unsaved changes' : undefined);
+  unsaved = () => dirty;
+  const save = async () => {
+    const html = body.getHtml();
+    if (html.length > 60000) return toast('The text is too long (max 60 000 characters of HTML).', false);
+    const payload = { title: title.value, icon: icon.value, body: html, pinned: pinned.checked, published: published.checked };
+    const res = await call<{ id: number }>(n.id ? 'PUT' : 'POST', n.id ? `/api/admin/news/${n.id}` : '/api/admin/news', payload);
+    if (res) { dirty = false; toast('Saved'); location.hash = `news/${res.id}`; newsPage(res.id); }
+  };
+  editor.append(h('div', { class: 'box col', style: 'gap:10px' },
+    h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, n.id ? 'Edit news box' : 'New news box'), h('span', { style: 'flex:1' }),
+      h('label', { class: 'row', style: 'gap:4px', title: 'Stays at the top' }, pinned, '📌 Pinned'),
+      h('label', { class: 'row', style: 'gap:4px', title: 'Untick to keep it as a draft' }, published, '🌍 Published')),
+    h('div', { class: 'row' }, icon, title),
+    body.el,
+    h('div', { class: 'row' },
+      h('button', { class: 'btn', onclick: save }, '💾 Save'),
       n.id ? h('button', { class: 'btn warn small', onclick: async () => {
         if (!confirm('Delete this news box?')) return;
-        if (await call('DELETE', `/api/admin/news/${n.id}`)) { toast('Deleted'); location.hash = 'news'; }
+        if (await call('DELETE', `/api/admin/news/${n.id}`)) { dirty = false; toast('Deleted'); location.hash = 'news'; }
       } }, 'Delete') : null)),
-    h('div', { class: 'box' }, h('h3', {}, '👁️ Preview'), preview));
+    h('div', { class: 'box' }, h('h3', {}, '👁️ Preview – as players see it'), h('div', { class: 'news-preview' }, preview)));
 }
 
 // ── Audit log ────────────────────────────────────────────────────────────────
@@ -794,7 +973,15 @@ async function start() {
       h('button', { class: 'btn', onclick: async () => { await logout(); location.reload(); } }, 'Log in as someone else'))));
     return;
   }
-  window.addEventListener('hashchange', () => route());
+  window.addEventListener('hashchange', () => {
+    if (location.hash === currentHash) return;
+    if (unsaved() && !confirm('You have unsaved changes on this page. Leave anyway?')) {
+      history.replaceState(null, '', currentHash || location.pathname);
+      return;
+    }
+    currentHash = location.hash;
+    route();
+  });
   route();
 }
 start();

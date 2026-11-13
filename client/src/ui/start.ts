@@ -2,6 +2,7 @@
 
 import { api, logout } from '../auth.ts';
 import { h, clear } from './dom.ts';
+import { renderNewsBody } from './richtext.ts';
 
 export interface NewsItem {
   id: number;
@@ -41,31 +42,12 @@ export function logo(size = 1): HTMLElement {
   return el;
 }
 
-/** Turn plain text into paragraphs (blank line = new paragraph, **bold** allowed). */
-function richText(text: string): HTMLElement {
-  const box = h('div', { class: 'news-body' });
-  for (const para of text.split(/\n\s*\n/)) {
-    const p = h('p');
-    para.split(/(\*\*[^*]+\*\*)/).forEach((part, i, arr) => {
-      if (/^\*\*[^*]+\*\*$/.test(part)) p.append(h('b', {}, part.slice(2, -2)));
-      else part.split('\n').forEach((line, j, lines) => {
-        p.append(line);
-        if (j < lines.length - 1) p.append(h('br'));
-      });
-      void arr;
-      void i;
-    });
-    box.append(p);
-  }
-  return box;
-}
-
 export function newsCard(n: NewsItem): HTMLElement {
   return h('article', { class: `news${n.pinned ? ' pinned' : ''}` },
     h('header', {}, h('span', { class: 'news-icon' }, n.icon || '📰'), h('div', {},
       h('h3', {}, n.title, n.pinned ? h('span', { class: 'pill', style: 'margin-left:8px' }, '📌 pinned') : null),
       h('div', { class: 'muted' }, new Date(n.created).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })))),
-    richText(n.body));
+    renderNewsBody(n.body));
 }
 
 /** Show the start screen; resolves when the player presses Play. */

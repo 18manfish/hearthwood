@@ -2,10 +2,11 @@
 // the game creation tool.
 
 import {
-  ACCESS_LEVELS, BIOME_IDS, BUILDINGS, DEFAULT_GAME_DATA, GAME_TABLES, HOTBAR_TOOLS, ITEMS, PERMITS, PROTOCOL_VERSION, VILLAGERS,
+  ACCESS_LEVELS, BIOME_IDS, BUILDINGS, DEFAULT_GAME_DATA, GAME_TABLES, HOTBAR_TOOLS, ITEMS, PERMITS, PROTOCOL_VERSION, VILLAGERS, FRIENDSHIP_MAX,
   applyGameData, decodeTiles, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
   type Access, type Building, type GameData, type GameTable, type WorldObject,
 } from '@hearthwood/shared';
+import crypto from 'node:crypto';
 import { config } from './config.ts';
 import { credentialError, hashPassword, hashToken, USERNAME_RE } from './auth.ts';
 import { HttpError, Router, bearer, clientIp, readJson } from './http.ts';
@@ -122,7 +123,7 @@ export function buildApi(game: Game, store: Store): Router {
     const b = await readJson(req, 64 * 1024);
     return {
       title: str(b.title, 1, 120, 'Title'),
-      body: str(b.body, 0, 8000, 'Text'),
+      body: str(b.body, 0, 60000, 'Text'),
       icon: typeof b.icon === 'string' && b.icon.length <= 16 ? b.icon || '📰' : '📰',
       pinned: b.pinned === true,
       published: b.published !== false,
@@ -141,6 +142,26 @@ export function buildApi(game: Game, store: Store): Router {
     store.saveNews({ ...(await readNews(req)), id }, actor(me));
     store.audit(actor(me), 'news.edit', String(id));
     return { ok: true, id };
+  });
+  // Images inside news boxes: uploaded as a data URL, served as plain files.
+  const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+  r.on('POST', '/api/admin/news/images', async ({ req }) => {
+    const me = admin(req);
+    const b = await readJson(req, 8 * 1024 * 1024);
+    const m = typeof b.data === 'string' ? /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(b.data) : null;
+    if (!m || !IMAGE_TYPES[m[1]]) throw new HttpError(400, 'Send a PNG, JPEG, WebP or GIF image.');
+    const data = Buffer.from(m[2], 'base64');
+    if (!data.length || data.length > 5 * 1024 * 1024) throw new HttpError(413, 'Images can be at most 5 MB.');
+    const id = `${crypto.randomBytes(9).toString('base64url')}.${IMAGE_TYPES[m[1]]}`;
+    store.saveNewsImage(id, m[1], data, actor(me));
+    store.audit(actor(me), 'news.image', id, { bytes: data.length });
+    return { ok: true, id, url: `/api/news/images/${id}` };
+  });
+  r.on('GET', '/api/news/images/:id', ({ res, params }) => {
+    const img = /^[A-Za-z0-9_-]+\.[a-z]+$/.test(params.id) ? store.newsImage(params.id) : undefined;
+    if (!img) throw new HttpError(404, 'No such image.');
+    res.writeHead(200, { 'content-type': img.mime, 'content-length': img.data.byteLength, 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' });
+    res.end(Buffer.from(img.data));
   });
   r.on('DELETE', '/api/admin/news/:id', ({ req, params }) => {
     const me = admin(req);
@@ -237,7 +258,7 @@ export function buildApi(game: Game, store: Store): Router {
       .slice(0, 500)
       .map((i) => ({
         id: i.id, name: i.name, biome: i.biome, owner: { id: i.ownerId, name: store.players.get(i.ownerId)?.name ?? '?' }, access: i.access,
-        size: i.size ?? 48, buildings: i.buildings.length, villagers: i.villagers.length, loaded: game.rooms.has(i.id),
+        size: i.size ?? 48, buildings: i.buildings.length, villagers: i.villagers.length, villagerIds: i.villagers.map((v) => v.defId), loaded: game.rooms.has(i.id),
         visitors: game.rooms.get(i.id)?.sessions.size ?? 0, createdAt: i.createdAt,
       }));
     return { total: store.islands.size, islands: list };
@@ -247,6 +268,26 @@ export function buildApi(game: Game, store: Store): Router {
     admin(req);
     const rec = findIsland(params.id);
     return game.adminIslandView(rec);
+  });
+
+  /** One villager on an island, with the names of the players they know. */
+  r.on('GET', '/api/admin/islands/:id/villagers/:vid', ({ req, params }) => {
+    admin(req);
+    const rec = findIsland(params.id);
+    const view = game.adminIslandView(rec);
+    const v = rec.villagers.find((x) => x.defId === params.vid);
+    if (!v) throw new HttpError(404, 'That villager doesn’t live on this island.');
+    const houses = view.record.buildings.filter((b) => b.type === 'villager_house').map((b) => ({ id: b.id, x: b.x, z: b.z, villagerId: b.villagerId ?? null }));
+    const live = view.villagers.find((x) => x.id === v.defId) ?? null;
+    const friends = Object.entries(v.friendship).map(([pid, f]) => {
+      const pl = store.players.get(pid);
+      return { id: pid, name: pl?.name ?? null, username: pl?.username ?? null, online: game.online.has(pid), ...f };
+    }).sort((a, b) => b.pts - a.pts);
+    return {
+      island: { id: rec.id, name: rec.name, biome: rec.biome, loaded: view.loaded },
+      owner: view.owner, villager: v, live, houses, friends,
+      others: rec.villagers.filter((x) => x.defId !== v.defId).map((x) => x.defId),
+    };
   });
 
   r.on('PATCH', '/api/admin/islands/:id', async ({ req, params }) => {
@@ -491,6 +532,11 @@ function applyIslandPatch(store: Store, rec: IslandRecord, b: Record<string, unk
       seen.add(v.defId);
       if (typeof v.houseId !== 'string') throw new HttpError(400, `Villager ${v.defId} needs a house id.`);
       v.friendship ??= {};
+      if (typeof v.friendship !== 'object' || Array.isArray(v.friendship)) throw new HttpError(400, `Villager ${v.defId}: friendship must be an object.`);
+      for (const [pid, f] of Object.entries(v.friendship)) {
+        if (!f || typeof f.pts !== 'number' || !Number.isFinite(f.pts)) throw new HttpError(400, `Villager ${v.defId}: friendship with ${pid} needs points.`);
+        f.pts = Math.max(0, Math.min(FRIENDSHIP_MAX, Math.round(f.pts)));
+      }
       v.movedInAt ??= Date.now();
     }
     rec.villagers = list;

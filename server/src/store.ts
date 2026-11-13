@@ -108,6 +108,8 @@ export class Store {
       CREATE TABLE IF NOT EXISTS news (
         id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT NOT NULL, icon TEXT,
         created INTEGER NOT NULL, updated INTEGER NOT NULL, author TEXT, pinned INTEGER NOT NULL DEFAULT 0, published INTEGER NOT NULL DEFAULT 1);
+      CREATE TABLE IF NOT EXISTS news_images (
+        id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BLOB NOT NULL, created INTEGER NOT NULL, author TEXT);
       CREATE TABLE IF NOT EXISTS audit (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor TEXT, action TEXT, target TEXT, detail TEXT);
     `);
@@ -413,6 +415,14 @@ export class Store {
     this.db.prepare('DELETE FROM news WHERE id = ?').run(id);
   }
   /** First start: a welcome post so the start screen isn't empty. */
+  /** Images used inside news boxes (uploaded in the admin tool). */
+  saveNewsImage(id: string, mime: string, data: Buffer, author: string) {
+    this.db.prepare('INSERT INTO news_images (id, mime, data, created, author) VALUES (?, ?, ?, ?, ?)').run(id, mime, data, Date.now(), author);
+  }
+  newsImage(id: string): { mime: string; data: Uint8Array } | undefined {
+    return this.db.prepare('SELECT mime, data FROM news_images WHERE id = ?').get(id) as { mime: string; data: Uint8Array } | undefined;
+  }
+
   seedNews() {
     const n = this.db.prepare('SELECT COUNT(*) AS n FROM news').get() as { n: number };
     if (n.n) return;

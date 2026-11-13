@@ -47,7 +47,7 @@ export interface RoomOptions {
 }
 
 /** Version of the wide-beach migration for saved (terraformed) terrain. */
-const BEACH_VERSION = 3;
+const BEACH_VERSION = 4;
 
 export class Room {
   readonly id: string;

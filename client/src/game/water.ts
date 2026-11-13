@@ -98,63 +98,55 @@ function floorAt(g: Grid, px: number, pz: number) {
   return (h[0] * (1 - fx) + h[1] * fx) * (1 - fz) + (h[3] * (1 - fx) + h[2] * fx) * fz;
 }
 
-/** Foam: soft white blotches with holes, so breaking waves look frothy rather than solid. */
-const foamTexture = (() => {
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const g = c.getContext('2d')!;
-  g.clearRect(0, 0, S, S);
-  let seed = 7;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 220; i++) {
-    const x = rnd() * S, y = rnd() * S, r = 2 + rnd() * 7;
-    for (const [ox, oy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) {
-      const grad = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
-      grad.addColorStop(0, `rgba(255,255,255,${0.5 + rnd() * 0.5})`);
-      grad.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = grad;
-      g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-})();
-
-/** Shader patch: alpha from a per-vertex depth (below the water line) and time. */
+/** Shader patch: breaking waves from a per-vertex depth (below the water line), position and time. */
 function surfMaterial() {
-  const m = bend(new THREE.MeshBasicMaterial({ color: '#f4fbff', map: foamTexture, transparent: true, depthWrite: false, fog: true }));
+  const m = bend(new THREE.MeshBasicMaterial({ color: '#f2f9fc', transparent: true, depthWrite: false, fog: true }));
   const inner = m.onBeforeCompile;
   m.onBeforeCompile = (shader: { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string }, r: unknown) => {
     (inner as (s: unknown, r: unknown) => void)(shader, r);
-    shader.vertexShader = shader.vertexShader
-      .replace('void main() {', 'attribute float aDepth;\nattribute float aAlong;\nvarying float vDepth;\nvarying float vAlong;\nvoid main() {\n  vDepth = aDepth;\n  vAlong = aAlong;');
+    shader.vertexShader = shader.vertexShader.replace(
+      'void main() {',
+      'attribute float aDepth;\nattribute float aAlong;\nattribute vec2 aXZ;\nvarying float vDepth;\nvarying float vAlong;\nvarying vec2 vXZ;\nvoid main() {\n  vDepth = aDepth;\n  vAlong = aAlong;\n  vXZ = aXZ;',
+    );
     shader.fragmentShader = shader.fragmentShader
-      .replace('void main() {', 'uniform float uTime;\nvarying float vDepth;\nvarying float vAlong;\nvoid main() {')
+      .replace(
+        'void main() {',
+        `uniform float uTime;
+varying float vDepth;
+varying float vAlong;
+varying vec2 vXZ;
+float hwHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float hwNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hwHash(i), hwHash(i + vec2(1.0, 0.0)), u.x), mix(hwHash(i + vec2(0.0, 1.0)), hwHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+void main() {`,
+      )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         {
           float d = vDepth;
           // Only the swash zone: just under the water line, fading out to sea and up the dry sand.
-          float zone = smoothstep(-0.04, 0.0, d) * (1.0 - smoothstep(0.16, 0.34, d));
-          // Waves roll in towards the beach: crests follow the depth contours (parallel to
-          // the shore) and move to shallower water over time. Only a gentle, slow wobble along the shore.
-          float wob = sin(vAlong * 0.31 + 0.7) * 0.05;
-          float ph = fract(uTime * 0.09 + d * 3.2 + wob);
-          float crest = smoothstep(0.0, 0.06, ph) * (1.0 - smoothstep(0.06, 0.3, ph));
-          // Crests grow as they reach the shallows, then spill into froth.
-          crest *= smoothstep(0.32, 0.12, d);
+          float zone = smoothstep(-0.04, 0.0, d) * (1.0 - smoothstep(0.2, 0.36, d));
+          // Soft, slowly drifting foam texture (breaks the lines up a little, never into dots).
+          float foam = hwNoise(vXZ * 5.0 + vec2(uTime * 0.12, -uTime * 0.05)) * 0.6 + hwNoise(vXZ * 13.0 - uTime * 0.08) * 0.4;
+          // Waves roll in to the beach: crests follow the depth contours (parallel to the
+          // shore) and move into shallower water over time.
+          float ph = fract(uTime * 0.085 + d * 3.0 + sin(vAlong * 0.31 + 0.7) * 0.04);
+          float crest = smoothstep(0.0, 0.025, ph) * (1.0 - smoothstep(0.025, 0.12, ph));
+          float trail = smoothstep(0.0, 0.025, ph) * (1.0 - smoothstep(0.025, 0.45, ph));
+          float shallow = 1.0 - smoothstep(0.1, 0.34, d);
+          float wave = (crest * (0.6 + 0.4 * foam) + trail * foam * 0.3) * shallow;
           // The line where the water laps the sand, sliding up and back.
           float lap = 0.02 + 0.03 * (0.5 + 0.5 * sin(uTime * 0.55 + vAlong * 0.15));
-          float edge = 1.0 - smoothstep(0.0, 0.05, abs(d - lap));
-          diffuseColor.a *= zone * max(crest * 0.9, edge * 0.85);
+          float edge = (1.0 - smoothstep(0.0, 0.045, abs(d - lap))) * (0.55 + 0.45 * foam);
+          diffuseColor.a *= zone * min(1.0, max(wave, edge) * 0.95);
         }`,
       );
-    shader.uniforms.uTime = (shader.uniforms.uTime as unknown) ?? { value: 0 };
   };
-  m.customProgramCacheKey = () => 'hw-surf';
+  m.customProgramCacheKey = () => 'hw-surf2';
   return m;
 }
 
@@ -370,7 +362,7 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
               pos.push(px, 0, pz);
               depth.push(SEA_LEVEL - floorAt(g, px, pz));
               along.push(px * 0.73 + pz * 0.61);
-              uvs.push(px * 0.45, pz * 0.45);
+              uvs.push(px, pz);
             };
             pt(x0, z0); pt(x0, z1); pt(x1, z1);
             pt(x0, z0); pt(x1, z1); pt(x1, z0);
@@ -381,7 +373,7 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       geo.setAttribute('aDepth', new THREE.Float32BufferAttribute(depth, 1));
       geo.setAttribute('aAlong', new THREE.Float32BufferAttribute(along, 1));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.setAttribute('aXZ', new THREE.Float32BufferAttribute(uvs, 2));
       const m = new THREE.Mesh(geo, surfMaterial());
       m.name = 'surf';
       m.renderOrder = 3;
@@ -399,25 +391,36 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
     const pos: number[] = [], uv: number[] = [], foam: number[] = [];
     // Sheet profile: [outwards from the edge, fraction of the drop].
     const prof: [number, number][] = [[-0.04, 0], [0.05, 0.06], [0.1, 0.22], [0.12, 0.5], [0.13, 1]];
-    const W = 6;
+    const W = 5;
     for (const f of falls) {
       const { x, z, dx, dz, top, bottom } = f;
       const px = dz !== 0 ? 1 : 0, pz = dx !== 0 ? 1 : 0; // across the fall
       // Edge line between the tiles, a little wider than the tile so it tucks into the rock.
       const ex = x + 0.5 + dx * 0.5, ez = z + 0.5 + dz * 0.5;
       const hgt = top - bottom;
-      const at = (s: number, k: number): [number, number, number] => {
+      // Beside rock the sheet's edges curl back into the cliff (hidden); beside more falling water it just meets it.
+      const sideOpen = (sg: number) => {
+        const sx2 = x + px * sg, sz2 = z + pz * sg;
+        return isFresh(g.tile(sx2, sz2)) && g.level(sx2, sz2) === g.level(x, z);
+      };
+      const cols: [number, number][] = []; // [across, pushed back upstream]
+      if (!sideOpen(-1)) cols.push([-0.6, 0.35]);
+      for (let i = 0; i <= W; i++) cols.push([-0.5 + i / W, 0]);
+      if (!sideOpen(1)) cols.push([0.6, 0.35]);
+      const at = (c: [number, number], k: number): [number, number, number] => {
+        const [s, back] = c;
         const [out, f] = prof[k];
         const wob = Math.sin(s * 9 + k) * 0.012 * k;
-        return [ex + px * s + dx * (out + wob), top - hgt * f + (k === 0 ? 0.004 : 0), ez + pz * s + dz * (out + wob)];
+        const o = out + wob - back;
+        return [ex + px * s + dx * o, top - hgt * f + (k === 0 ? 0.004 : 0), ez + pz * s + dz * o];
       };
-      for (let i = 0; i < W; i++) {
-        const s0 = -0.6 + (1.2 * i) / W, s1 = -0.6 + (1.2 * (i + 1)) / W;
+      for (let i = 0; i < cols.length - 1; i++) {
+        const c0 = cols[i], c1 = cols[i + 1];
         for (let k = 0; k < prof.length - 1; k++) {
-          const a = at(s0, k), b = at(s0, k + 1), c = at(s1, k + 1), d = at(s1, k);
+          const a = at(c0, k), b = at(c0, k + 1), c = at(c1, k + 1), d = at(c1, k);
           pos.push(...a, ...b, ...c, ...a, ...c, ...d);
           const v0 = prof[k][1] * hgt * 1.6, v1 = prof[k + 1][1] * hgt * 1.6;
-          const u0 = s0 + 0.5, u1 = s1 + 0.5;
+          const u0 = c0[0] + 0.5, u1 = c1[0] + 0.5;
           uv.push(u0, -v0, u0, -v1, u1, -v1, u0, -v0, u1, -v1, u1, -v0);
         }
       }
@@ -466,7 +469,7 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
         const life = p.mist ? 2.4 : 0.9;
         const age = (((t / life + p.seed) % 1) + 1) % 1;
         const r1 = Math.sin(p.seed * 91.7) * 0.5 + 0.5, r2 = Math.sin(p.seed * 47.3 + 2) * 0.5 + 0.5;
-        const across = (r1 - 0.5) * 0.95;
+        const across = (r1 - 0.5) * 0.85;
         let ox: number, oy: number;
         if (p.mist) {
           // Mist drifts up and away slowly.

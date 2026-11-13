@@ -421,7 +421,9 @@ export class Grid {
     if (t === Tile.Sea || t === Tile.Dock || t === Tile.River) return BEACH_EDGE + (SEA_DEEP - BEACH_EDGE) * smoothstep(dn / SEA_SHELF);
     // The beach slopes down to the sea; beside a river it only dips right at the bank.
     const h = dl <= 0 ? BEACH_TOP : BEACH_TOP + (BEACH_EDGE - BEACH_TOP) * smoothstep(dl / (dl + ds));
-    return dr >= RIVER_BANK ? h : BEACH_EDGE + (h - BEACH_EDGE) * smoothstep(dr / RIVER_BANK);
+    // Near the sea the river's banks open out like a funnel, so the mouth blends into the beach.
+    const bank = RIVER_BANK + 1.6 * (1 - smoothstep(ds / 3.5));
+    return dr >= bank ? h : BEACH_EDGE + (h - BEACH_EDGE) * smoothstep(dr / bank);
   }
 
   /** Distances to [land, sea, anything not sea or river, sea-level river], bilinear from a cached field. */
@@ -839,7 +841,9 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
     for (let x = 2; x < size - 2; x++) {
       const i = z * size + x;
       if (tiles[i] !== Tile.Sea || vAt(x, z) >= BEACH_OUTER) continue;
-      if (x >= dockX - 2 && x <= dockX + 3 && z >= beachZ - 1) continue;
+      // A rounded little bay around the pier (not a straight channel), so the beach curves into it.
+      const bx = x + 0.5 - (dockX + 1), bz = Math.min(Math.max(z + 0.5, beachZ + 1.5), beachZ + 4.5) - (z + 0.5);
+      if (Math.hypot(bx, bz) < 2.4 + (fbm2D(seed + 3, x / 3, z / 3, 2) - 0.5) * 0.8) continue;
       tiles[i] = Tile.Shore;
       beachBand[i] = 1;
     }

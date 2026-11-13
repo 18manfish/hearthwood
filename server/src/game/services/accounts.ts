@@ -4,6 +4,7 @@
 import {
   type ClientMessage, type Gender, hashString, ISLAND_SIZE, isValidTimeZone, localTime, type Look, makeCode, PROTOCOL_VERSION, type TravelTarget,
   OUTFIT_SETS, setOutfit,
+  HAIR_STYLES, LOOK_VERSION,
 } from '@hearthwood/shared';
 import crypto from 'node:crypto';
 import { config } from '../../config.ts';
@@ -138,6 +139,11 @@ export function hello(game: Game, s: Session, token: string, v: number) {
   game.online.set(p.id, s);
   log.info('player connected', { player: p.id, name: p.name, ip: s.ip, online: game.online.size });
   p.lastSeen = Date.now();
+  if (p.created && needsRecreate(p)) {
+    // New character model: redo the looks before playing (everything else stays).
+    s.send({ t: 'welcome', you: null, serverTime: Date.now(), dev: config.devFast, recreate: { name: p.name, gender: p.gender, look: p.look } });
+    return;
+  }
   s.send({ t: 'welcome', you: p.created ? selfView(game, p) : null, serverTime: Date.now(), dev: config.devFast });
   if (p.created) {
     sendFriends(game, s);
@@ -145,6 +151,37 @@ export function hello(game: Game, s: Session, token: string, v: number) {
     pushFriendsToFriendsOf(game, p);
     enterIsland(game, s, p.homeIslandId!);
   }
+}
+
+/** Characters made before the current character model have to be redone. */
+export function needsRecreate(p: PlayerRecord) {
+  return p.created && (p.lookVersion ?? 1) < LOOK_VERSION;
+}
+
+/** New looks for an existing character (asked for in the welcome); then into the game as usual. */
+export function recreateCharacter(game: Game, s: Session, m: Extract<ClientMessage, { t: 'recreate' }>) {
+  const p = s.player!;
+  if (!needsRecreate(p)) return s.send({ t: 'err', code: 'exists', msg: 'Your character is up to date.' });
+  if (!(HAIR_STYLES[m.gender] as readonly string[]).includes(m.look.hair)) return s.send({ t: 'err', code: 'bad_look', msg: 'Pick a hairstyle for your character.' });
+  p.gender = m.gender as Gender;
+  p.look = m.look;
+  dressInSet(p, m.outfit);
+  p.lookVersion = LOOK_VERSION;
+  game.store.markPlayer(p.id);
+  log.info('character recreated', { player: p.id });
+  s.send({ t: 'welcome', you: selfView(game, p), serverTime: Date.now(), dev: config.devFast });
+  sendFriends(game, s);
+  s.send({ t: 'mail', list: p.mail });
+  pushFriendsToFriendsOf(game, p);
+  enterIsland(game, s, p.homeIslandId!);
+}
+
+/** Give a starter set (keep anything you already own) and wear it. */
+function dressInSet(p: PlayerRecord, setId: string | undefined) {
+  const set = OUTFIT_SETS.find((x) => x.id === setId);
+  if (set) for (const item of set.items) if (inv.count(p, item) < 1) inv.add(p, item, 1);
+  p.outfit = set ? setOutfit(set.id) : {};
+  p.hat = p.outfit.hat ?? null;
 }
 
 export function createCharacter(game: Game, s: Session, m: Extract<ClientMessage, { t: 'create' }>) {
@@ -159,10 +196,8 @@ export function createCharacter(game: Game, s: Session, m: Extract<ClientMessage
   p.gender = m.gender as Gender;
   p.look = m.look;
   // Starter clothes: yours to keep, and you're wearing them.
-  const set = OUTFIT_SETS.find((x) => x.id === m.outfit);
-  if (set) for (const item of set.items) inv.add(p, item, 1);
-  p.outfit = set ? setOutfit(set.id) : {};
-  p.hat = p.outfit.hat ?? null;
+  dressInSet(p, m.outfit);
+  p.lookVersion = LOOK_VERSION;
   p.created = true;
   p.coins = 100;
   const now = Date.now();

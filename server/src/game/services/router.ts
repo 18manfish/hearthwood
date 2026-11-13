@@ -11,7 +11,7 @@ import { Session } from '../Session.ts';
 import { runAction } from '../actions/index.ts';
 import type { PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
-import { createCharacter, hello, uniqueCode } from './accounts.ts';
+import { createCharacter, hello, needsRecreate, recreateCharacter, uniqueCode } from './accounts.ts';
 import { devCommand } from './dev.ts';
 import { afterAction } from './progress.ts';
 import { setGeo, setRole } from './roles.ts';
@@ -91,13 +91,15 @@ export function onMessage(game: Game, s: Session, m: ClientMessage) {
   if (!p) return s.send({ t: 'err', code: 'auth', msg: 'Say hello first.' });
   if (m.t === 'create') return createCharacter(game, s, m);
   if (!p.created) return s.send({ t: 'err', code: 'no_character', msg: 'Create your character first.' });
+  if (m.t === 'recreate') return recreateCharacter(game, s, m);
+  if (needsRecreate(p)) return s.send({ t: 'err', code: 'recreate', msg: 'Redo your character first.' });
 
   const route = ROUTES[m.t as Routed] as ((game: Game, s: Session, m: ClientMessage, p: PlayerRecord) => void) | undefined;
   route?.(game, s, m, p);
 }
 
 /** Messages handled once the player has said hello and has a character. */
-type Routed = Exclude<ClientMessage['t'], 'ping' | 'hello' | 'create'>;
+type Routed = Exclude<ClientMessage['t'], 'ping' | 'hello' | 'create' | 'recreate'>;
 
 const ROUTES: { [T in Routed]: (game: Game, s: Session, m: Extract<ClientMessage, { t: T }>, p: PlayerRecord) => void } = {
   move: (game, s, m) => move(game, s, m.x, m.z, m.r),

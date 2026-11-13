@@ -17,7 +17,13 @@ import {
   type BrowStyle, type CheekStyle, type EyeShape, type MouthStyle, type NoseStyle, type Outfit,
 } from './data/clothing.ts';
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
+
+/**
+ * Version of the character model. Characters made with an older one are asked
+ * to redo their looks (name, island and progress stay) the next time they log in.
+ */
+export const LOOK_VERSION = 2;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -132,6 +138,13 @@ export const clientMessageParser = s.union('t', {
     outfit: s.opt(s.oneOf(OUTFIT_SET_IDS)),
     biome: s.guard(isBiome, 'biome'),
     geo: s.obj({ lat: s.num(-90, 90), lon: s.num(-180, 180), tz: s.str(1, 64, /^[A-Za-z0-9_+\-/]+$/) }),
+  }),
+  /** Redo an existing character's looks (only when the welcome asked for it). */
+  recreate: s.obj({
+    t: s.lit('recreate'),
+    gender: s.oneOf(['boy', 'girl'] as const),
+    look: lookParser,
+    outfit: s.opt(s.oneOf(OUTFIT_SET_IDS)),
   }),
   move: s.obj({ t: s.lit('move'), seq: s.int(0), x: s.num(-10, 300), z: s.num(-10, 300), r: s.num(-1e6, 1e6) }),
   act: s.obj({ t: s.lit('act'), seq: s.int(0), a: actionParser }),
@@ -337,7 +350,11 @@ export interface TalkView {
 }
 
 export type ServerMessage =
-  | { t: 'welcome'; you: SelfView | null; serverTime: number; dev: boolean }
+  | {
+      t: 'welcome'; you: SelfView | null; serverTime: number; dev: boolean;
+      /** The character needs redoing (new model): its current name and looks, to start from. */
+      recreate?: { name: string; gender: Gender; look: Look };
+    }
   | { t: 'err'; code: string; msg: string }
   | { t: 'room'; room: RoomView; env: EnvView }
   | { t: 'env'; env: EnvView }

@@ -226,7 +226,8 @@ async function playerPage(id: string) {
       const r2 = await call<{ ok: boolean }>('POST', `/api/admin/players/${p.id}/kick`, { message: kickMsg.value });
       if (r2) toast(r2.ok ? 'Kicked' : 'Not online');
     } }, 'Kick')),
-    h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn ghost small', onclick: async () => { if (await call('POST', `/api/admin/players/${p.id}/logout-all`)) toast('All sessions ended'); } }, 'Log out everywhere')),
+    h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn ghost small', onclick: async () => { if (await call('POST', `/api/admin/players/${p.id}/logout-all`)) toast('All sessions ended'); } }, 'Log out everywhere'),
+      h('button', { class: 'btn ghost small', title: 'They redo their looks at the next login (island and progress stay)', onclick: async () => { if (confirm(`Make ${p.name} redo their character?`) && (await call('PATCH', `/api/admin/players/${p.id}`, { recreate: true }))) toast('They’ll redo their character at the next login'); } }, 'Redo character')),
     h('hr'),
     h('div', { class: 'row' }, pw, h('button', { class: 'btn ghost small', onclick: async () => {
       if (await call('PATCH', `/api/admin/players/${p.id}`, { password: pw.value })) { pw.value = ''; toast('Password changed – the player was logged out'); }

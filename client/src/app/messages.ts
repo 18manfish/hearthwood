@@ -3,7 +3,7 @@
 import { type ServerMessage } from '@hearthwood/shared';
 import { net } from '../net.ts';
 import { set, state } from '../state.ts';
-import { showCreator } from '../ui/creator.ts';
+import { showCreator, showRecreate } from '../ui/creator.ts';
 import { game, app, startGame, statusScreen } from './session.ts';
 import { fishBite, fishResult } from '../audio/actions.ts';
 
@@ -12,6 +12,16 @@ export function bindMessages() {
     switch (m.t) {
       case 'welcome':
         set('dev', m.dev);
+        if (!m.you && m.recreate) {
+          // New character model: redo your looks, then on to your island.
+          if (game.creating) return;
+          game.creating = true;
+          showRecreate(app, m.recreate, (r) => {
+            statusScreen('Back to your island…');
+            net.send({ t: 'recreate', ...r });
+          });
+          return;
+        }
         if (!m.you) {
           if (game.creating) return;
           game.creating = true;

@@ -50,6 +50,31 @@ export async function run(ctx: Ctx) {
     D2.ws.onmessage = (ev) => D2.onMsg(JSON.parse(String(ev.data)));
     D2.send({ t: 'hello', token: D.token, v: PROTOCOL_VERSION });
     check(!!(await D2.wait('err', (m) => m.code === 'banned').catch(() => null)), 'banned player can’t log back in');
+    // Old characters (made before the new character model) redo their looks at login.
+    {
+      const D = new Bot('E');
+      await D.connect();
+      await D.create('desert', 'Edda');
+      const island = D.self.homeIslandId;
+      const coins = D.self.coins;
+      check((await http('PATCH', `/api/admin/players/${D.self.id}`, { recreate: true }, A.token)).status === 200, 'admin can ask for a character redo');
+      check(!!(await D.wait('err', (m) => m.code === 'kicked').catch(() => null)), 'an online player is sent back to log in');
+      const R = new Bot('R');
+      R.ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+      await new Promise((res) => (R.ws.onopen = res));
+      R.ws.onmessage = (ev) => R.onMsg(JSON.parse(String(ev.data)));
+      R.send({ t: 'hello', token: D.token, v: PROTOCOL_VERSION });
+      const w = await R.wait('welcome').catch(() => null);
+      check(!!w && !w.you && w.recreate?.name === 'Edda', 'the welcome asks to redo the character (name kept)');
+      R.send({ t: 'act', seq: 1, a: { k: 'wear', item: null } });
+      check(!!(await R.wait('err', (m) => m.code === 'recreate').catch(() => null)), 'nothing else works until it is redone');
+      R.send({ t: 'recreate', gender: 'boy', outfit: 'winter', look: { skin: '#a8714a', hair: 'curly', hairColor: '#2b1d14', eyes: '#2b1d14', shirt: '#ecf0f1', pants: '#34495e', shoes: '#000000', eyeShape: 'wide', mouth: 'cat' } });
+      const w2 = await R.wait('welcome', (m) => !!m.you).catch(() => null);
+      check(!!w2?.you && w2.you.gender === 'boy' && w2.you.look.eyeShape === 'wide' && w2.you.outfit.outer === 'coat_wool', 'the new looks and starter set are saved');
+      check(w2?.you?.homeIslandId === island && w2?.you?.coins === coins, 'island and coins stay the same');
+      check(!!(await R.wait('room').catch(() => null)), 'then into the island as usual');
+      R.ws.close();
+    }
     const audit = await http('GET', '/api/admin/audit', undefined, A.token);
     check((audit.body.entries as { action: string }[]).some((e) => e.action === 'player.edit'), 'admin actions are in the audit log');
     check((await http('GET', '/api/admin/players', undefined, 'nonsense')).status === 401, 'admin API needs a login');

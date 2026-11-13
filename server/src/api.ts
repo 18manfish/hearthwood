@@ -422,6 +422,12 @@ function applyPlayerPatch(game: Game, store: Store, p: PlayerRecord, b: Record<s
     if (typeof l.hair !== 'string') throw new HttpError(400, 'look.hair missing.');
     p.look = l as unknown as PlayerRecord['look'];
   });
+  set('recreate', () => {
+    // Make them redo their character (looks only) at their next login – right now if they're online.
+    if (b.recreate !== true) throw new HttpError(400, 'recreate must be true.');
+    p.lookVersion = 1;
+    game.kick(p.id, 'Time for a new look! Log in again to redo your character.');
+  });
   set('gender', () => {
     if (b.gender !== 'boy' && b.gender !== 'girl') throw new HttpError(400, 'Gender must be boy or girl.');
     p.gender = b.gender;

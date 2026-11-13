@@ -32,6 +32,8 @@ export interface PlayerRecord {
   hat: string | null;
   /** Clothes worn per slot (missing in old saves). */
   outfit?: Outfit;
+  /** Character model version the looks were made for (missing = 1, see LOOK_VERSION). */
+  lookVersion?: number;
   geo: GeoInfo;
   homeIslandId: string | null;
   coins: number;

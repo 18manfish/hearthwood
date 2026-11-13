@@ -120,18 +120,34 @@ export function lookEditor(gender: () => Gender, look: Look, onChange: () => voi
   return { root, refreshHair: drawHair };
 }
 
-export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void) {
+/** What an existing character redoes (new character model): looks and starter clothes. */
+export interface RecreateResult {
+  gender: Gender;
+  look: Look;
+  outfit: string;
+}
+
+/**
+ * Redo an existing character with the new model: same look editor, starting
+ * from their current looks; name, island and progress stay as they are.
+ */
+export function showRecreate(app: HTMLElement, prev: { name: string; gender: Gender; look: Look }, onDone: (r: RecreateResult) => void) {
+  showCreator(app, (r) => onDone({ gender: r.gender, look: r.look, outfit: r.outfit }), prev);
+}
+
+export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void, redo?: { name: string; gender: Gender; look: Look }) {
   clear(app);
   const screen = h('div', { class: 'screen' });
   app.appendChild(screen);
-  let gender: Gender = Math.random() < 0.5 ? 'boy' : 'girl';
+  let gender: Gender = redo?.gender ?? (Math.random() < 0.5 ? 'boy' : 'girl');
   const look: Look = {
     skin: SKIN_TONES[1], hair: HAIR_STYLES[gender][0], hairColor: HAIR_COLORS[1], eyes: EYE_COLORS[0],
     shirt: CLOTH_COLORS[7], pants: CLOTH_COLORS[8], shoes: CLOTH_COLORS[10],
     eyeShape: 'round', brows: 'soft', nose: 'dot', mouth: 'smile', cheeks: 'blush',
+    ...redo?.look,
   };
   let outfit = OUTFIT_SETS[0].id;
-  let name = '';
+  let name = redo?.name ?? '';
   let islandName = '';
   let biome: BiomeId | null = null;
   let preview: Preview | null = null;
@@ -162,15 +178,20 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
     const card = h('div', { class: 'card creator' },
       prevEl,
       h('div', { class: 'col' },
-        h('div', { class: 'title', style: 'font-size:30px' }, 'Create your villager'),
-        h('div', { class: 'field' }, 'Name', nameIn),
+        h('div', { class: 'title', style: 'font-size:30px' }, redo ? `New look, ${name}!` : 'Create your villager'),
+        redo
+          ? h('p', { class: 'muted' }, 'Characters got a makeover: new faces and real clothes. Redo your look – your island, pockets and progress all stay as they are.')
+          : h('div', { class: 'field' }, 'Name', nameIn),
         h('div', { class: 'field' }, 'I am a…', gToggle),
         editor.root,
         h('div', { class: 'field' }, 'Clothes', sets, setNote),
-        h('div', { class: 'field' }, 'Island name', isleIn),
+        redo ? '' : h('div', { class: 'field' }, 'Island name', isleIn),
         err,
         h('div', { class: 'row', style: 'justify-content:flex-end' },
-          h('button', { class: 'btn', onclick: () => {
+          redo ? h('button', { class: 'btn', onclick: () => {
+            preview?.dispose();
+            onDone({ name, islandName: '', gender, look, outfit, biome: 'grassland', geo: { lat: 0, lon: 0, tz: 'UTC' } });
+          } }, 'Back to my island →') : h('button', { class: 'btn', onclick: () => {
             if (!NAME_RE.test(name.trim())) return (err.textContent = 'Please enter a name (2–16 letters).');
             if (!NAME_RE.test(islandName.trim())) return (err.textContent = 'Please name your island (2–20 letters).');
             name = name.trim(); islandName = islandName.trim();

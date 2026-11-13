@@ -48,7 +48,7 @@ h1, h2, h3 { margin: 0; }
 .card { background: var(--paper); border-radius: 26px; box-shadow: var(--shadow); padding: 24px; }
 .title { font-size: 42px; font-weight: 900; color: var(--leaf-dark); letter-spacing: 1px; text-shadow: 0 3px 0 #fff; }
 
-.creator { display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 32vw, 460px); gap: 22px; align-items: stretch; width: min(1640px, 96vw); height: min(1000px, calc(100vh - 32px)); margin: auto; box-sizing: border-box; }
+.creator { display: grid; grid-template-columns: minmax(0, 1fr) clamp(270px, 25vw, 380px); gap: 14px; align-items: stretch; width: min(1800px, 98vw); height: min(1040px, calc(100vh - 16px)); padding: 14px; margin: auto; box-sizing: border-box; }
 .creator .preview { background: radial-gradient(circle at 50% 70%, #e8f6dc, #cfe9f2); border-radius: 22px; min-height: 0; position: relative; overflow: hidden; }
 .creator-form { min-height: 0; overflow-y: auto; padding-right: 6px; gap: 10px; }
 .creator-form .title { line-height: 1.1; }

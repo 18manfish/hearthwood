@@ -7,8 +7,10 @@ import '../tools.css';
 import * as THREE from 'three';
 import {
   BIRD_BY_ID, BUILDINGS, ITEMS, TABLE_INFO, GAME_TABLES, validateGameData,
-  type BirdDef, type FieldHint, type GameData, type GameTable, type ItemDef, type VillagerDef, type BuildingType, type Building,
+  speakerMatches,
+  type BirdDef, type DialogueRule, type FieldHint, type GameData, type GameTable, type ItemDef, type VillagerDef, type BuildingType, type Building,
 } from '@hearthwood/shared';
+import { chips, dialogueEditor, dialogueSummary, SPECIES_ICON, type DialogueHost } from './dialogue.ts';
 import { api, clearToken, health, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
 import { h, clear } from '../ui/dom.ts';
@@ -160,6 +162,8 @@ function previewRow(t: GameTable, r: Row) {
 // ── Form generation from the field hints ────────────────────────────────────
 type Getter = () => unknown;
 
+const hourOpts = Array.from({ length: 25 }, (_, i) => i);
+
 function fieldEditor(f: FieldHint, value: unknown, locked: boolean): { el: HTMLElement; get: Getter } {
   const dis = locked ? { disabled: true } : {};
   switch (f.type) {
@@ -169,32 +173,60 @@ function fieldEditor(f: FieldHint, value: unknown, locked: boolean): { el: HTMLE
     }
     case 'boolean': {
       const i = h('input', { type: 'checkbox', checked: !!value, ...dis }) as HTMLInputElement;
-      return { el: i, get: () => (i.checked ? true : undefined) };
+      return { el: h('label', { class: 'switch' }, i, h('span', {}, 'Yes')), get: () => (i.checked ? true : undefined) };
     }
     case 'color': {
-      const txt = h('input', { value: String(value ?? ''), placeholder: '#rrggbb', style: 'width:100px', ...dis }) as HTMLInputElement;
+      const txt = h('input', { value: String(value ?? ''), placeholder: '#rrggbb', ...dis }) as HTMLInputElement;
       const pick = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(String(value)) ? String(value) : '#888888', ...dis }) as HTMLInputElement;
-      pick.oninput = () => (txt.value = pick.value);
+      pick.oninput = () => { txt.value = pick.value; txt.dispatchEvent(new Event('input', { bubbles: true })); };
       txt.oninput = () => { if (/^#[0-9a-f]{6}$/i.test(txt.value)) pick.value = txt.value; };
-      return { el: h('div', { class: 'row' }, pick, txt), get: () => txt.value || undefined };
+      return { el: h('div', { class: 'colorin' }, pick, txt), get: () => txt.value || undefined };
+    }
+    case 'colors': {
+      const list = Array.isArray(value) ? (value as string[]) : [];
+      const parts = (f.parts ?? list.map((_, i) => `#${i + 1}`)).map((label, i) => {
+        const ed = fieldEditor({ key: label, type: 'color' }, list[i], locked);
+        return { label, ...ed };
+      });
+      return {
+        el: h('div', { class: 'colors' }, parts.map((p) => h('div', { class: 'colorpart' }, h('span', {}, p.label), p.el))),
+        get: () => {
+          const out = parts.map((p) => p.get() as string | undefined);
+          return out.every((x) => x === undefined) ? undefined : out.map((x) => x ?? '');
+        },
+      };
+    }
+    case 'hours': {
+      const cur = Array.isArray(value) ? (value as number[]) : [];
+      const mk = (v: number | undefined) => h('select', dis, h('option', { value: '' }, '–'), hourOpts.map((n) => h('option', { value: String(n), selected: n === v }, `${String(n).padStart(2, '0')}:00`))) as HTMLSelectElement;
+      const a = mk(cur[0]), b = mk(cur[1]);
+      return {
+        el: h('div', { class: 'row', style: 'flex-wrap:nowrap' }, h('span', { class: 'muted' }, 'from'), a, h('span', { class: 'muted' }, 'until'), b),
+        get: () => {
+          if (a.value === '' && b.value === '') return undefined;
+          if (a.value === '' || b.value === '') throw new Error(`${f.key}: pick both hours (or neither for all day)`);
+          return [Number(a.value), Number(b.value)];
+        },
+      };
     }
     case 'enum': {
       const s = h('select', dis, f.required ? null : h('option', { value: '' }, '–'), (f.options ?? []).map((o) => h('option', { value: o, selected: o === value }, o))) as HTMLSelectElement;
       return { el: s, get: () => s.value || undefined };
     }
     case 'tags': {
-      const set = new Set(Array.isArray(value) ? (value as string[]) : []);
-      const boxes = (f.options ?? []).map((o) => [o, h('input', { type: 'checkbox', checked: set.has(o), ...dis }) as HTMLInputElement] as const);
-      return {
-        el: h('div', { class: 'row', style: 'gap:4px 10px' }, boxes.map(([o, cb]) => h('label', { class: 'row', style: 'gap:3px;font-weight:400' }, cb, o))),
-        get: () => {
-          const out = boxes.filter(([, cb]) => cb.checked).map(([o]) => o);
-          return out.length || f.required ? out : undefined;
-        },
-      };
+      let sel = Array.isArray(value) ? (value as string[]) : [];
+      const el = chips((f.options ?? []).map((o) => ({ value: o, label: o })), sel, (s) => { sel = s; el.dispatchEvent(new Event('input', { bubbles: true })); });
+      if (locked) el.classList.add('locked');
+      return { el, get: () => (sel.length || f.required ? sel : undefined) };
+    }
+    case 'text': {
+      const t = h('textarea', { rows: 3, class: 'prose', ...dis }, String(value ?? '')) as HTMLTextAreaElement;
+      return { el: t, get: () => (t.value === '' ? undefined : t.value) };
     }
     case 'json': {
-      const t = h('textarea', { rows: 3, ...dis }, value === undefined ? '' : JSON.stringify(value)) as HTMLTextAreaElement;
+      const short = value === undefined ? '' : JSON.stringify(value);
+      const text = short.length > 60 ? JSON.stringify(value, null, 2) : short;
+      const t = h('textarea', { rows: Math.min(10, Math.max(2, text.split('\n').length)), ...dis }, text) as HTMLTextAreaElement;
       return {
         el: t,
         get: () => {
@@ -214,14 +246,59 @@ function fieldEditor(f: FieldHint, value: unknown, locked: boolean): { el: HTMLE
   }
 }
 
+const WIDE_FIELDS = new Set<FieldHint['type']>(['tags', 'json', 'text', 'colors']);
+
+// ── Un-applied edits in the editor panel ────────────────────────────────────
+/** Draft of the row being edited with the purpose-built (dialogue) editor. */
+let draft: { table: GameTable; key: string; row: Row } | null = null;
+/** The open editor has changes that weren't applied yet. */
+let unapplied = false;
+
+function leaveEditor(): boolean {
+  if (unapplied && !confirm('Discard the changes you haven’t applied?')) return false;
+  unapplied = false;
+  draft = null;
+  return true;
+}
+
+function openRow(t: GameTable, key: string | null) {
+  if ((t !== table || key !== rowKey) && !leaveEditor()) return;
+  if (t !== table) filter = '';
+  table = t;
+  rowKey = key;
+  render();
+}
+
 // ── Layout ──────────────────────────────────────────────────────────────────
+const villagerList = () => rows('villagers') as unknown as VillagerDef[];
+const dlgHost: DialogueHost = {
+  villagers: villagerList,
+  rules: () => (rows('dialogue') as unknown as DialogueRule[]).map((r) => (draft?.table === 'dialogue' && r.id === draft.key ? (draft.row as unknown as DialogueRule) : r)),
+};
+
+function rowIcon(t: GameTable, r: Row, k: string): string {
+  if (t === 'shopStock') return BUILDINGS[k as BuildingType]?.icon ?? '🏪';
+  if (t === 'recipes') return ITEMS[r.output as string]?.icon ?? '🛠️';
+  if (t === 'villagers') return SPECIES_ICON[r.species as string] ?? '🙂';
+  if (t === 'dialogue') return r.disabled ? '🔇' : '💬';
+  return String(r.icon ?? '');
+}
+
+function rowName(t: GameTable, r: Row, k: string): string {
+  if (t === 'recipes') return String(ITEMS[r.output as string]?.name ?? r.output);
+  if (t === 'shopStock') return BUILDINGS[k as BuildingType]?.name ?? k;
+  if (t === 'dialogue') return String(r.note || k);
+  return String(r.name ?? k);
+}
+
 function render() {
+  const scrollY = window.scrollY;
   clear(app);
   const info = TABLE_INFO[table];
   const side = h('div', { class: 'box side' }, h('h3', {}, 'Tables'),
-    GAME_TABLES.map((t) => h('button', { class: `tbl${t === table ? ' on' : ''}`, onclick: () => { table = t; rowKey = null; filter = ''; render(); } },
+    GAME_TABLES.map((t) => h('button', { class: `tbl${t === table ? ' on' : ''}`, onclick: () => openRow(t, null) },
       h('span', {}, `${TABLE_INFO[t].icon} ${TABLE_INFO[t].label}`),
-      h('span', {}, dirty.has(t) ? h('span', { class: 'badge-mod', title: 'Unsaved changes' }, '● unsaved') : overridden.has(t) ? h('span', { class: 'pill', title: 'Differs from the built-in data' }, 'custom') : null))),
+      h('span', {}, dirty.has(t) ? h('span', { class: 'badge-mod', title: 'Unsaved changes' }, '●') : overridden.has(t) ? h('span', { class: 'pill', title: 'Differs from the built-in data' }, 'custom') : null))),
     h('hr'),
     h('div', { class: 'col' },
       h('button', { class: 'btn ghost small', onclick: exportAll }, '⬇️ Export all (JSON)'),
@@ -229,43 +306,45 @@ function render() {
       h('p', { class: 'muted' }, 'Built-in rows can be edited but not deleted. Changes apply to the running server and are stored in its database. Players need to reload to see them.')));
 
   const list = rows(table);
-  const search = h('input', { placeholder: 'Filter…', value: filter, style: 'width:100%', oninput: () => { filter = search.value; drawList(); } }) as HTMLInputElement;
-  const listBox = h('div', { class: 'scroll' });
+  const search = h('input', { placeholder: `Filter ${info.label.toLowerCase()}…`, value: filter, style: 'width:100%', oninput: () => { filter = search.value; drawList(); } }) as HTMLInputElement;
+  const listBox = h('div', { class: 'scroll listscroll' });
   const drawList = () => {
     clear(listBox);
     const f = filter.toLowerCase();
-    listBox.append(h('table', { class: 'data' },
-      list.filter((r) => !f || JSON.stringify(r).toLowerCase().includes(f)).map((r) => {
+    const shown = list.filter((r) => !f || JSON.stringify(r).toLowerCase().includes(f));
+    if (!shown.length) listBox.append(h('div', { class: 'empty' }, 'Nothing matches.'));
+    listBox.append(h('div', { class: 'rows' },
+      shown.map((r) => {
         const k = keyOf(table, r);
         const isDefault = !!defaultRow(table, k);
         const changed = isDefault && JSON.stringify(defaultRow(table, k)) !== JSON.stringify(r);
-        return h('tr', { class: `click${k === rowKey ? ' sel' : ''}`, onclick: () => { rowKey = k; render(); } },
-          h('td', { style: 'font-size:20px;width:30px' }, String(r.icon ?? (table === 'shopStock' ? BUILDINGS[k as BuildingType]?.icon ?? '🏪' : table === 'recipes' ? ITEMS[r.output as string]?.icon ?? '🛠️' : ''))),
-          h('td', {}, h('b', {}, String(r.name ?? (table === 'recipes' ? ITEMS[r.output as string]?.name ?? r.output : table === 'shopStock' ? BUILDINGS[k as BuildingType]?.name ?? k : k))), h('div', { class: 'muted' }, k)),
-          h('td', { class: 'muted' }, summaryOf(table, r)),
-          h('td', {}, !isDefault ? h('span', { class: 'pill ok' }, 'new') : changed ? h('span', { class: 'pill' }, 'edited') : null));
+        return h('button', { class: `rowbtn${k === rowKey ? ' sel' : ''}${r.disabled ? ' off' : ''}`, onclick: () => openRow(table, k) },
+          h('span', { class: 'ri' }, rowIcon(table, r, k)),
+          h('span', { class: 'rt' },
+            h('span', { class: 'rn' }, h('span', { class: 'rnt' }, rowName(table, r, k)), !isDefault ? h('span', { class: 'pill ok' }, 'new') : changed ? h('span', { class: 'pill' }, 'edited') : null),
+            h('span', { class: 'rs' }, table === 'dialogue' ? dialogueSummary(r as unknown as DialogueRule, villagerList()) : `${k} · ${summaryOf(table, r)}`)));
       })));
+    listBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
   };
-  drawList();
-  const middle = h('div', { class: 'box col' },
-    h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, `${info.icon} ${info.label}`), h('span', { class: 'muted' }, `${list.length} rows`), h('span', { style: 'flex:1' }),
+  const middle = h('div', { class: 'box col listpanel' },
+    h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, `${info.icon} ${info.label}`), h('span', { class: 'muted' }, `${list.length}`), h('span', { style: 'flex:1' }),
       info.canAdd ? h('button', { class: 'btn small', onclick: addRow }, '+ New') : null),
     search, listBox,
-    h('div', { class: 'row', style: 'margin-top:8px' },
-      h('button', { class: 'btn', disabled: !dirty.has(table), onclick: saveTable }, `💾 Save ${info.label}`),
-      h('button', { class: 'btn ghost small', disabled: !dirty.has(table), onclick: () => { delete work[table]; dirty.delete(table); render(); } }, 'Discard changes'),
+    h('div', { class: 'row', style: 'margin-top:4px' },
+      h('button', { class: 'btn small', disabled: !dirty.has(table), onclick: saveTable }, `💾 Save ${info.label}`),
+      h('button', { class: 'btn ghost small', disabled: !dirty.has(table), onclick: () => { if (!leaveEditor()) return; delete work[table]; dirty.delete(table); render(); } }, 'Discard'),
       h('span', { style: 'flex:1' }),
-      h('button', { class: 'btn warn small', disabled: !overridden.has(table), onclick: resetTable }, 'Reset to built-in')));
-
-  const right = h('div', { class: 'col', style: 'gap:16px' }, rowEditor());
+      h('button', { class: 'btn warn small', disabled: !overridden.has(table), title: 'Reset to built-in', onclick: resetTable }, '↺ Built-in')));
 
   app.append(
     h('div', { class: 'tb' }, h('span', { class: 'brand' }, '🛠️ Game creation tool'), h('span', { class: 'pill' }, 'dev mode'), h('span', { class: 'sp' }),
       h('a', { class: 'btn ghost small', href: '/admin.html' }, '🛡️ Admin tool'), h('a', { class: 'btn ghost small', href: '/' }, '🎮 Game'),
       h('button', { class: 'btn ghost small', onclick: async () => { await logout(); location.reload(); } }, 'Log out')),
-    h('div', { class: 'wrap' }, h('div', { class: 'split3' }, side, middle, right)),
+    h('div', { class: 'wrap wide' }, h('div', { class: 'edgrid' }, side, middle, rowEditor())),
     toastBox,
   );
+  drawList();
+  window.scrollTo(0, scrollY);
 }
 
 function summaryOf(t: GameTable, r: Row): string {
@@ -277,6 +356,7 @@ function summaryOf(t: GameTable, r: Row): string {
     case 'shopStock': return (r.items as string[]).map((i) => ITEMS[i]?.icon ?? i).join(' ');
     case 'buildings': return `day ${r.minDay} · ${r.buildMinutes} min · ${Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ')}`;
     case 'villagers': return `${r.species} · ${r.personality}`;
+    case 'dialogue': return dialogueSummary(r as unknown as DialogueRule, villagerList());
     case 'permits': return `${r.price} coins`;
     case 'paths': return Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ') || 'free';
   }
@@ -284,68 +364,125 @@ function summaryOf(t: GameTable, r: Row): string {
 
 function rowEditor(): HTMLElement {
   const info = TABLE_INFO[table];
-  const box = h('div', { class: 'box' });
   const list = rows(table);
   const r = rowKey ? list.find((x) => keyOf(table, x) === rowKey) : undefined;
   if (!r) {
     preview.show(null);
-    box.append(h('h3', {}, 'Edit'), h('p', { class: 'muted' }, 'Pick a row on the left.'));
-    return box;
+    return h('div', { class: 'box edpanel' }, h('div', { class: 'empty big' }, h('div', { style: 'font-size:48px' }, info.icon), h('h3', {}, `Pick a ${info.label.toLowerCase()} row`), h('p', { class: 'muted' }, info.canAdd ? 'or create a new one with “+ New”.' : 'Its attributes open here.')));
   }
   const k = keyOf(table, r);
   const def = defaultRow(table, k);
-  const getters: [FieldHint, Getter][] = [];
-  const form = h('div', { class: 'form' });
-  const fields = table === 'shopStock' ? [{ key: 'shop', type: 'string' } as FieldHint, ...info.fields] : table === 'buildings' ? [{ key: 'type', type: 'string' } as FieldHint, ...info.fields] : info.fields;
-  for (const f of fields) {
-    const locked = (f.key === info.key && !!def) || (f.key === info.key && !info.canAdd);
-    const ed = fieldEditor(f, r[f.key], locked);
-    getters.push([f, ed.get]);
-    form.append(h('label', { title: f.key }, f.label ?? f.key, f.required ? ' *' : ''), ed.el);
-    if (f.help) form.append(h('div', { class: 'muted help' }, f.help));
-  }
   const errBox = h('div');
-  const readForm = (): Row => {
-    const next: Row = structuredClone(r);
-    for (const [f, get] of getters) {
-      const v = get();
-      if (v === undefined) delete next[f.key];
-      else next[f.key] = v;
+  if (!info.custom) unapplied = false; // the form is rebuilt from the row
+  const canDelete = !def || info.canDelete;
+  const markUnapplied = () => { unapplied = true; applyBtn.classList.add('pulse'); };
+
+  // Read the edited row: from the draft (custom editors) or the generic form.
+  let readForm: () => Row;
+  let body: HTMLElement;
+  if (info.custom) {
+    if (!draft || draft.table !== table || draft.key !== k) draft = { table, key: k, row: structuredClone(r) };
+    const d = draft;
+    readForm = () => structuredClone(d.row);
+    body = dialogueEditor(d.row as unknown as DialogueRule, dlgHost, markUnapplied, { idLocked: !!def });
+  } else {
+    const getters: [FieldHint, Getter][] = [];
+    const form = h('div', { class: 'ed-form' });
+    const fields = table === 'shopStock' ? [{ key: 'shop', type: 'string' } as FieldHint, ...info.fields] : table === 'buildings' ? [{ key: 'type', type: 'string' } as FieldHint, ...info.fields] : info.fields;
+    for (const f of fields) {
+      const locked = (f.key === info.key && !!def) || (f.key === info.key && !info.canAdd);
+      const ed = fieldEditor(f, r[f.key], locked);
+      getters.push([f, ed.get]);
+      form.append(h('div', { class: `fld${WIDE_FIELDS.has(f.type) ? ' wide' : ''}${locked ? ' locked' : ''}` },
+        h('label', { title: f.key }, f.label ?? f.key, f.required ? h('span', { class: 'req' }, ' *') : null), ed.el, f.help ? h('div', { class: 'help' }, f.help) : null));
     }
-    return next;
-  };
+    form.addEventListener('input', markUnapplied);
+    form.addEventListener('change', markUnapplied);
+    readForm = () => {
+      const next: Row = structuredClone(r);
+      for (const [f, get] of getters) {
+        const v = get();
+        if (v === undefined) delete next[f.key];
+        else next[f.key] = v;
+      }
+      return next;
+    };
+    const hasPreview = ['villagers', 'birds', 'items', 'buildings'].includes(table);
+    const aside = h('div', { class: 'ed-aside' });
+    if (hasPreview) {
+      aside.append(h('section', { class: 'ed-card' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('h4', { style: 'margin:0' }, '👁️ Preview'), h('button', { class: 'btn ghost small', onclick: () => { try { previewRow(table, readForm()); } catch (e) { toast((e as Error).message, false); } } }, '↻ Update')),
+        preview.el, table === 'items' ? h('div', { class: 'muted' }, 'Furniture items show their 3D model.') : null));
+      setTimeout(() => previewRow(table, r));
+    }
+    if (table === 'villagers') aside.append(villagerDialogueCard(r as unknown as VillagerDef));
+    body = h('div', { class: `ed-body${aside.childNodes.length ? '' : ' single'}` }, h('section', { class: 'ed-card' }, h('h4', {}, '📝 Attributes'), form), aside.childNodes.length ? aside : null);
+  }
+
   const apply = () => {
     clear(errBox);
     try {
       const next = readForm();
       const idx = list.indexOf(r);
+      const newKey = keyOf(table, next);
+      if (newKey !== k && list.some((x) => x !== r && keyOf(table, x) === newKey)) throw new Error(`“${newKey}” is already used`);
       list[idx] = next;
-      const errs = validateGameData(workingData()).filter((e) => e.startsWith(`${table}:`) || e.includes(`"${keyOf(table, next)}"`));
+      const errs = validateGameData(workingData()).filter((e) => e.startsWith(`${table}:`) || e.includes(`"${newKey}"`));
       dirty.add(table);
-      rowKey = keyOf(table, next);
+      unapplied = false;
+      draft = null;
+      rowKey = newKey;
       render();
       if (errs.length) toast(errs.join('\n'), false);
+      else toast('Applied – remember to save the table');
     } catch (e) {
       errBox.append(h('div', { class: 'errors' }, (e as Error).message));
     }
   };
-  box.append(h('div', { class: 'row', style: 'margin-bottom:8px' }, h('h3', { style: 'margin:0' }, `${r.icon ?? ''} ${r.name ?? k}`), def ? null : h('span', { class: 'pill ok' }, 'new')), form, errBox,
-    h('div', { class: 'row', style: 'margin-top:10px' },
-      h('button', { class: 'btn small', onclick: apply }, 'Apply'),
-      h('button', { class: 'btn ghost small', onclick: () => previewRow(table, readForm()) }, '👁️ Preview'),
-      def ? h('button', { class: 'btn ghost small', disabled: JSON.stringify(def) === JSON.stringify(r), onclick: () => { list[list.indexOf(r)] = structuredClone(def); dirty.add(table); render(); } }, 'Revert to built-in') : null,
-      info.canAdd ? h('button', { class: 'btn ghost small', onclick: () => duplicate(r) }, 'Duplicate') : null,
-      !def ? h('button', { class: 'btn warn small', onclick: () => { list.splice(list.indexOf(r), 1); rowKey = null; dirty.add(table); render(); } }, 'Delete') : null),
-    h('p', { class: 'muted' }, '“Apply” keeps the change in this page; “Save” sends the whole table to the server.'));
-  const wrap = h('div', { class: 'col', style: 'gap:16px' }, box);
-  if (['villagers', 'birds', 'items', 'buildings'].includes(table)) {
-    wrap.append(h('div', { class: 'box' }, h('h3', {}, '👁️ Preview'), preview.el, h('div', { class: 'muted' }, table === 'items' ? 'Furniture items show their 3D model.' : '')));
-    setTimeout(() => previewRow(table, r));
-  }
-  return wrap;
+  const applyBtn = h('button', { class: `btn${unapplied ? ' pulse' : ''}`, onclick: apply, title: 'Keep this change in the page (Ctrl+Enter)' }, '✔ Apply');
+  const head = h('div', { class: 'ed-head' },
+    h('div', { class: 'ed-icon' }, rowIcon(table, r, k)),
+    h('div', { class: 'ed-title' }, h('h2', {}, rowName(table, r, k)), h('div', { class: 'row', style: 'gap:6px' }, h('code', {}, k), def ? null : h('span', { class: 'pill ok' }, 'new'), def && JSON.stringify(def) !== JSON.stringify(r) ? h('span', { class: 'pill' }, 'edited') : null)),
+    h('span', { style: 'flex:1' }),
+    h('div', { class: 'row ed-actions' },
+      applyBtn,
+      def ? h('button', { class: 'btn ghost small', disabled: JSON.stringify(def) === JSON.stringify(r), onclick: () => { list[list.indexOf(r)] = structuredClone(def); unapplied = false; draft = null; dirty.add(table); render(); } }, 'Revert to built-in') : null,
+      info.canAdd ? h('button', { class: 'btn ghost small', onclick: () => leaveEditor() && duplicate(r) }, 'Duplicate') : null,
+      canDelete && info.canAdd ? h('button', { class: 'btn warn small', onclick: () => { if (!confirm(`Delete “${k}”?`)) return; list.splice(list.indexOf(r), 1); unapplied = false; draft = null; rowKey = null; dirty.add(table); render(); } }, 'Delete') : null));
+  const panel = h('div', { class: 'box edpanel' }, head, errBox, body,
+    h('p', { class: 'muted', style: 'margin:12px 4px 0' }, '“Apply” keeps the change in this page; “Save” (left) sends the whole table to the server.'));
+  panel.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); apply(); } });
+  return panel;
+}
+
+/** On a villager: the dialogue rules they can say, and a shortcut to write more. */
+function villagerDialogueCard(v: VillagerDef): HTMLElement {
+  const rules = (rows('dialogue') as unknown as DialogueRule[]);
+  const mine = rules.filter((r) => r.villagers?.includes(v.id));
+  const shared = rules.filter((r) => !r.villagers?.length && speakerMatches(r, v));
+  const link = (r: DialogueRule) => h('button', { class: 'linkrow', onclick: () => openRow('dialogue', r.id) }, h('b', {}, r.note || r.id), h('span', { class: 'muted' }, dialogueSummary(r, villagerList()).split(' — ')[1] ?? ''));
+  return h('section', { class: 'ed-card' },
+    h('div', { class: 'row', style: 'justify-content:space-between' }, h('h4', { style: 'margin:0' }, '💬 Dialogue'),
+      h('button', { class: 'btn small', onclick: () => newDialogueFor(v) }, `+ Line for ${v.name}`)),
+    h('div', { class: 'muted', style: 'margin:6px 0' }, `${mine.length} just for ${v.name} · ${shared.length} shared with others`),
+    h('div', { class: 'col', style: 'gap:2px' }, mine.map(link)),
+    shared.length ? h('details', {}, h('summary', { class: 'muted' }, 'Shared rules'), h('div', { class: 'col', style: 'gap:2px' }, shared.map(link))) : null);
+}
+
+function newDialogueFor(v: VillagerDef) {
+  if (!leaveEditor()) return;
+  const list = rows('dialogue');
+  let id = `dlg_${v.id.replace(/^v_/, '')}`;
+  for (let n = 2; list.some((r) => r.id === id); n++) id = `dlg_${v.id.replace(/^v_/, '')}_${n}`;
+  list.push({ id, note: `${v.name}: new line`, villagers: [v.id], when: [], lines: ['Hi {player}, {cp}!'], priority: 20 });
+  dirty.add('dialogue');
+  table = 'dialogue';
+  rowKey = id;
+  filter = '';
+  render();
 }
 
 function addRow() {
+  if (!leaveEditor()) return;
   const info = TABLE_INFO[table];
   const blank = info.blank?.() ?? {};
   const list = rows(table);
@@ -366,6 +503,7 @@ function duplicate(r: Row) {
   for (let n = 2; list.some((x) => keyOf(table, x) === id); n++) id = `${keyOf(table, r)}_copy${n}`;
   copy[info.key] = id;
   if (typeof copy.name === 'string') copy.name = `${copy.name} (copy)`;
+  if (table === 'dialogue') copy.note = `${copy.note || keyOf(table, r)} (copy)`;
   list.push(copy);
   rowKey = id;
   dirty.add(table);
@@ -452,7 +590,7 @@ async function start() {
       else throw e;
     }
   }
-  window.onbeforeunload = () => (dirty.size ? 'Unsaved changes' : undefined);
+  window.onbeforeunload = () => (dirty.size || unapplied ? 'Unsaved changes' : undefined);
   render();
 }
 start();

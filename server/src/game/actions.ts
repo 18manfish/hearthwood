@@ -6,7 +6,8 @@ import {
   BIOMES, BUILDINGS, ENTERABLE, SHOP_TYPES, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
   VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE,
   FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_TALK, FRIENDSHIP_MAX, FRIENDSHIP_BIRTHDAY_BONUS, HAIR_STYLES,
-  Rng, Tile, waterKind, placeError, BOTTLE_COOLDOWN_MS, BOTTLE_MIN_DELAY_MS, BOTTLE_MAX_DELAY_MS, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, isRampOp, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
+  Rng, Tile, waterKind, placeError, BOTTLE_COOLDOWN_MS, BOTTLE_MIN_DELAY_MS, BOTTLE_MAX_DELAY_MS, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, isRampOp, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany, composeDialogue, DIALOGUE,
+  type DialogueContext, type DialogueEvent,
   type Action, type BuildingType, type TalkView, type WorldObject, type Building,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
@@ -452,6 +453,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     if (v.home) return fail(`${def.name} is asleep at home.`);
     if (Math.hypot(v.x - ctx.s.x, v.z - ctx.s.z) > config.reach + 0.6) return fail('Get a little closer.');
     const env = ctx.room.env(ctx.now);
+    const firstMeeting = !rec.friendship[ctx.p.id];
     const f = (rec.friendship[ctx.p.id] ??= { pts: 0 });
     const birthday = env.dayKey.slice(5) === def.birthday;
     if (f.talkDay !== env.dayKey) {
@@ -465,10 +467,16 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     v.r = Math.atan2(ctx.s.x - v.x, ctx.s.z - v.z);
     v.dirty = true;
     const lvl = friendshipLevel(f.pts);
-    const line = villagerLine(def, lvl.level, { player: ctx.p.name, weather: env.weather, hour: env.hour, seed: hashMany(env.dayKey, ctx.p.id, a.vid), birthday });
+    const seed = hashMany(env.dayKey, ctx.p.id, a.vid);
+    const base = villagerLine(def, lvl.level, { player: ctx.p.name, weather: env.weather, hour: env.hour, seed, birthday });
+    const flags: DialogueEvent[] = [];
+    if (firstMeeting) flags.push('first_meeting');
+    if (lvl.level > (f.level ?? 0)) flags.push('level_up');
+    if (f.giftDay === env.dayKey) flags.push('gifted_today');
+    const dlg = composeDialogue(DIALOGUE, dialogueContext(ctx, rec.defId, lvl.level, seed, flags), base);
     ctx.game.levelUpCheck(ctx.s, ctx.room, rec.defId, f);
     ctx.game.store.markIsland(ctx.room.id);
-    sendTalk(ctx, a.vid, line, f);
+    sendTalk(ctx, a.vid, dlg.line, f, undefined, dlg.replies);
     return { ok: true };
   },
 
@@ -726,13 +734,64 @@ function paveGuard(ctx: Ctx, x: number, z: number): ActionResult | null {
   return null;
 }
 
-function sendTalk(ctx: Ctx, vid: string, line: string, f: { pts: number; talkDay?: string; giftDay?: string }, reaction?: TalkView['reaction']) {
+function sendTalk(ctx: Ctx, vid: string, line: string, f: { pts: number; talkDay?: string; giftDay?: string }, reaction?: TalkView['reaction'], replies?: TalkView['replies']) {
   const env = ctx.room.env(ctx.now);
   const lvl = friendshipLevel(f.pts);
   ctx.s.send({
     t: 'talk',
-    v: { vid, line, points: f.pts, level: lvl.level, levelName: lvl.name, next: lvl.next, talkedToday: f.talkDay === env.dayKey, giftedToday: f.giftDay === env.dayKey, reaction },
+    v: { vid, line, points: f.pts, level: lvl.level, levelName: lvl.name, next: lvl.next, talkedToday: f.talkDay === env.dayKey, giftedToday: f.giftDay === env.dayKey, reaction, replies },
   });
+}
+
+const NEW_ARRIVAL_MS = 3 * 86400000;
+
+/** Everything the dialogue rules can react to when the player talks to `vid`. */
+function dialogueContext(ctx: Ctx, vid: string, level: number, seed: number, flags: DialogueEvent[]): DialogueContext {
+  const env = ctx.room.env(ctx.now);
+  const rec = ctx.room.record;
+  const me = ctx.room.villagers.get(vid);
+  const md = env.dayKey.slice(5);
+  const neighbors = (rec?.villagers ?? []).filter((v) => v.defId !== vid).map((v) => {
+    const rt = ctx.room.villagers.get(v.defId);
+    return {
+      id: v.defId,
+      dist: rt && me && !rt.home ? Math.hypot(rt.x - me.x, rt.z - me.z) : undefined,
+      birthday: villagerDef(v.defId)?.birthday === md,
+      newArrival: ctx.now - v.movedInAt < NEW_ARRIVAL_MS,
+    };
+  });
+  const buildings: DialogueContext['buildings'] = {};
+  for (const b of rec?.buildings ?? []) {
+    const state = b.completeAt > ctx.now ? 'building' : 'built';
+    if (buildings[b.type] !== 'built') buildings[b.type] = state;
+    if (state === 'building' && !flags.includes('construction')) flags.push('construction');
+  }
+  const mine = rec?.villagers.find((v) => v.defId === vid);
+  if (mine && ctx.now - mine.movedInAt < NEW_ARRIVAL_MS) flags.push('new_arrival');
+  return {
+    speaker: villagerDef(vid)!,
+    level,
+    player: ctx.p.name,
+    island: rec?.name ?? ctx.room.name,
+    dayKey: env.dayKey,
+    hour: env.hour,
+    weather: env.weather,
+    season: env.season,
+    tempC: env.tempC,
+    aurora: env.aurora,
+    biome: ctx.room.biome,
+    islandDay: env.islandDay,
+    foundedDayKey: rec?.foundedDayKey,
+    neighbors,
+    buildings,
+    inventory: ctx.p.inv,
+    hat: ctx.p.hat,
+    role: ctx.room.isOwner(ctx.p.id) ? 'owner' : ctx.room.isResident(ctx.p.id) ? 'resident' : 'visitor',
+    place: ctx.room.kind === 'interior' ? 'indoors' : 'outdoors',
+    flags,
+    seed,
+    nonce: ctx.s.talkCount++,
+  };
 }
 
 export function runAction(game: Game, s: Session, a: Action): ActionResult {

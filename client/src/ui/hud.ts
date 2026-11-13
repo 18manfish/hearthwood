@@ -997,10 +997,12 @@ export class Hud {
     const curMin = FRIENDSHIP_LEVELS[lvl.level].min;
     const pct = v.next ? Math.round(((v.points - curMin) / (nextMin - curMin)) * 100) : 100;
     const line = h('div', { class: 'line' });
+    const more = h('div', { class: 'more' });
     const picker = h('div');
     const box = h('div', { class: 'dialog' },
       h('div', { class: 'who' }, `${def.name} the ${def.personality} ${def.species}`),
       line,
+      more,
       h('div', { class: 'row', style: 'justify-content:space-between' },
         h('div', { style: 'flex:1;max-width:260px' }, h('div', { class: 'row' }, h('span', { class: 'hearts' }, '♥'.repeat(lvl.level + 1) + '♡'.repeat(4 - lvl.level)), h('b', {}, v.levelName)), h('div', { class: 'bar' }, h('div', { style: `width:${pct}%` }))),
         h('div', { class: 'row' },
@@ -1010,13 +1012,32 @@ export class Hud {
       picker,
       h('div', { class: 'muted', style: 'margin-top:6px' }, `Hint: ${def.name} likes ${def.likes.join(' & ')} things.`));
     this.dialogHost.appendChild(box);
-    // Typewriter effect.
-    let i = 0;
-    const tick = () => {
-      line.textContent = v.line.slice(0, i);
-      if (i++ < v.line.length) setTimeout(tick, 18);
+    // Pages (one per line of text), typed out; replies after the last page.
+    const pages = v.line.split('\n').map((p) => p.trim()).filter(Boolean);
+    let page = 0;
+    let typing = 0;
+    const type = (text: string, done?: () => void) => {
+      const run = ++typing;
+      let i = 0;
+      const tick = () => {
+        if (run !== typing) return;
+        line.textContent = text.slice(0, i);
+        if (i++ < text.length) setTimeout(tick, 18);
+        else done?.();
+      };
+      tick();
     };
-    tick();
+    const showPage = () => {
+      clear(more);
+      type(pages[page] ?? '', () => {
+        if (page < pages.length - 1) {
+          more.append(h('button', { class: 'btn ghost small', onclick: () => { page++; showPage(); } }, `Next ▸ (${page + 1}/${pages.length})`));
+        } else if (v.replies?.length) {
+          more.append(h('div', { class: 'row replies' }, v.replies.map((r) => h('button', { class: 'btn small', onclick: () => { clear(more); type(r.answer); } }, r.text))));
+        }
+      });
+    };
+    showPage();
   }
 
   private giftPicker(host: HTMLElement, vid: string) {

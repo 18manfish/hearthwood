@@ -123,6 +123,9 @@ h1, h2, h3 { margin: 0; }
 .dialog { position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%); width: min(620px, 92vw); background: var(--paper); border-radius: 26px; box-shadow: var(--shadow); padding: 18px 22px; }
 .dialog .who { position: absolute; top: -16px; left: 24px; background: var(--sun); padding: 4px 16px; border-radius: 999px; font-weight: 900; }
 .dialog .line { font-size: 18px; font-weight: 700; margin: 8px 0 12px; min-height: 48px; }
+.dialog .more { display: flex; justify-content: flex-end; margin: -6px 0 10px; }
+.dialog .more:empty { display: none; }
+.dialog .replies { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
 .tabs button { border: 0; border-radius: 999px; padding: 6px 12px; background: var(--cream); font-weight: 800; }

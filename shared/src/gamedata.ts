@@ -10,6 +10,7 @@ import { VILLAGERS, type VillagerDef } from './data/villagers.ts';
 import { PERMITS, rebuildPermits, type PermitDef } from './data/permits.ts';
 import { PATHS, type PathDef } from './data/paths.ts';
 import { BIOME_IDS } from './data/biomes.ts';
+import { DIALOGUE, DIALOGUE_EVENT_IDS, type DialogueRule, type DialogueTrigger } from './data/dialogue.ts';
 
 export interface GameData {
   items: ItemDef[];
@@ -21,10 +22,11 @@ export interface GameData {
   villagers: VillagerDef[];
   permits: PermitDef[];
   paths: PathDef[];
+  dialogue: DialogueRule[];
 }
 
 export type GameTable = keyof GameData;
-export const GAME_TABLES: GameTable[] = ['items', 'fish', 'birds', 'recipes', 'shopStock', 'buildings', 'villagers', 'permits', 'paths'];
+export const GAME_TABLES: GameTable[] = ['items', 'fish', 'birds', 'recipes', 'shopStock', 'buildings', 'villagers', 'dialogue', 'permits', 'paths'];
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -32,7 +34,7 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 export function snapshotGameData(): GameData {
   return clone({
     items: BASE_ITEMS, fish: FISH, birds: BIRDS, recipes: RECIPES, shopStock: SHOP_STOCK as Record<string, string[]>,
-    buildings: BUILDINGS as Record<string, BuildingDef>, villagers: VILLAGERS, permits: PERMITS, paths: PATHS,
+    buildings: BUILDINGS as Record<string, BuildingDef>, villagers: VILLAGERS, permits: PERMITS, paths: PATHS, dialogue: DIALOGUE,
   });
 }
 
@@ -59,6 +61,7 @@ export function applyGameData(d: Partial<GameData>) {
   if (d.villagers) replaceArray(VILLAGERS, d.villagers);
   if (d.permits) replaceArray(PERMITS, d.permits);
   if (d.paths) replaceArray(PATHS, d.paths);
+  if (d.dialogue) replaceArray(DIALOGUE, d.dialogue);
   rebuildBirds();
   rebuildItems();
   rebuildPermits();
@@ -70,7 +73,9 @@ export function applyGameData(d: Partial<GameData>) {
 export interface FieldHint {
   key: string;
   label?: string;
-  type: 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'json';
+  type: 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'json' | 'hours' | 'colors' | 'text';
+  /** For 'colors': a label per colour. */
+  parts?: readonly string[];
   options?: readonly string[];
   required?: boolean;
   help?: string;
@@ -84,13 +89,17 @@ export interface TableInfo {
   key: string;
   /** Rows can be added (new ids). Built-in rows can be edited but never deleted. */
   canAdd: boolean;
+  /** Built-in rows may be deleted too (nothing depends on them). */
+  canDelete?: boolean;
+  /** Edited with a purpose-built editor instead of the generic form. */
+  custom?: boolean;
   fields: FieldHint[];
   blank?: () => Record<string, unknown>;
 }
 
-const SPECIES = ['cat', 'dog', 'rabbit', 'bear', 'fox', 'owl', 'deer', 'frog', 'penguin', 'koala', 'duck', 'hamster', 'wolf', 'squirrel'] as const;
-const PERSONALITIES = ['cheerful', 'lazy', 'grumpy', 'sporty', 'artsy', 'shy'] as const;
-const SEASON_NAMES = ['spring', 'summer', 'autumn', 'winter', 'wet', 'dry', 'hot', 'cool'] as const;
+export const SPECIES = ['cat', 'dog', 'rabbit', 'bear', 'fox', 'owl', 'deer', 'frog', 'penguin', 'koala', 'duck', 'hamster', 'wolf', 'squirrel'] as const;
+export const PERSONALITIES = ['cheerful', 'lazy', 'grumpy', 'sporty', 'artsy', 'shy'] as const;
+export const SEASON_NAMES = ['spring', 'summer', 'autumn', 'winter', 'wet', 'dry', 'hot', 'cool'] as const;
 const BUILDING_TYPES = () => Object.keys(DEFAULT_GAME_DATA.buildings);
 
 export const TABLE_INFO: Record<GameTable, TableInfo> = {
@@ -122,7 +131,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'sell', type: 'number', required: true },
       { key: 'rarity', type: 'number', required: true, help: 'Weight – higher is more common' },
       { key: 'water', type: 'enum', options: ['sea', 'river', 'pond'], required: true, help: 'Rivers connect to the sea, ponds don’t' },
-      { key: 'hours', type: 'json', help: '[from, to] local hours, e.g. [16, 9]' },
+      { key: 'hours', type: 'hours', help: 'Local hours it can be caught; leave empty for all day. Wraps past midnight (e.g. 16 → 9).' },
       { key: 'seasons', type: 'tags', options: SEASON_NAMES },
       { key: 'biomes', type: 'tags', options: BIOME_IDS, help: 'Extra biomes (on top of each biome’s fish list)' },
     ],
@@ -137,10 +146,10 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'sell', type: 'number', required: true },
       { key: 'rarity', type: 'number', required: true },
       { key: 'biomes', type: 'tags', options: BIOME_IDS, required: true },
-      { key: 'hours', type: 'json', help: '[from, to] local hours' },
+      { key: 'hours', type: 'hours', help: 'Local hours it shows up; leave empty for all day.' },
       { key: 'seasons', type: 'tags', options: SEASON_NAMES },
       { key: 'perch', type: 'enum', options: ['ground', 'shore'] },
-      { key: 'colors', type: 'json', required: true, help: '["body","wing","belly","beak"] colours' },
+      { key: 'colors', type: 'colors', parts: ['body', 'wing', 'belly', 'beak'], required: true },
       { key: 'size', type: 'number', required: true, help: 'Model scale, 1 = sparrow' },
     ],
     blank: () => ({ id: 'bird_new', name: 'New bird', icon: '🐦', sell: 150, rarity: 5, biomes: ['grassland'], hours: [6, 19], colors: ['#8d6e4f', '#5d4330', '#d7c4a3', '#3e2f22'], size: 1 }),
@@ -165,7 +174,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
     fields: [
       { key: 'name', type: 'string', required: true },
       { key: 'icon', type: 'string', required: true },
-      { key: 'description', type: 'string' },
+      { key: 'description', type: 'text' },
       { key: 'cost', type: 'json', help: '{"wood":20,"stone":10}' },
       { key: 'requires', type: 'json', help: 'Building types that must be finished first' },
       { key: 'minDay', type: 'number', help: 'Island day it unlocks' },
@@ -184,7 +193,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'personality', type: 'enum', options: PERSONALITIES, required: true },
       { key: 'color', type: 'color', required: true },
       { key: 'accent', type: 'color', required: true },
-      { key: 'catchphrase', type: 'string', required: true },
+      { key: 'catchphrase', type: 'string', required: true, help: 'Used as {cp} in dialogue' },
       { key: 'likes', type: 'tags', options: ITEM_TAGS },
       { key: 'loves', type: 'json', help: 'Item ids, e.g. ["apple","bench"]' },
       { key: 'dislikes', type: 'tags', options: ITEM_TAGS },
@@ -192,13 +201,18 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
     ],
     blank: () => ({ id: 'v_new', name: 'Newbie', species: 'cat', personality: 'cheerful', color: '#d9a35b', accent: '#fff3dc', catchphrase: 'hiya', likes: ['fruit'], loves: ['apple'], dislikes: ['mineral'], birthday: '01-01' }),
   },
+  dialogue: {
+    label: 'Dialogue', icon: '💬', shape: 'list', key: 'id', canAdd: true, canDelete: true, custom: true,
+    fields: [],
+    blank: () => ({ id: 'dlg_new', note: '', when: [{ k: 'weather', weather: ['rain'] }], lines: ['What a rainy day, {player}!'], priority: 20 }),
+  },
   permits: {
     label: 'Permits', icon: '📜', shape: 'list', key: 'id', canAdd: false,
     fields: [
       { key: 'name', type: 'string', required: true },
       { key: 'icon', type: 'string', required: true },
       { key: 'price', type: 'number', required: true },
-      { key: 'desc', type: 'string' },
+      { key: 'desc', type: 'text' },
     ],
   },
   paths: {
@@ -234,7 +248,8 @@ export function validateGameData(d: GameData): string[] {
       seen.add(k);
     }
   };
-  for (const t of ['items', 'fish', 'birds', 'recipes', 'villagers', 'permits', 'paths'] as const) if (!isArr(d[t])) err(`${t}: must be a list`);
+  d.dialogue ??= [];
+  for (const t of ['items', 'fish', 'birds', 'recipes', 'villagers', 'dialogue', 'permits', 'paths'] as const) if (!isArr(d[t])) err(`${t}: must be a list`);
   if (errs.length) return errs;
 
   keepDefaults('items', d.items, (r) => r.id, DEFAULT_GAME_DATA.items);
@@ -321,10 +336,60 @@ export function validateGameData(d: GameData): string[] {
     if (!isArr(v.loves) || v.loves.some((id) => !itemIds.has(id))) err(`villagers: "${v.id}" loves unknown items`);
     if (!/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v.birthday)) err(`villagers: "${v.id}" birthday must be MM-DD`);
   }
+  keepDefaults('dialogue', d.dialogue, (r) => r.id, []);
+  const villagerIds = new Set(d.villagers.map((v) => v.id));
+  for (const r of d.dialogue) for (const m of dialogueProblems(r, villagerIds, itemIds, btypes)) err(`dialogue: "${r.id}" ${m}`);
   for (const p of d.permits) if (!isStr(p.name, 60) || !isNum(p.price)) err(`permits: "${p.id}" needs a name and a price ≥ 0`);
   for (const p of d.paths) {
     if (!isStr(p.name, 60) || !COLOR_RE.test(p.color)) err(`paths: "${p.id}" needs a name and a colour`);
     if (typeof p.cost !== 'object' || Object.entries(p.cost ?? {}).some(([id, n]) => !itemIds.has(id) || !isNum(n, 1))) err(`paths: "${p.id}" cost uses unknown items`);
   }
   return errs;
+}
+
+const MD_RE = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const SEASON_SET = new Set<string>(SEASON_NAMES);
+const WEATHER_SET = new Set(['clear', 'cloudy', 'rain', 'storm', 'snow', 'fog', 'sandstorm', 'heatwave']);
+
+function triggerProblem(t: DialogueTrigger, villagers: Set<string>, items: Set<string>, buildings: Set<string>): string | null {
+  const n = (v: unknown) => v === undefined || (typeof v === 'number' && Number.isFinite(v));
+  const list = (v: unknown, ok: (x: unknown) => boolean) => Array.isArray(v) && v.length > 0 && v.every(ok);
+  switch (t?.k) {
+    case 'date': return MD_RE.test(t.from) && (t.to === undefined || MD_RE.test(t.to)) ? null : 'date must be MM-DD';
+    case 'weekday': return list(t.days, (x) => Number.isInteger(x) && (x as number) >= 0 && (x as number) <= 6) ? null : 'pick at least one weekday';
+    case 'time': return [t.from, t.to].every((x) => Number.isInteger(x) && x >= 0 && x <= 24) ? null : 'hours must be 0–24';
+    case 'season': return list(t.seasons, (x) => SEASON_SET.has(x as string)) ? null : 'pick at least one season';
+    case 'weather': return list(t.weather, (x) => WEATHER_SET.has(x as string)) ? null : 'pick at least one weather';
+    case 'temp': return n(t.min) && n(t.max) && (t.min !== undefined || t.max !== undefined) ? null : 'temperature needs a min or max';
+    case 'event': return (DIALOGUE_EVENT_IDS as string[]).includes(t.event) ? null : 'unknown event';
+    case 'neighbor': return (t.villager === 'any' || villagers.has(t.villager)) && ['island', 'nearby'].includes(t.where) ? null : 'unknown neighbour';
+    case 'friendship': return n(t.min) && n(t.max) ? null : 'bad friendship range';
+    case 'islandDay': return n(t.min) && n(t.max) ? null : 'bad island day range';
+    case 'building': return buildings.has(t.building) && ['built', 'building', 'none'].includes(t.state) ? null : 'unknown building';
+    case 'item': case 'hat': return items.has(t.item) ? null : `unknown item "${t.item}"`;
+    case 'player': return ['owner', 'resident', 'visitor'].includes(t.who) ? null : 'bad player role';
+    case 'place': return ['indoors', 'outdoors'].includes(t.where) ? null : 'bad place';
+    case 'biome': return list(t.biomes, (x) => (BIOME_IDS as string[]).includes(x as string)) ? null : 'pick at least one biome';
+    default: return 'unknown trigger';
+  }
+}
+
+/** Problems with one dialogue rule (empty = fine). */
+export function dialogueProblems(r: DialogueRule, villagers: Set<string>, items: Set<string>, buildings: Set<string>): string[] {
+  const out: string[] = [];
+  if (typeof r.id !== 'string' || !r.id.startsWith('dlg_') || !ID_RE.test(r.id)) out.push('id must start with dlg_');
+  if (!Array.isArray(r.lines) || !r.lines.length || r.lines.some((l) => typeof l !== 'string' || l.length > 600)) out.push('needs at least one line (max 600 characters each)');
+  if (Array.isArray(r.lines) && r.lines.length > 30) out.push('too many variants (max 30)');
+  if (!Array.isArray(r.when) || r.when.length > 12) out.push('needs a trigger list (max 12)');
+  else for (const t of r.when) { const p = triggerProblem(t, villagers, items, buildings); if (p) out.push(p); }
+  if (typeof r.priority !== 'number' || !Number.isFinite(r.priority)) out.push('priority must be a number');
+  if (r.chance !== undefined && !(typeof r.chance === 'number' && r.chance >= 1 && r.chance <= 100)) out.push('chance must be 1–100');
+  if (r.mode !== undefined && !['replace', 'before', 'after'].includes(r.mode)) out.push('bad mode');
+  if (r.match !== undefined && !['all', 'any'].includes(r.match)) out.push('bad match');
+  if (r.villagers?.some((v) => !villagers.has(v))) out.push('speaks for an unknown villager');
+  if (r.personalities?.some((p) => !(PERSONALITIES as readonly string[]).includes(p))) out.push('unknown personality');
+  if (r.species?.some((p) => !(SPECIES as readonly string[]).includes(p))) out.push('unknown species');
+  if (r.replies !== undefined && (!Array.isArray(r.replies) || r.replies.length > 4 || r.replies.some((x) => !x || typeof x.text !== 'string' || !x.text.trim() || typeof x.answer !== 'string' || x.text.length > 80 || x.answer.length > 400))) out.push('replies need text (≤80) and an answer (≤400), max 4');
+  if (r.note !== undefined && (typeof r.note !== 'string' || r.note.length > 200)) out.push('note too long');
+  return out;
 }

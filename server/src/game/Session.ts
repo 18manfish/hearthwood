@@ -28,6 +28,8 @@ export class Session {
   lastMoveAt = 0;
   lastActAt = 0;
   lastPaveAt = 0;
+  /** Chats this session (varies repeated dialogue). */
+  talkCount = 0;
   cast: PendingCast | null = null;
   alive = true;
   /** Islands this session may enter via an invite code. */

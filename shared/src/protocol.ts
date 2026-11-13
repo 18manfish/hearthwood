@@ -309,6 +309,8 @@ export interface TalkView {
   talkedToday: boolean;
   giftedToday: boolean;
   reaction?: 'love' | 'like' | 'neutral' | 'dislike';
+  /** Answers the player can pick (from a dialogue rule). */
+  replies?: { text: string; answer: string }[];
 }
 
 export type ServerMessage =

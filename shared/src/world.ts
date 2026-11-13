@@ -78,6 +78,10 @@ export interface Building {
   role?: BuildingType;
   /** Houses built by a resident belong to them (default: the island owner). */
   ownerId?: string;
+  /** Starter House tier (1–3, missing = 1). */
+  level?: number;
+  /** A house upgrade in progress: the tier it becomes once `at` (ms epoch) has passed. */
+  upgrade?: { level: number; at: number };
 }
 
 export interface IslandLayout {

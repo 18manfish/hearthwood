@@ -3,10 +3,11 @@
 // to the procedural ones here.
 
 import * as THREE from 'three';
-import { BIRD_BY_ID, BUILDINGS, ITEMS, TREES, hashString, type Building, type Season, type WorldObject } from '@hearthwood/shared';
+import { BIRD_BY_ID, BUILDINGS, ITEMS, TREES, hashString, houseLevel, type Building, type Season, type WorldObject } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 import { decorModel } from './decor.ts';
 import { gltfTree } from './treeAssets.ts';
+import { gltfHouse } from './houseAssets.ts';
 
 const matCache = new Map<string, THREE.MeshStandardMaterial>();
 export function mat(color: string, opts: { emissive?: string; ei?: number; opacity?: number; rough?: number } = {}) {
@@ -484,6 +485,40 @@ function houseBody(g: THREE.Group, w: number, d: number, wallH: number, wall: st
   }
 }
 
+/** Fallback Starter House tiers when house.glb isn't available. */
+function proceduralHouse(g: THREE.Group, b: Building, level: number, wall: string, roof: string) {
+  if (level <= 1) {
+    houseBody(g, b.w, b.h, 1.4, wall, roof);
+    g.add(part('box', '#5d4037', 0.25, 0.7, 0.25, b.w / 4, 2.3, -0.2));
+  } else if (level === 2) {
+    houseBody(g, b.w, b.h, 2.2, '#f3dfb8', '#4a6670', '#2f5d50');
+    g.add(part('box', '#4e3523', b.w - 0.3, 0.1, b.h - 0.3, 0, 1.3, 0));
+    g.add(part('box', '#9c4a3a', 0.3, 0.9, 0.3, -b.w / 4, 3.3, -0.3));
+    g.add(part('box', '#8b6b47', 1.8, 0.3, 0.5, 0, 0.15, b.h / 2 - 0.05));
+  } else {
+    houseBody(g, b.w, b.h, 2.4, '#efe6d2', '#3d5a80', '#7a1f3d');
+    g.add(part('box', '#fbf8f0', b.w - 0.3, 0.1, b.h - 0.3, 0, 1.5, 0));
+    g.add(part('cyl', '#efe6d2', 0.4, 3.0, 0.4, -b.w / 2 + 0.5, 1.8, b.h / 2 - 0.7));
+    g.add(part('cone', '#3d5a80', 0.5, 1.2, 0.5, -b.w / 2 + 0.5, 3.9, b.h / 2 - 0.7));
+    for (const x of [-0.4, 0.4]) g.add(part('cyl', '#fbf8f0', 0.07, 1.0, 0.07, x, 0.65, b.h / 2 - 0.05));
+    g.add(part('sphere', '#e0b43a', 0.08, 0.08, 0.08, -b.w / 2 + 0.5, 4.55, b.h / 2 - 0.7));
+  }
+}
+
+/** Builders at work: poles, planks and a sign around the house being upgraded. */
+function scaffolding(g: THREE.Group, w: number, d: number, level: number) {
+  const top = [2.0, 2.9, 3.4][level - 1] ?? 2.4;
+  const hx = w / 2 - 0.06, hz = d / 2 - 0.06;
+  for (const [x, z] of [[-hx, hz], [hx, hz], [-hx, -hz], [hx, -hz], [0, hz]]) g.add(part('box', '#d9a441', 0.07, top, 0.07, x, top / 2, z));
+  for (let y = 0.9; y < top; y += 0.9) {
+    g.add(part('box', '#a0703f', w - 0.1, 0.05, 0.22, 0, y, hz));
+    g.add(part('box', '#a0703f', 0.22, 0.05, d - 0.1, hx, y, 0));
+  }
+  const s = emojiSprite('🚧', 0.6);
+  s.position.set(hx - 0.2, top + 0.4, hz);
+  g.add(s);
+}
+
 export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' = 'cabin', opts: { flagUp?: boolean; notes?: number } = {}): THREE.Group {
   const def = BUILDINGS[b.type];
   const g = new THREE.Group();
@@ -707,10 +742,14 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       g.add(s);
       break;
     }
-    case 'cabin':
-      houseBody(g, b.w, b.h, 1.4, def.color, def.roof);
-      g.add(part('box', '#5d4037', 0.25, 0.7, 0.25, b.w / 4, 2.3, -0.2));
+    case 'cabin': {
+      const level = houseLevel(b, now);
+      const model = gltfHouse(level, (c) => mat(c), () => mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }));
+      if (model) g.add(model);
+      else proceduralHouse(g, b, level, def.color, def.roof);
+      if (b.upgrade && b.upgrade.at > now) scaffolding(g, b.w, b.h, level);
       break;
+    }
     case 'mailbox': {
       // Post + rounded-top box, door facing south, flag on the side.
       g.add(part('box', '#7a5230', 0.09, 0.75, 0.09, 0, 0.375, 0));

@@ -6,7 +6,7 @@ import {
   BIOMES, BUILDINGS, ENTERABLE, SHOP_TYPES, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
   VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE,
   FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_TALK, FRIENDSHIP_MAX, FRIENDSHIP_BIRTHDAY_BONUS, HAIR_STYLES,
-  Rng, Tile, waterKind, placeError, BOTTLE_COOLDOWN_MS, BOTTLE_MIN_DELAY_MS, BOTTLE_MAX_DELAY_MS, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, isRampOp, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany, composeDialogue, DIALOGUE,
+  Rng, Tile, waterKind, placeError, BOTTLE_COOLDOWN_MS, BOTTLE_MIN_DELAY_MS, BOTTLE_MAX_DELAY_MS, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, isRampOp, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany, composeDialogue, DIALOGUE, HOUSE_TIERS, houseLevel,
   type DialogueContext, type DialogueEvent,
   type Action, type BuildingType, type TalkView, type WorldObject, type Building,
 } from '@hearthwood/shared';
@@ -368,6 +368,37 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     room.moveBuilding(b, a.x, a.z);
     log.info('building moved', { player: ctx.p.id, island: room.id, building: b.type, to: [a.x, a.z], cost });
     return { ok: true, msg: `${BUILDINGS[b.type].name} moved! (−${cost} coins)` };
+  },
+
+  upgrade(ctx) {
+    if (!nearCompleted(ctx, ['town_hall'])) return fail('House upgrades are ordered at the Town Hall counter.');
+    const island = ctx.room.interior ? ctx.game.rooms.get(ctx.room.interior.parentId) : ctx.room;
+    if (!island || island.kind !== 'island' || !island.ownsHere(ctx.p.id)) return fail('Order upgrades at the Town Hall of the island you live on.');
+    const house = ctx.game.ownHouse(island, ctx.p.id);
+    if (!house || house.completeAt > ctx.now) return fail('Build your Starter House first.');
+    if (house.upgrade && house.upgrade.at > ctx.now) return fail('The builders are already working on your house.');
+    const cur = houseLevel(house, ctx.now);
+    if (house.upgrade) {
+      house.level = cur;
+      delete house.upgrade;
+    }
+    const next = HOUSE_TIERS[cur];
+    if (!next) return fail('Your house is as grand as it gets!');
+    for (const req of next.requires) if (island.completedCount(req, ctx.now) < 1) return fail(`Requires a finished ${BUILDINGS[req].name}.`);
+    const day = island.islandDay(ctx.now);
+    if (!config.ignoreDayGates && day < next.minDay) return fail(`The ${next.name} unlocks on island day ${next.minDay} (today is day ${day}).`);
+    if (ctx.p.coins < next.coins) return fail(`The ${next.name} costs ${next.coins.toLocaleString()} coins.`);
+    if (!inv.removeAll(ctx.p, next.cost)) return fail('Not enough materials.');
+    ctx.p.coins -= next.coins;
+    house.upgrade = { level: next.level, at: ctx.now + (next.buildMinutes * 60000) / config.timeFactor };
+    island.dirty = true;
+    island.broadcast({ t: 'bAdd', b: [house] });
+    ctx.game.store.markIsland(island.id);
+    ctx.game.sendSelf(ctx.s);
+    ctx.game.sendQuest(ctx.s);
+    log.info('house upgrade ordered', { player: ctx.p.id, island: island.id, level: next.level });
+    const mins = Math.round(next.buildMinutes / config.timeFactor);
+    return { ok: true, msg: `🏗️ Upgrading to the ${next.name}! Ready in about ${mins >= 60 ? `${Math.round(mins / 60)}h` : `${Math.max(1, mins)} min`} – you can keep living in it meanwhile.` };
   },
 
   permit(ctx, a) {

@@ -6,7 +6,7 @@ import type { WebSocket } from 'ws';
 import {
   BIOMES, BUILDINGS, ISLAND_SIZE, LEGACY_ISLAND_SIZE, DEFAULT_HOTBAR, normalizeHotbar, PERMITS, type Album, CHAPTERS, ITEMS, MYSTERY_TOUR_COST, PROTOCOL_VERSION, SHARED_LOCATIONS, VILLAGERS,
   ACCESS_LEVELS, BIOME_IDS, ENTERABLE, DEV_COMMANDS, SEASONS_BY_MODEL, BOARD_MAX_POSTS, BOARD_POST_COOLDOWN_MS, interiorSpecFor, Rng, nearBuilding, atDoor, wrapAngle, SchemaError, chapterDone, clientMessageParser, friendshipLevel, goalDone, hashString,
-  isValidTimeZone, localTime, makeCode, parse, sharedLocation, villagerDef,
+  isValidTimeZone, localTime, HOUSE_TIERS, houseLevel, makeCode, parse, sharedLocation, villagerDef,
   type Building, type ClientMessage, type FriendView, type MapIsland, type ProgressInput, type QuestView,
   GAME_TABLES, DEFAULT_GAME_DATA, applyGameData, snapshotGameData, validateGameData, encodeTiles,
   type GameData, type GameTable, type SelfView, type TravelTarget, type Look, type Gender, type DevCommand, type Weather, type Season,
@@ -413,6 +413,7 @@ export class Game {
       geo: owner?.geo ?? { lat: 47, lon: 8, tz: 'UTC' }, seed: rec.seed, record: rec, elevation: (rec.gen ?? 1) >= 2, size: rec.size ?? LEGACY_ISLAND_SIZE,
     });
     room.onBuildingComplete = (r, b) => this.buildingCompleted(r, b);
+    room.onHouseUpgraded = (r, b) => this.houseUpgraded(r, b);
     this.rooms.set(id, room);
     // Catch up on everything that happened while nobody was here.
     room.slowTick(Date.now());
@@ -424,11 +425,16 @@ export class Game {
     const id = `${parent.id}~${b.id}`;
     const existing = this.rooms.get(id);
     const villager = b.villagerId ? villagerDef(b.villagerId) : undefined;
-    if (existing) {
+    const level = b.type === 'cabin' ? houseLevel(b, Date.now()) : 1;
+    if (existing && existing.interior?.spec.style === 'cabin' && (existing.interior.spec.level ?? 1) !== level && existing.sessions.size === 0) {
+      // The house was upgraded: rebuild the (bigger) interior, keeping the furniture.
+      if (existing.syncRecord()) this.store.markIsland(parent.id);
+      this.rooms.delete(id);
+    } else if (existing) {
       this.syncVillagerAtHome(parent, existing, b);
       return existing;
     }
-    const spec = interiorSpecFor(b.type, b.id, villager);
+    const spec = interiorSpecFor(b.type, b.id, villager, level);
     if (!spec) return null;
     const houseOwnerId = b.ownerId ?? parent.ownerId ?? undefined;
     const owner = (b.ownerId ? this.store.players.get(b.ownerId)?.name : parent.ownerName) ?? 'Someone';
@@ -848,6 +854,25 @@ export class Game {
     if (owner) this.sendQuest(owner);
   }
 
+  /** A finished house upgrade: tell the owner, refresh their upgrade panel. */
+  private houseUpgraded(room: Room, b: Building) {
+    const ownerId = b.ownerId ?? room.ownerId;
+    const tier = HOUSE_TIERS[houseLevel(b, Date.now()) - 1];
+    log.info('house upgraded', { island: room.id, building: b.id, level: b.level });
+    this.store.markIsland(room.id);
+    const s = ownerId ? this.online.get(ownerId) : undefined;
+    if (s) {
+      s.send({ t: 'toast', text: `${tier.icon} Your ${tier.name} is finished!`, kind: 'good' });
+      this.sendQuest(s);
+    }
+  }
+
+  /** A player's own Starter House on an island room. */
+  ownHouse(room: Room, playerId: string): Building | undefined {
+    for (const b of room.buildings.values()) if (b.type === 'cabin' && (b.ownerId ?? room.ownerId) === playerId) return b;
+    return undefined;
+  }
+
   levelUpCheck(s: Session, room: Room, defId: string, f: Friendship) {
     const lvl = friendshipLevel(f.pts).level;
     const prev = f.level ?? 0;
@@ -895,6 +920,9 @@ export class Game {
     }
     const cur = CHAPTERS[chapter - 1];
     const q: QuestView = { chapter, done: cur ? cur.goals.map((g) => goalDone(g, prog)) : [], islandDay: prog.day, villagers: prog.villagers };
+    const isl = s.room?.kind === 'island' ? s.room : s.room?.interior ? this.rooms.get(s.room.interior.parentId) : undefined;
+    const house = isl && isl.ownsHere(p.id) ? this.ownHouse(isl, p.id) : undefined;
+    if (house && house.completeAt <= Date.now()) q.house = { level: house.level ?? 1, upgrade: house.upgrade };
     s.send({ t: 'quest', q });
   }
 

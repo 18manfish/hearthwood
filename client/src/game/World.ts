@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
   BIOMES, BUILDINGS, ITEMS, Grid, Tile, TREES, CLIFF, ENTERABLE, daylight, decodeTiles, distToTile, isWaterTile, nearBuilding,
-  slideMove, atDoor, placeError, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
+  slideMove, atDoor, houseLevel, placeError, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
   TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, isRampOp, terraformError, BIRD_BY_ID, type TerraOp, type HotbarTool,
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season, SEA_LEVEL } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
@@ -606,6 +606,7 @@ export class World {
     const y = b.type === 'dock' ? 0 : this.room?.kind === 'interior' ? baseHeight(Tile.Floor) : baseHeight(Tile.Ground) + (this.grid?.level(b.x, b.z) ?? 0) * CLIFF;
     mesh.position.set(b.x + b.w / 2, y, b.z + b.h / 2);
     mesh.userData.done = b.completeAt <= net.serverNow();
+    if (b.type === 'cabin') mesh.userData.house = houseKey(b, net.serverNow());
     // Someone to serve you behind every counter.
     if (b.type === 'counter') {
       const keeper = makeVillager(shopkeeper(b.role));
@@ -1257,6 +1258,7 @@ export class World {
     for (const [id, mesh] of this.bldMeshes) {
       const b = this.buildings.get(id);
       if (b && !mesh.userData.done && b.completeAt <= now) this.upsertBuildingMesh(b);
+      else if (b?.type === 'cabin' && mesh.userData.house !== houseKey(b, now)) this.upsertBuildingMesh(b);
     }
   }
 
@@ -1425,3 +1427,8 @@ function round2(n: number) {
 }
 
 export { setHat };
+
+/** Changes whenever a house looks different (new tier, scaffolding up or down). */
+function houseKey(b: Building, now: number) {
+  return `${houseLevel(b, now)}${b.upgrade && b.upgrade.at > now ? '+' : ''}`;
+}

@@ -86,6 +86,7 @@ export const actionParser = s.union('k', {
   bottle: s.obj({ k: s.lit('bottle'), text: s.str(1, BOTTLE_MAX_CHARS) }),
   permit: s.obj({ k: s.lit('permit'), id: s.guard(isPermit, 'permit') }),
   relocate: s.obj({ k: s.lit('relocate'), id, x: tileCoord, z: tileCoord }),
+  upgrade: s.obj({ k: s.lit('upgrade') }),
   terra: s.obj({ k: s.lit('terra'), op: s.oneOf(TERRA_OPS), x: tileCoord, z: tileCoord, dir: s.opt(s.int(-1, 3)) }),
 });
 export type Action = ReturnType<typeof actionParser>;
@@ -283,6 +284,8 @@ export interface QuestView {
   done: boolean[];
   islandDay: number;
   villagers: number;
+  /** Your own Starter House on the island you live on (for the upgrade panel). */
+  house?: { level: number; upgrade?: { level: number; at: number } };
 }
 
 export interface MapIsland {

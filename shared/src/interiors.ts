@@ -20,6 +20,8 @@ export interface InteriorSpec {
   /** Seed for variations (shack colours etc.). */
   seed: number;
   villager?: VillagerDef;
+  /** Starter House tier (cabin interiors grow and get fancier). */
+  level?: number;
 }
 
 export interface InteriorTheme {
@@ -37,6 +39,8 @@ export interface InteriorLayout extends IslandLayout {
 /** Interiors whose furniture the owner can rearrange (and which are saved). */
 export const HOME_STYLES: InteriorStyle[] = ['tent', 'cabin'];
 
+/** Starter House interior per tier (keep in step with HOUSE_TIERS). */
+const CABIN_SIZE = [9, 11, 13];
 const SIZE: Record<InteriorStyle, number> = { tent: 7, cabin: 9, villager: 9, shop: 11, town_hall: 13, shack: 8, lighthouse: 7 };
 
 function mix(a: string, b: string, t: number) {
@@ -46,7 +50,7 @@ function mix(a: string, b: string, t: number) {
 }
 
 export function generateInterior(spec: InteriorSpec): InteriorLayout {
-  const size = SIZE[spec.style];
+  const size = spec.style === 'cabin' ? CABIN_SIZE[(spec.level ?? 1) - 1] ?? SIZE.cabin : SIZE[spec.style];
   const tiles = new Uint8Array(size * size);
   for (let z = 0; z < size; z++)
     for (let x = 0; x < size; x++) tiles[z * size + x] = x === 0 || z === 0 || x === size - 1 || z === size - 1 ? Tile.Wall : Tile.Floor;
@@ -91,20 +95,68 @@ export function generateInterior(spec: InteriorSpec): InteriorLayout {
       furniture('crate', 1, 4);
       break;
 
-    case 'cabin':
-      theme = { wall: '#efe3cf', floor: '#b98a5a', floorAlt: '#a87b4f', pattern: 'planks' };
+    case 'cabin': {
+      const lvl = spec.level ?? 1;
       fixture('bed', 1, 1, 1, 2);
       fixture('chest', R, 1, 1, 1);
-      deco('w_fireplace', mid, 0);
-      deco('w_window', 2, 0);
-      deco('w_window', R - 1, 0);
-      deco('rug|#3d6fb6', mid, 3);
-      deco('table|#a0703f', R - 1, 4);
-      deco('chair|#a0703f', R - 1, 5, 2);
-      deco('bookshelf|#8b5e34', 2, 1);
-      deco('plant', 1, R);
-      deco('plant', R, R);
+      if (lvl === 1) {
+        theme = { wall: '#efe3cf', floor: '#b98a5a', floorAlt: '#a87b4f', pattern: 'planks' };
+        deco('w_fireplace', mid, 0);
+        deco('w_window', 2, 0);
+        deco('w_window', R - 1, 0);
+        deco('rug|#3d6fb6', mid, 3);
+        deco('table|#a0703f', R - 1, 4);
+        deco('chair|#a0703f', R - 1, 5, 2);
+        deco('bookshelf|#8b5e34', 2, 1);
+        deco('plant', 1, R);
+        deco('plant', R, R);
+      } else if (lvl === 2) {
+        // Timber House: warmer wood, a sitting corner and a dining table.
+        theme = { wall: '#f3e2c4', floor: '#a8754a', floorAlt: '#9a6a41', pattern: 'planks' };
+        deco('w_fireplace', mid, 0);
+        deco('w_window', 2, 0);
+        deco('w_window', R - 1, 0);
+        deco('w_clock', mid + 2, 0);
+        deco('w_painting|#6aa84f', mid - 2, 0);
+        deco('rug|#8e3b46', mid, 3);
+        deco('sofa|#6d8b74', mid, 4, 2);
+        deco('armchair|#c49a62', mid - 2, 3, 1);
+        deco('bookshelf|#8b5e34', 2, 1);
+        deco('wardrobe|#a0703f', R - 1, 1);
+        deco('dining', 2, R - 2);
+        deco('lantern', R, R - 3);
+        deco('plant', 1, R);
+        deco('plant', R, R);
+      } else {
+        // Hearth Manor: patterned floor, grand fireplace wall, library and dining hall.
+        theme = { wall: '#f6efe2', floor: '#e8dcc6', floorAlt: '#7a5a43', pattern: 'tiles' };
+        deco('w_fireplace', mid, 0);
+        deco('w_window', 2, 0);
+        deco('w_window', R - 1, 0);
+        deco('w_painting|#c9a24a', mid - 2, 0);
+        deco('w_painting|#3d5a80', mid + 2, 0);
+        deco('w_clock', 3, 0);
+        deco('w_banner|#7a1f3d', R - 2, 0);
+        deco('rug|#7a1f3d', mid, 3);
+        deco('rug|#7a1f3d', mid, 5);
+        deco('sofa|#7a1f3d', mid, 4, 2);
+        deco('armchair|#c9a24a', mid - 2, 3, 1);
+        deco('armchair|#c9a24a', mid + 2, 3, 3);
+        deco('bookshelf|#5d4037', 2, 1);
+        deco('bookshelf|#5d4037', 3, 1);
+        deco('wardrobe|#5d4037', R - 1, 1);
+        deco('mirror', R - 2, 1);
+        deco('globe', 1, 4);
+        deco('telescope', R, 4);
+        deco('aquarium', R, R - 3);
+        deco('dining', 2, R - 2);
+        deco('desk', R - 2, R - 1);
+        deco('plant', 1, R);
+        deco('plant', R, R);
+        deco('plant_small', 1, R - 4);
+      }
       break;
+    }
 
     case 'villager': {
       const v = spec.villager;
@@ -301,11 +353,11 @@ export function generateInterior(spec: InteriorSpec): InteriorLayout {
 }
 
 /** Which interior a building has. */
-export function interiorSpecFor(type: BuildingType, buildingId: string, villager?: VillagerDef): InteriorSpec | null {
+export function interiorSpecFor(type: BuildingType, buildingId: string, villager?: VillagerDef, level = 1): InteriorSpec | null {
   const seed = hashString(buildingId);
   switch (type) {
     case 'tent': return { style: 'tent', seed };
-    case 'cabin': return { style: 'cabin', seed };
+    case 'cabin': return { style: 'cabin', seed, level };
     case 'villager_house': return { style: 'villager', seed, villager };
     case 'town_hall': return { style: 'town_hall', seed };
     case 'shack': return { style: 'shack', seed };

@@ -3,7 +3,7 @@
 
 import {
   BUILDINGS, BUILDABLE, CHAPTERS, ITEMS, ITEM_LIST, MYSTERY_TOUR_COST, RECIPES, SHOP_STOCK, SHARED_LOCATIONS, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
-  VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, BIOMES, localTime, villagerDef, friendshipLevel, FRIENDSHIP_LEVELS,
+  VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, BIOMES, localTime, villagerDef, friendshipLevel, FRIENDSHIP_LEVELS, HOUSE_TIERS, MAX_HOUSE_LEVEL, houseLevel,
   type Access, type Building, type BuildingType, type Ingredient, type RecipeDef, type TalkView, type MapIsland, type Look, type TravelTarget,
 } from '@hearthwood/shared';
 import { net } from '../net.ts';
@@ -914,7 +914,9 @@ export class Hud {
         return this.live('🏛️ Town Hall', null, (b) => {
           if (own) {
             const vs = state.quest?.villagers ?? 0;
-            b.append(h('p', {}, `Welcome, mayor! ${vs}/7 villagers live here.`), h('h3', {}, '📜 Permits'));
+            b.append(h('p', {}, `Welcome, mayor! ${vs}/7 villagers live here.`));
+            this.houseUpgrade(b);
+            b.append(h('h3', {}, '📜 Permits'));
             const pg = h('div', { class: 'grid' });
             for (const pm of PERMITS) {
               const owned = hasPermit(pm.id);
@@ -950,6 +952,45 @@ export class Hud {
             h('button', { class: 'btn ghost', style: 'margin-left:8px', onclick: () => this.open('map') }, '🗺️ World map'));
         });
     }
+  }
+
+  /** Town Hall: your Starter House tier and the next upgrade. */
+  private houseUpgrade(b: HTMLElement) {
+    const house = state.quest?.house;
+    b.append(h('h3', {}, '🏠 Your house'));
+    if (!house) {
+      b.append(h('p', { class: 'muted' }, 'Build your Starter House first – then the builders here can make it grander.'));
+      return;
+    }
+    const now = net.serverNow();
+    const level = houseLevel(house, now);
+    const cur = HOUSE_TIERS[level - 1];
+    const box = h('div', { class: 'tile', style: 'text-align:left' },
+      h('div', { class: 'row' }, h('span', { class: 'ico' }, cur.icon), h('div', {}, h('div', { class: 'nm' }, `${cur.name} · tier ${level} of ${MAX_HOUSE_LEVEL}`), h('div', { class: 'muted' }, cur.description))));
+    b.append(box);
+    if (house.upgrade && house.upgrade.at > now) {
+      const next = HOUSE_TIERS[house.upgrade.level - 1];
+      const mins = Math.ceil((house.upgrade.at - now) / 60000);
+      box.append(h('p', {}, `🏗️ Becoming the ${next.name} – ready in ${mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`}.`));
+      return;
+    }
+    const next = HOUSE_TIERS[level];
+    if (!next) {
+      box.append(h('p', {}, '✨ The grandest house on the island!'));
+      return;
+    }
+    const day = state.quest?.islandDay ?? 1;
+    // Upgrades are ordered here, so the Town Hall requirement is met; the server checks the rest.
+    const missing = day < next.minDay ? [`island day ${next.minDay}`] : [];
+    const enough = Object.entries(next.cost).every(([id, n]) => have(id) >= n) && state.coins >= next.coins;
+    box.append(
+      h('p', { style: 'margin:10px 0 4px' }, h('b', {}, `Next: ${next.icon} ${next.name}`), h('br'), h('span', { class: 'muted' }, next.description)),
+      h('div', { class: 'row', style: 'gap:6px;margin:6px 0' },
+        h('span', { class: `pill${state.coins >= next.coins ? ' ok' : ' no'}` }, `🪙 ${next.coins.toLocaleString()}`),
+        Object.entries(next.cost).map(([id, n]) => h('span', { class: `pill${have(id) >= n ? ' ok' : ' no'}`, title: ITEMS[id]?.name ?? id }, `${ITEMS[id]?.icon ?? ''} ${have(id)}/${n}`))),
+      h('div', { class: 'muted' }, `Takes about ${next.buildMinutes >= 60 ? `${Math.round(next.buildMinutes / 60)}h` : `${next.buildMinutes} min`} · bigger interior (${next.interior}×${next.interior}) · you can keep living there meanwhile.`),
+      missing.length ? h('p', { class: 'muted' }, `Unlocks with ${missing.join(' and ')}.`) : '',
+      h('button', { class: 'btn', style: 'margin-top:8px', disabled: !enough || missing.length > 0, onclick: () => { if (confirm(`Upgrade to the ${next.name}?`)) this.act({ k: 'upgrade' }); } }, `⬆️ Upgrade to ${next.name}`));
   }
 
   private shop(b: HTMLElement, type: BuildingType) {

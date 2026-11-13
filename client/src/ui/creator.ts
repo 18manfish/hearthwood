@@ -36,16 +36,17 @@ export class Preview {
     const d = new THREE.DirectionalLight('#fff4dc', 1.8);
     d.position.set(2, 4, 3);
     this.scene.add(d);
-    this.camera.position.set(0, 1.05, 4.2);
-    this.camera.lookAt(0, 0.75, 0);
     const clock = new THREE.Clock();
     const loop = () => {
       if (this.stopped) return;
       const w = el.clientWidth, hh = el.clientHeight;
-      if (w && hh) {
+      if (w && hh && (w !== this.w || hh !== this.h)) {
+        this.w = w;
+        this.h = hh;
         this.renderer.setSize(w, hh, false);
         this.camera.aspect = w / hh;
         this.camera.updateProjectionMatrix();
+        this.frame();
       }
       const dt = clock.getDelta();
       if (this.rig) {
@@ -57,6 +58,17 @@ export class Preview {
     };
     loop();
   }
+  private w = 0;
+  private h = 0;
+  /** Keep the whole character in view (hats and wide brims included), whatever the panel's shape. */
+  private frame() {
+    const halfH = 1.22, halfW = 0.95, cy = 1.02;
+    const t = Math.tan((this.camera.fov * Math.PI) / 360);
+    const d = Math.max(halfH / t, halfW / (t * this.camera.aspect)) * 1.04;
+    this.camera.position.set(0, cy + d * 0.08, d);
+    this.camera.lookAt(0, cy, 0);
+  }
+
   set(gender: Gender, look: Look, outfit: Outfit | string | null = {}) {
     const rot = this.rig?.root.rotation.y ?? 0.4;
     if (this.rig) this.scene.remove(this.rig.root);
@@ -83,7 +95,7 @@ function swatches(colors: string[], current: () => string, pick: (c: string) => 
 
 /** The look editor, shared by character creation and the clothing shop makeover. */
 export function lookEditor(gender: () => Gender, look: Look, onChange: () => void) {
-  const root = h('div', { class: 'col' });
+  const root = h('div', { class: 'look-grid' });
   const hairRow = h('div', { class: 'toggle' });
   const drawHair = () => {
     clear(hairRow);
@@ -177,15 +189,14 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
     drawG();
     const card = h('div', { class: 'card creator' },
       prevEl,
-      h('div', { class: 'col' },
+      h('div', { class: 'col creator-form' },
         h('div', { class: 'title', style: 'font-size:30px' }, redo ? `New look, ${name}!` : 'Create your villager'),
         redo
-          ? h('p', { class: 'muted' }, 'Characters got a makeover: new faces and real clothes. Redo your look – your island, pockets and progress all stay as they are.')
-          : h('div', { class: 'field' }, 'Name', nameIn),
+          ? h('p', { class: 'muted', style: 'margin:0' }, 'Characters got a makeover: new faces and real clothes. Redo your look – your island, pockets and progress all stay as they are.')
+          : h('div', { class: 'look-grid' }, h('div', { class: 'field' }, 'Name', nameIn), h('div', { class: 'field' }, 'Island name', isleIn)),
         h('div', { class: 'field' }, 'I am a…', gToggle),
         editor.root,
         h('div', { class: 'field' }, 'Clothes', sets, setNote),
-        redo ? '' : h('div', { class: 'field' }, 'Island name', isleIn),
         err,
         h('div', { class: 'row', style: 'justify-content:flex-end' },
           redo ? h('button', { class: 'btn', onclick: () => {

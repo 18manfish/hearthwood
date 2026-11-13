@@ -48,8 +48,17 @@ h1, h2, h3 { margin: 0; }
 .card { background: var(--paper); border-radius: 26px; box-shadow: var(--shadow); padding: 24px; }
 .title { font-size: 42px; font-weight: 900; color: var(--leaf-dark); letter-spacing: 1px; text-shadow: 0 3px 0 #fff; }
 
-.creator { display: grid; grid-template-columns: 360px 420px; gap: 18px; align-items: stretch; }
-.creator .preview { background: radial-gradient(circle at 50% 70%, #e8f6dc, #cfe9f2); border-radius: 22px; min-height: 460px; position: relative; overflow: hidden; }
+.creator { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.7fr); gap: 22px; align-items: stretch; width: min(1280px, 96vw); height: min(900px, calc(100vh - 32px)); margin: auto; box-sizing: border-box; }
+.creator .preview { background: radial-gradient(circle at 50% 70%, #e8f6dc, #cfe9f2); border-radius: 22px; min-height: 0; position: relative; overflow: hidden; }
+.creator-form { min-height: 0; overflow-y: auto; padding-right: 6px; gap: 10px; }
+.creator-form .title { line-height: 1.1; }
+.look-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 10px 20px; align-items: start; }
+.look-grid .toggle, .creator-form .toggle { flex-wrap: wrap; border-radius: 18px; }
+.look-grid .toggle button { white-space: nowrap; padding: 6px 12px; }
+@media (max-width: 760px) {
+  .creator { grid-template-columns: minmax(0, 1fr); grid-template-rows: 300px auto; height: auto; }
+  .creator-form { overflow: visible; }
+}
 .creator .preview canvas { width: 100% !important; height: 100% !important; position: absolute; inset: 0; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatch { width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 2px var(--line); }

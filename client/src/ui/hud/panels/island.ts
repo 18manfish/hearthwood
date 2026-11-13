@@ -7,11 +7,13 @@ import { state } from '../../../state.ts';
 import { h } from '../../dom.ts';
 import { travelTo } from './map.ts';
 import type { Hud } from '../../hud.ts';
+import { fpsVisible, setFpsVisible } from '../fps.ts';
 
 export function islandPanel(hud: Hud, b: HTMLElement) {
   const self = state.self;
   if (!self) return;
   accountBox(hud, b);
+  displayBox(b);
   const opts: [Access, string, string][] = [
     ['private', '🔒 Nobody', 'Only you.'],
     ['friends', '💌 Friends', 'Everyone on your friend list.'],
@@ -34,6 +36,15 @@ export function islandPanel(hud: Hud, b: HTMLElement) {
   rolesBox(hud, b);
   geoBox(hud, b);
   if (state.dev) b.append(h('p', { class: 'muted', style: 'margin-top:12px' }, 'Dev mode: chat /kit, /give <item> [n], /coins [n], /day [n], /finish'));
+}
+
+/** Screen options that only affect this browser. */
+function displayBox(b: HTMLElement) {
+  const fps = h('input', { type: 'checkbox', checked: fpsVisible(), onchange: () => setFpsVisible(fps.checked) }) as HTMLInputElement;
+  b.append(h('h3', { style: 'margin-top:10px' }, '🖥️ Display'),
+    h('div', { class: 'list' }, h('label', { class: 'item', style: 'cursor:pointer' },
+      h('div', {}, h('b', {}, 'Show FPS counter'), h('div', { class: 'muted' }, 'Frames per second, in the bottom-right corner.')),
+      fps)));
 }
 
 /** Friends who may build on / live on your island, and islands you help on. */

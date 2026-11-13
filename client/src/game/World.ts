@@ -145,6 +145,7 @@ export class World {
 
     resize(this);
     window.addEventListener('resize', () => resize(this));
+    document.addEventListener('fullscreenchange', () => resize(this));
     bindPointer(this);
     this.scene.add(this.footprints.mesh);
     this.renderer.setAnimationLoop(() => this.frame());
@@ -232,6 +233,7 @@ export class World {
   /** Called every frame after the world has updated (audio hooks in here). */
   onFrame: ((dt: number) => void) | null = null;
   private frame() {
+    resize(this); // cheap unless the window changed size (F11 doesn't always send 'resize' in time)
     const rawDt = this.clock.getDelta();
     const dt = Math.min(0.1, rawDt);
     const t = this.clock.elapsedTime;

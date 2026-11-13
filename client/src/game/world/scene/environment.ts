@@ -173,9 +173,22 @@ export function zoom(self: World, delta: number) {
   self.camDist = Math.max(8, Math.min(24, self.camDist + delta));
 }
 
+/** Size of the drawing area the renderer was last fitted to (width, height, pixel ratio). */
+const fitted = new WeakMap<World, string>();
+
+/**
+ * Fit the renderer to its container. Called every frame: it only does work when
+ * the size or pixel ratio changed, so it catches everything a 'resize' event can
+ * miss (F11 / fullscreen, docking the window, moving to another monitor).
+ */
 export function resize(self: World) {
   const w = self.container.clientWidth || window.innerWidth;
   const h = self.container.clientHeight || window.innerHeight;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const key = `${w}x${h}@${dpr}`;
+  if (fitted.get(self) === key) return;
+  fitted.set(self, key);
+  if (self.renderer.getPixelRatio() !== dpr) self.renderer.setPixelRatio(dpr);
   self.renderer.setSize(w, h);
   self.labels.setSize(w, h);
   self.camera.aspect = w / h;

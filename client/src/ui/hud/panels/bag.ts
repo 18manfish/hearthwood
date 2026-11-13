@@ -11,7 +11,7 @@ import type { Hud } from '../../hud.ts';
 export function bagPanel(hud: Hud, b: HTMLElement, pockets = false) {
   if (pockets) {
     hotbarEditor(hud, b);
-    b.append(h('div', { class: 'row', style: 'margin:8px 0 12px' }, h('button', { class: 'btn ghost small', onclick: () => hud.open('album') }, '📖 Open album (K)')), h('h3', {}, '🎒 Items'));
+    b.append(h('div', { class: 'row', style: 'margin:8px 0 12px' }, h('button', { class: 'btn ghost small', onclick: () => hud.open('album') }, '📖 Open journal (K)')), h('h3', {}, '🎒 Items'));
   }
   const items = Object.entries(state.inv).filter(([, n]) => n > 0).sort((a, c) => ITEMS[a[0]].category.localeCompare(ITEMS[c[0]].category) || a[0].localeCompare(c[0]));
   if (!items.length) return b.append(h('p', { class: 'muted' }, 'Your pockets are empty. Shake some trees!'));

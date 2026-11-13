@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { CLIFF } from '@hearthwood/shared';
 import { layLine } from '../../models/fishing.ts';
 import { WATER_Y } from '../common.ts';
+import { waveY } from '../../water.ts';
 import type { World } from '../../World.ts';
 
 export function startCast(self: World, x: number, z: number) {
@@ -30,7 +31,9 @@ export function updateFishing(self: World, t: number) {
     self.fishLine.visible = false;
     return;
   }
-  const water = WATER_Y + (self.grid?.level(c.x, c.z) ?? 0) * CLIFF;
+  const lv = self.grid?.level(c.x, c.z) ?? 0;
+  // Out at sea the float rides the waves.
+  const water = WATER_Y + lv * CLIFF + (lv === 0 ? waveY(c.x + 0.5, c.z + 0.5) : 0);
   const float = self.bobber.getObjectByName('float')!;
   const ripple = self.bobber.getObjectByName('ripple')!;
   // The float rides on the water; on a bite it is pulled under in jerks and tips over.

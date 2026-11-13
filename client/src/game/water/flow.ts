@@ -12,6 +12,7 @@ import { SEA_LEVEL, Tile, type Grid } from '@hearthwood/shared';
 import { bend } from '../bend.ts';
 import { floorAt, surfaceOf, type WaterLayer } from './common.ts';
 import { flowTexture } from './textures.ts';
+import { wavy } from './waves.ts';
 
 /** Field samples per tile. */
 const FS = 4;
@@ -336,7 +337,7 @@ export function addRiverFlow(g: Grid, { group, bobbed }: WaterLayer) {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(o.pos, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(o.uv, 2));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(o.col, 4));
-    const m = new THREE.Mesh(geo, bend(new THREE.MeshBasicMaterial({ map: flowTexture, vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false })));
+    const m = new THREE.Mesh(geo, wavy(bend(new THREE.MeshBasicMaterial({ map: flowTexture, vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false }))));
     m.name = 'riverFlow';
     m.renderOrder = 2;
     if (lv === 0) {

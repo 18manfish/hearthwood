@@ -1,4 +1,10 @@
 declare module 'three' {
+  export const DataTexture: any; export type DataTexture = any;
+  export const Vector4: any; export type Vector4 = any;
+  export const RedFormat: any; export type RedFormat = any;
+  export const UnsignedByteType: any; export type UnsignedByteType = any;
+  export const LinearFilter: any; export type LinearFilter = any;
+  export const ClampToEdgeWrapping: any; export type ClampToEdgeWrapping = any;
   export const ACESFilmicToneMapping: any; export type ACESFilmicToneMapping = any;
   export const AdditiveBlending: any; export type AdditiveBlending = any;
   export const AnimationClip: any; export type AnimationClip = any;

@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { SEA_LEVEL, Tile, type Grid } from '@hearthwood/shared';
 import { bend } from '../bend.ts';
 import { floorAt, type WaterLayer } from './common.ts';
+import { wavy } from './waves.ts';
 
 /** Distance-field samples per tile. */
 const FS = 4;
@@ -177,7 +178,7 @@ export function addSurf(g: Grid, { group, bobbed }: WaterLayer) {
   geo.setAttribute('aCalm', new THREE.Float32BufferAttribute(calm, 1));
   geo.setAttribute('aXZ', new THREE.Float32BufferAttribute(xz, 2));
   const uTime = { value: 0 };
-  const m = new THREE.Mesh(geo, surfMaterial(uTime));
+  const m = new THREE.Mesh(geo, wavy(surfMaterial(uTime)));
   m.name = 'surf';
   m.renderOrder = 3;
   m.userData.baseY = SEA_LEVEL + 0.012;

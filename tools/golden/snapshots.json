@@ -142,28 +142,28 @@
   "info": "tris 195826"
  },
  "client/water/grassland/42": {
-  "hash": "6e89924113c790e9511806e9",
-  "info": "seaTint:55866 riverFlow:7272 surf:110208"
+  "hash": "caebf62d7a7b553a3d35c5b0",
+  "info": "riverFlow:7272 surf:110208"
  },
  "client/water/grassland/7": {
-  "hash": "da851166bc7544fdff21f134",
-  "info": "-:390 seaTint:54978 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
+  "hash": "0c76b6e981f117c7bf0207d7",
+  "info": "-:390 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
  },
  "client/water/nordic/42": {
-  "hash": "f825a71514324ba3adb3e899",
-  "info": "seaTint:55638 riverFlow:7272 surf:110208"
+  "hash": "caebf62d7a7b553a3d35c5b0",
+  "info": "riverFlow:7272 surf:110208"
  },
  "client/water/nordic/7": {
-  "hash": "99a6bdc3458dc3caf39f9edd",
-  "info": "-:390 seaTint:54750 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
+  "hash": "32946a50e0eacf2758bf79c1",
+  "info": "-:390 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
  },
  "client/water/tropical/42": {
-  "hash": "8d562764940a8437ea34ed8a",
-  "info": "seaTint:55146 riverFlow:7188 surf:111840"
+  "hash": "75b689ff27a13dc1c197bfc3",
+  "info": "riverFlow:7188 surf:111840"
  },
  "client/water/tropical/7": {
-  "hash": "9fc6561397e60c431d2fc45f",
-  "info": "-:354 seaTint:54270 riverFlow:5454 riverFlow:2406 riverFlow:2478 surf:105024 -:528 -:24 spray:104"
+  "hash": "60340a4deaa892f5d57d4d4a",
+  "info": "-:354 riverFlow:5454 riverFlow:2406 riverFlow:2478 surf:105024 -:528 -:24 spray:104"
  },
  "data/friendship": {
   "hash": "2827f601e868f24765271378"

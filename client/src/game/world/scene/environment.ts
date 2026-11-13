@@ -10,6 +10,7 @@ import { setPathSnow } from '../../paths.ts';
 import { debug, WATER_Y } from '../common.ts';
 import { upsertObjectMesh } from '../room/objects.ts';
 import { buildTerrain, rebuildFoliage } from '../room/terrainLayer.ts';
+import { updateSeaState } from '../../water.ts';
 import type { World } from '../../World.ts';
 
 export function currentEnv(self: World): EnvView | null {
@@ -58,6 +59,7 @@ export function updateEnvironment(self: World, dt: number, t: number) {
   self.moon.position.set(fx - dir.x * 40, Math.abs(dir.y) * 40 + 10, fz - dir.z * 40);
 
   const w = env.weather;
+  updateSeaState(w, env.intensity, dt);
   const overcast = { clear: 0, cloudy: 0.45, rain: 0.6, storm: 0.75, snow: 0.5, fog: 0.5, sandstorm: 0.55, heatwave: 0 }[w] * env.intensity;
   const twilight = Math.max(0, 1 - Math.abs(sp.elevation) / 8);
 

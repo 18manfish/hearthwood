@@ -190,5 +190,8 @@ export class Fog { constructor(c, n, f) { this.color = new Color(c); this.near =
 export class Plane { constructor(n, c) { this.normal = n; this.constant = c; } }
 export class Raycaster { setFromCamera() {} intersectObject() { return []; } intersectObjects() { return []; } }
 export class Clock { getDelta() { return 0; } getElapsedTime() { return 0; } }
+export const RedFormat = 1028, UnsignedByteType = 1009, LinearFilter = 1006, ClampToEdgeWrapping = 1001;
+export class Vector4 { constructor(x = 0, y = 0, z = 0, w = 0) { Object.assign(this, { x, y, z, w }); } set(x, y, z, w) { Object.assign(this, { x, y, z, w }); return this; } }
+export class DataTexture { constructor(data, w, h) { this.image = { data, width: w, height: h }; this.needsUpdate = false; } dispose() {} }
 export class CanvasTexture { constructor(image) { this.image = image; this.offset = new Vector2(); this.repeat = new Vector2(1, 1); this.needsUpdate = false; } clone() { const t = new CanvasTexture(this.image); return t; } }
 export class WebGLRenderer { constructor() { throw new Error('fake-three: no renderer in golden tests'); } }

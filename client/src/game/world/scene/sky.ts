@@ -4,12 +4,17 @@
 import * as THREE from 'three';
 import { bend } from '../../bend.ts';
 import { auroraTexture, WATER_Y } from '../common.ts';
+import { seaMaterial } from '../../water/waves.ts';
 
-/** Light and fairly clear: the depth tint (water.ts) darkens it where the sea gets deep. */
+/**
+ * Light and fairly clear in the shallows, dark out at sea, with rolling waves
+ * (water/waves.ts). Half-unit grid, so the shortest waves stay smooth; it travels
+ * with the player in steps of 2, a whole number of cells, so the waves don't swim.
+ */
 export function createSea(): THREE.Mesh {
-  const wg = new THREE.PlaneGeometry(220, 220, 110, 110);
+  const wg = new THREE.PlaneGeometry(220, 220, 440, 440);
   wg.rotateX(-Math.PI / 2);
-  const water = new THREE.Mesh(wg, bend(new THREE.MeshStandardMaterial({ color: '#4fb7d8', transparent: true, opacity: 0.66, roughness: 0.25, metalness: 0.05 })));
+  const water = new THREE.Mesh(wg, seaMaterial(bend(new THREE.MeshStandardMaterial({ color: '#4fb7d8', transparent: true, opacity: 0.66, roughness: 0.25, metalness: 0.05 }))));
   water.position.y = WATER_Y;
   water.receiveShadow = true;
   return water;

@@ -1,6 +1,6 @@
 // Everything drawn on top of the terrain for water, one layer per file:
 //   water/raised.ts     ponds and rivers up on the cliffs (sea-level water is the world's sea plane)
-//   water/depthTint.ts  shallow water stays clear, deep water darkens
+//   water/waves.ts      the sea's waves and depth colour (on the sea plane), and waveY()
 //   water/flow.ts       river flow drifting gently towards the sea
 //   water/surf.ts       waves rolling in and breaking along the beaches
 //   water/falls.ts      waterfalls: a curved sheet, foam and spray
@@ -9,14 +9,15 @@
 import * as THREE from 'three';
 import type { Grid } from '@hearthwood/shared';
 import type { WaterLayer } from './water/common.ts';
-import { addDepthTint } from './water/depthTint.ts';
 import { addWaterfalls } from './water/falls.ts';
 import { addRiverFlow } from './water/flow.ts';
 import { addRaisedWater } from './water/raised.ts';
 import { addSurf } from './water/surf.ts';
+import { setWaveDepth } from './water/waves.ts';
 import { fallTexture, flowTexture } from './water/textures.ts';
 
 export { findWaterfalls, type Waterfall } from './water/falls.ts';
+export { updateSeaState, waveY } from './water/waves.ts';
 export { fallTexture, flowTexture } from './water/textures.ts';
 
 /**
@@ -28,7 +29,7 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
   group.name = 'water';
   const layer: WaterLayer = { group, bobbed: [] };
   addRaisedWater(g, color, layer);
-  addDepthTint(g, color, pad, layer);
+  setWaveDepth(g, pad, color); // depth colour and wave strength, drawn by the sea plane itself
   addRiverFlow(g, layer);
   addSurf(g, layer);
   const surfs = group.children.filter((c: THREE.Object3D) => c.name === 'surf').map((c: THREE.Object3D) => c.userData.surfTime as { value: number });

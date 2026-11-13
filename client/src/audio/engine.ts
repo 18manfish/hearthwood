@@ -91,15 +91,17 @@ function toBuffer(data: Float32Array): AudioBuffer {
   return b;
 }
 
-function effect(name: Effect): AudioBuffer[] {
+/** Render one variant of an effect (if it isn't yet). */
+function renderVariant(name: Effect, v: number) {
   let list = effectBufs.get(name);
-  if (!list) {
-    const [render, n] = EFFECTS[name];
-    list = [];
-    for (let v = 0; v < n; v++) list.push(toBuffer(render(ctx!.sampleRate, v + 1)));
-    effectBufs.set(name, list);
-  }
-  return list;
+  if (!list) effectBufs.set(name, (list = []));
+  if (!list[v]) list[v] = toBuffer(EFFECTS[name][0](ctx!.sampleRate, v + 1));
+}
+
+function effect(name: Effect): AudioBuffer[] {
+  const n = EFFECTS[name][1];
+  for (let v = 0; v < n; v++) renderVariant(name, v);
+  return effectBufs.get(name)!;
 }
 
 /** A seamless ambience loop (rendered on first use). */
@@ -113,13 +115,16 @@ export function loopBuffer(name: Loop): AudioBuffer | null {
   return b;
 }
 
-/** Render the common effects a little at a time after start-up, so the first chop doesn't stutter. */
+/**
+ * Render the effects a little at a time after start-up – one variant per step, so even
+ * the long ones (thunder) never hold up a frame for long – and the first chop doesn't stutter.
+ */
 function prewarm() {
-  const queue = Object.keys(EFFECTS) as Effect[];
+  const queue = (Object.keys(EFFECTS) as Effect[]).flatMap((n) => Array.from({ length: EFFECTS[n][1] }, (_, v) => [n, v] as const));
   const step = () => {
-    const n = queue.shift();
-    if (!n || !ctx) return;
-    effect(n);
+    const job = queue.shift();
+    if (!job || !ctx) return;
+    renderVariant(job[0], job[1]);
     setTimeout(step, 30);
   };
   setTimeout(step, 200);

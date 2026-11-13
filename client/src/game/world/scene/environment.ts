@@ -42,6 +42,7 @@ export function updateEnvironment(self: World, dt: number, t: number) {
   const env0 = currentEnv(self);
   if (!env0) return;
   const env = debug.weather ? { ...env0, weather: debug.weather, intensity: 1 } : env0;
+  lightning(self, dt, env.weather, env.intensity); // indoors too: no flash in there, but you hear the thunder
   if (self.room?.kind === 'interior') return interiorLighting(self, t);
   self.water.visible = true;
   const sp = sunPosition(net.serverNow() + debug.timeOffsetH * 3600_000, env.geo.lat, env.geo.lon);
@@ -136,13 +137,23 @@ export function updateEnvironment(self: World, dt: number, t: number) {
     }
     pos.needsUpdate = true;
   }
-  // Lightning.
-  if (w === 'storm' && Math.random() < dt * 0.15) self.flash = 1;
-  self.flash = Math.max(0, self.flash - dt * 4);
   // Gentle water motion.
   const bob = Math.sin(t * 0.8) * 0.015;
   self.water.position.y = WATER_Y + bob;
   (self.waterFx?.userData.tick as ((t: number, bob: number) => void) | undefined)?.(t, bob); // flow, waterfalls, surf
+}
+
+/**
+ * Lightning during a storm: every strike hits somewhere 0.4–4 km away. Nearer strikes
+ * light the sky up more; the thunder follows once the sound has travelled (see audio/ambience.ts).
+ */
+function lightning(self: World, dt: number, weather: string, intensity: number) {
+  if (weather === 'storm' && Math.random() < dt * (0.1 + 0.08 * intensity)) {
+    const km = 0.4 + Math.random() * 3.6;
+    self.strike = { km };
+    self.flash = Math.max(self.flash, Math.min(1, Math.max(0.35, 1.1 - km * 0.2)));
+  }
+  self.flash = Math.max(0, self.flash - dt * 4);
 }
 
 /** Warm, cosy, weather-free light indoors. */

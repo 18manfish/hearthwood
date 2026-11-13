@@ -14,7 +14,7 @@ import { addWaterfalls } from './water/falls.ts';
 import { addRiverFlow } from './water/flow.ts';
 import { addRaisedWater } from './water/raised.ts';
 import { addSurf } from './water/surf.ts';
-import { fallTexture } from './water/textures.ts';
+import { fallTexture, flowTexture } from './water/textures.ts';
 
 export { findWaterfalls, type Waterfall } from './water/falls.ts';
 export { fallTexture, flowTexture } from './water/textures.ts';
@@ -30,13 +30,12 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
   addRaisedWater(g, color, layer);
   addDepthTint(g, color, pad, layer);
   addRiverFlow(g, layer);
-  const flows = group.children.filter((c: THREE.Object3D) => c.name === 'riverFlow').map((c: THREE.Object3D) => c.userData.flowTime as { value: number });
   addSurf(g, layer);
   const surfs = group.children.filter((c: THREE.Object3D) => c.name === 'surf').map((c: THREE.Object3D) => c.userData.surfTime as { value: number });
   const spray = addWaterfalls(g, layer);
   group.userData.tick = (t: number, bob: number) => {
     for (const o of layer.bobbed) o.position.y = (o.userData.baseY as number) + bob;
-    for (const u of flows) u.value = t;
+    flowTexture.offset.y = -t * 0.22; // gentle drift downstream
     for (const u of surfs) u.value = t;
     fallTexture.offset.y = (t * 1.6) % 1;
     spray(t);

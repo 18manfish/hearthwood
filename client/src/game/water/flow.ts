@@ -1,5 +1,6 @@
-// River flow: soft streaks drifting downstream, on a smooth flow field that
-// follows the channel (however wide, round any bend) and fans out into the sea.
+// River flow: faint streaks drifting downstream (the scrolling flow texture), laid out
+// by a smooth flow field that follows the channel (however wide, round any bend) and
+// fans out into the sea.
 //
 // The field is sampled FS times per tile. Each river sample gets a potential: the
 // cheapest way through the water to the open sea, where leaving the channel costs
@@ -10,6 +11,7 @@ import * as THREE from 'three';
 import { SEA_LEVEL, Tile, type Grid } from '@hearthwood/shared';
 import { bend } from '../bend.ts';
 import { floorAt, surfaceOf, type WaterLayer } from './common.ts';
+import { flowTexture } from './textures.ts';
 
 /** Field samples per tile. */
 const FS = 4;
@@ -19,62 +21,6 @@ const PLUME = 3;
 const OPEN_DEPTH = 0.9;
 /** Moving through the sea costs this much more than following the river. */
 const SEA_COST = 4;
-
-/** Shader patch: two-phase flow-map advection of soft procedural streaks along the current. */
-function flowMaterial(uTime: { value: number }) {
-  const m = bend(new THREE.MeshBasicMaterial({ color: '#ffffff', vertexColors: true, transparent: true, depthWrite: false }));
-  const inner = m.onBeforeCompile;
-  m.onBeforeCompile = (shader: { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string }, r: unknown) => {
-    (inner as (s: unknown, r: unknown) => void)(shader, r);
-    shader.uniforms.uTime = uTime;
-    shader.vertexShader = shader.vertexShader.replace(
-      'void main() {',
-      'attribute vec2 aFlow;\nattribute vec2 aXZ;\nattribute float aPhi;\nvarying vec2 vFlow;\nvarying vec2 vXZ;\nvarying float vPhi;\nvoid main() {\n  vFlow = aFlow;\n  vXZ = aXZ;\n  vPhi = aPhi;',
-    );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        'void main() {',
-        `uniform float uTime;
-varying vec2 vFlow;
-varying vec2 vXZ;
-varying float vPhi;
-float hwHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float hwNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hwHash(i), hwHash(i + vec2(1.0, 0.0)), u.x), mix(hwHash(i + vec2(0.0, 1.0)), hwHash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-// Short soft streaks along the current: noise averaged along the flow direction (offsets stay small,
-// so the field can turn freely without stretching the pattern).
-float hwStreaks(vec2 p, vec2 d) {
-  float s = 0.0;
-  for (int k = -5; k <= 5; k++) {
-    vec2 q = p + d * float(k) * 0.045;
-    s += smoothstep(0.64, 0.9, hwNoise(q * 6.5)) * (1.0 - abs(float(k)) / 6.0);
-  }
-  return s / 6.0;
-}
-void main() {`,
-      )
-      .replace(
-        '#include <color_fragment>',
-        `#include <color_fragment>
-        {
-          // Two phases half a cycle apart, each advected along the flow and reset when the other is strongest.
-          float T = uTime * 0.25;
-          float p0 = fract(T), p1 = fract(T + 0.5);
-          vec2 f = vFlow * 1.6;
-          vec2 d = vFlow / max(length(vFlow), 1e-4);
-          float a = hwStreaks(vXZ - f * p0, d);
-          float b = hwStreaks(vXZ - f * p1 + vec2(0.37, 0.71), d);
-          float streaks = mix(a, b, abs(1.0 - 2.0 * p0));
-          diffuseColor.a *= min(1.0, streaks * 0.9);
-        }`,
-      );
-  };
-  m.customProgramCacheKey = () => 'hw-flow3';
-  return m;
-}
 
 const sstep = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -338,17 +284,28 @@ export function addRiverFlow(g: Grid, { group, bobbed }: WaterLayer) {
     return 0;
   };
 
-  // Mesh: one quad per sample cell corner-to-corner, vertices on the sample grid.
-  const meshes = new Map<number, { pos: number[]; col: number[]; flow: number[]; xz: number[]; phi: number[] }>();
-  const vert = (o: { pos: number[]; col: number[]; flow: number[]; xz: number[]; phi: number[] }, k: number, y: number, a: number) => {
-    const i = k % W, j = (k - i) / W;
-    const [px, pz] = posOf(i, j);
-    o.pos.push(px, y, pz);
-    o.col.push(1, 1, 1, a);
-    o.flow.push(fx[k], fz[k]);
-    o.xz.push(px, pz);
-    o.phi.push(Number.isFinite(phi[k]) ? phi[k] / FS : 0);
-  };
+  // Each tile streams one way: the field's average direction over the tile, snapped to
+  // one of 8 directions. Texture coordinates are world positions projected on that
+  // direction, so neighbouring tiles that agree join up seamlessly.
+  const TW = W / FS, TH = H / FS;
+  const tdir = new Int8Array(TW * TH).fill(-1);
+  const D8: [number, number][] = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+  for (let tj = 0; tj < TH; tj++)
+    for (let ti = 0; ti < TW; ti++) {
+      let sx = 0, sz = 0;
+      for (let j = tj * FS; j < (tj + 1) * FS; j++)
+        for (let i = ti * FS; i < (ti + 1) * FS; i++) {
+          const k = at(i, j);
+          if (!inField(k)) continue;
+          const a = strength(k);
+          sx += fx[k] * a;
+          sz += fz[k] * a;
+        }
+      if (Math.hypot(sx, sz) < 1e-4) continue;
+      tdir[tj * TW + ti] = ((Math.round(Math.atan2(sz, sx) / (Math.PI / 4)) % 8) + 8) % 8;
+    }
+  // Mesh: one quad per sample cell, vertices on the sample grid (so the strength fades smoothly).
+  const meshes = new Map<number, { pos: number[]; col: number[]; uv: number[] }>();
   for (let j = 0; j < H - 1; j++)
     for (let i = 0; i < W - 1; i++) {
       const ks = [at(i, j), at(i, j + 1), at(i + 1, j + 1), at(i + 1, j)];
@@ -358,24 +315,30 @@ export function addRiverFlow(g: Grid, { group, bobbed }: WaterLayer) {
       if (lv.some((l) => l !== lv[0])) continue;
       const a = ks.map(strength);
       if (a.every((v) => v < 0.01)) continue;
+      const td = tdir[Math.floor(j / FS) * TW + Math.floor(i / FS)];
+      if (td < 0) continue;
       let o = meshes.get(lv[0]);
-      if (!o) meshes.set(lv[0], (o = { pos: [], col: [], flow: [], xz: [], phi: [] }));
+      if (!o) meshes.set(lv[0], (o = { pos: [], col: [], uv: [] }));
       const [x, z] = tileOf(i, j);
       const y = lv[0] === 0 ? 0.008 : surfaceOf(g, x, z) + 0.006;
-      for (const n of [0, 1, 2, 0, 2, 3]) vert(o, ks[n], y, a[n]);
+      const l = Math.hypot(D8[td][0], D8[td][1]);
+      const dx = D8[td][0] / l, dz = D8[td][1] / l;
+      for (const n of [0, 1, 2, 0, 2, 3]) {
+        const k = ks[n], ii = k % W, jj = (k - ii) / W;
+        const [px, pz] = posOf(ii, jj);
+        o.pos.push(px, y, pz);
+        o.col.push(1, 1, 1, a[n]);
+        o.uv.push((-px * dz + pz * dx) * 0.7, (px * dx + pz * dz) * 0.45);
+      }
     }
   for (const [lv, o] of meshes) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(o.pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(o.uv, 2));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(o.col, 4));
-    geo.setAttribute('aFlow', new THREE.Float32BufferAttribute(o.flow, 2));
-    geo.setAttribute('aXZ', new THREE.Float32BufferAttribute(o.xz, 2));
-    geo.setAttribute('aPhi', new THREE.Float32BufferAttribute(o.phi, 1));
-    const uTime = { value: 0 };
-    const m = new THREE.Mesh(geo, flowMaterial(uTime));
+    const m = new THREE.Mesh(geo, bend(new THREE.MeshBasicMaterial({ map: flowTexture, vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false })));
     m.name = 'riverFlow';
     m.renderOrder = 2;
-    m.userData.flowTime = uTime;
     if (lv === 0) {
       m.userData.baseY = SEA_LEVEL;
       m.position.y = SEA_LEVEL;

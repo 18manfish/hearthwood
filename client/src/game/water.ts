@@ -7,10 +7,9 @@
 // The group's userData.tick(t, dt, bob) animates it every frame.
 
 import * as THREE from 'three';
-import { CLIFF, DIRS, SEA_LEVEL, Tile, isWaterTile, type Grid } from '@hearthwood/shared';
+import { CLIFF, DIRS, SEA_LEVEL, Tile, isFreshWater, isWaterTile, type Grid } from '@hearthwood/shared';
 import { bend } from './bend.ts';
 
-const isFresh = (t: Tile) => t === Tile.Pond || t === Tile.River;
 /** Water surface height of a water tile (the sea is always at sea level). */
 const surfaceOf = (g: Grid, x: number, z: number) => (g.tile(x, z) === Tile.Sea ? 0 : g.level(x, z)) * CLIFF + SEA_LEVEL;
 
@@ -25,7 +24,7 @@ export function findWaterfalls(g: Grid): Waterfall[] {
   const out: Waterfall[] = [];
   for (let z = 0; z < g.size; z++)
     for (let x = 0; x < g.size; x++) {
-      if (!isFresh(g.tile(x, z))) continue;
+      if (!isFreshWater(g.tile(x, z))) continue;
       const top = surfaceOf(g, x, z);
       for (const [dx, dz] of DIRS) {
         const nx = x + dx, nz = z + dz;
@@ -164,7 +163,7 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
   const surf: number[] = [];
   for (let z = 0; z < size; z++)
     for (let x = 0; x < size; x++) {
-      if (!isFresh(g.tile(x, z)) || g.level(x, z) === 0) continue;
+      if (!isFreshWater(g.tile(x, z)) || g.level(x, z) === 0) continue;
       const y = surfaceOf(g, x, z);
       surf.push(x, y, z, x, y, z + 1, x + 1, y, z + 1, x, y, z, x + 1, y, z + 1, x + 1, y, z);
     }
@@ -196,7 +195,7 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
     for (let z = -pad; z < size + pad; z++)
       for (let x = -pad; x < size + pad; x++) {
         const t = g.tile(x, z);
-        const wet = t === Tile.Sea || t === Tile.Dock || (g.isCoastal(x, z) && (t === Tile.River || t === Tile.Shore)) || (isFresh(t) && g.level(x, z) === 0);
+        const wet = t === Tile.Sea || t === Tile.Dock || (g.isCoastal(x, z) && (t === Tile.River || t === Tile.Shore)) || (isFreshWater(t) && g.level(x, z) === 0);
         if (!wet) continue;
         // Dry beach tiles add nothing; a fully deep tile is one quad.
         const corners = [alphaAt(x, z), alphaAt(x + 1, z), alphaAt(x + 1, z + 1), alphaAt(x, z + 1), alphaAt(x + 0.5, z + 0.5)];
@@ -401,7 +400,7 @@ export function buildWater(g: Grid, color: string, pad = 12): THREE.Group {
       // Beside rock the sheet's edges curl back into the cliff (hidden); beside more falling water it just meets it.
       const sideOpen = (sg: number) => {
         const sx2 = x + px * sg, sz2 = z + pz * sg;
-        return isFresh(g.tile(sx2, sz2)) && g.level(sx2, sz2) === g.level(x, z);
+        return isFreshWater(g.tile(sx2, sz2)) && g.level(sx2, sz2) === g.level(x, z);
       };
       const cols: [number, number][] = []; // [across, pushed back upstream]
       if (!sideOpen(-1)) cols.push([-0.6, 0.35]);

@@ -1,7 +1,7 @@
 // Terrain mesh builder shared by the game world and the island previews.
 
 import * as THREE from 'three';
-import { BIOMES, CLIFF, Tile, baseHeight, hashString, isWaterTile, type BiomeId, type Grid, type Season, type InteriorTheme, SEA_DEEP } from '@hearthwood/shared';
+import { BIOMES, CLIFF, Tile, isFreshWater, baseHeight, hashString, isWaterTile, type BiomeId, type Grid, type Season, type InteriorTheme, SEA_DEEP } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 import { hasTileset, piece, type Family } from './tileAssets.ts';
 
@@ -152,7 +152,6 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
       }
     };
     const dirt = new THREE.Color(snowy ? '#e6e9ec' : '#9a7a55');
-    const isFresh = (k: Tile) => k === Tile.Pond || k === Tile.River;
     const waterTop = (wx: number, wz: number) => (g0.tile(wx, wz) === Tile.Sea ? 0 : g0.level(wx, wz)) * CLIFF;
     /** Any tile that isn't coast: flat ground or a ramp, with rocky edges where its neighbours are lower. */
     const tiledTile = (x: number, z: number, t: Tile, h: [number, number, number, number], c: THREE.Color) => {
@@ -181,7 +180,7 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
         // Beside a waterfall: a sharp rock corner (two straight faces), so the falling
         // water tucks into the rock instead of leaving a rounded gap.
         const fallBeside = (ux: number, uz: number, lx: number, lz: number) =>
-          isFresh(g0.tile(ux, uz)) && isWaterTile(g0.tile(lx, lz)) && waterTop(lx, lz) < waterTop(ux, uz) - 0.01;
+          isFreshWater(g0.tile(ux, uz)) && isWaterTile(g0.tile(lx, lz)) && waterTop(lx, lz) < waterTop(ux, uz) - 0.01;
         if (lowerA && lowerB && (fallBeside(x + sx, z, x + sx, z + sz) || fallBeside(x, z + sz, x + sx, z + sz))) {
           emitPiece(piece(fam, 'edge', variant), false, sx, sz, cx, cz, T, footA, fam, topC, faceC, tileColor(x + sx, z));
           emitPiece(piece(fam, 'edge', (variant + 1) % 3), true, sx, sz, cx, cz, T, footB, fam, topC, faceC, tileColor(x, z + sz));
@@ -342,7 +341,6 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
 }
 
 /** The water surface sits this far above a water tile's cliff level (matches the sea plane). */
-export const WATER_LEVEL_Y = -0.12;
 
 export function waterColor(biome: BiomeId) {
   return biome === 'tropical' ? '#3fd0d4' : biome === 'nordic' ? '#3f8fb0' : '#4fb7d8';

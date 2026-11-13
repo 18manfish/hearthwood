@@ -38,4 +38,8 @@ go here instead of being fixed inline (plan §3 rule 8, §10 decision 4).
 
 ## Open questions / bugs found
 
-(none yet)
+- **Flaky server test (pre-existing):** islands get a random seed, and on crowded ones the test
+  bot found no free spot for the Town Hall (it wanted a one-tile margin around it), which then
+  cascaded into the villager suites. Seen on CI before any production code moved. The test
+  helper now falls back to spots without a margin. The game itself is unchanged; whether a
+  crowded island can always fit a Town Hall for real players is worth a look.

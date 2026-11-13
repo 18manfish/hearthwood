@@ -177,15 +177,17 @@ export class Bot {
     return best;
   }
 
-  freeSpots(type: BuildingType) {
+  freeSpots(type: BuildingType, margin = 1): [number, number, number][] {
     const { w, h } = BUILDINGS[type];
     const out: [number, number, number][] = [];
     for (let z = 1; z < this.grid.size - h - 1; z++)
       for (let x = 2; x < this.grid.size - w; x++) {
-        if (!this.grid.canPlace(x - 1, z - 1, w + 2, h + 2)) continue;
+        if (!this.grid.canPlace(x - margin, z - margin, w + 2 * margin, h + 2 * margin)) continue;
         const d = Math.hypot(x + w / 2 - this.x, z + h / 2 - this.z);
         if (d > 2.5) out.push([x, z, d]);
       }
+    // Crowded islands (the seed is random) may have no spot with room around it: then any spot will do.
+    if (!out.length && margin) return this.freeSpots(type, 0);
     return out.sort((a, b) => a[2] - b[2]);
   }
 

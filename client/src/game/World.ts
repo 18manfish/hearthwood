@@ -61,7 +61,7 @@ interface Mover {
   swing: number;
 }
 
-const WATER_Y = -0.12;
+const WATER_Y = SEA_LEVEL;
 
 /** Client-only debug switches (see the F3 debug menu). */
 export const debug = {

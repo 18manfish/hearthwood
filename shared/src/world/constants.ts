@@ -14,7 +14,10 @@ export const MAX_LEVEL = 3;
 /** Height of one cliff level in world units. */
 export const CLIFF = 1.0;
 
-/** Height of the water surface for a water tile at a cliff level. */
+/**
+ * Height you stand at on a water tile (wading in a pond or river, a bobber's
+ * anchor), per cliff level. Not the visible water line, which is SEA_LEVEL.
+ */
 export const WATER_SURFACE = -0.2;
 
 /** Beaches: height where the sand meets the grass, and at the water's edge (just under the sea surface). */

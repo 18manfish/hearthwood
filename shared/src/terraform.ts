@@ -1,7 +1,7 @@
 // Terraforming: raise / lower cliffs, place / remove ramps, dig / fill ponds.
 // The same rules run on the client (ghost preview) and the server (authority).
 
-import { CLIFF, DIRS, Grid, MAX_LEVEL, RAMP_STYLES, Tile, classifyWater, isWaterTile, type RampStyle } from './world.ts';
+import { CLIFF, DIRS, Grid, MAX_LEVEL, RAMP_STYLES, Tile, classifyWater, isWaterTile, type RampStyle, isFreshWater } from './world.ts';
 
 export const TERRA_OPS = ['raise', 'lower', 'ramp', 'stairs_stone', 'stairs_wood', 'stairs_log', 'unramp', 'water', 'land'] as const;
 export type TerraOp = (typeof TERRA_OPS)[number];
@@ -31,7 +31,6 @@ export const TERRA_INFO: Record<TerraOp, { name: string; icon: string; color: st
 export type TerrainChange = [number, number, number, number, number];
 
 const isLand = (t: Tile) => t === Tile.Ground || t === Tile.Ramp;
-const isFresh = (t: Tile) => t === Tile.Pond || t === Tile.River;
 
 /** Ramp-building operations and the look each one gives. */
 export const RAMP_OPS: Partial<Record<TerraOp, RampStyle>> = { ramp: 'slope', stairs_stone: 'stone_stairs', stairs_wood: 'wood_stairs', stairs_log: 'log_steps' };
@@ -57,6 +56,76 @@ function rampFits(g: Grid, x: number, z: number, d: number) {
   return g.blocked[uz * g.size + ux] === 0 && g.blocked[bz * g.size + bx] === 0;
 }
 
+/** What every terraforming rule looks at: the tile, its level and its surroundings. */
+interface Spot {
+  g: Grid;
+  x: number;
+  z: number;
+  i: number;
+  t: Tile;
+  L: number;
+  /** Nothing stands on the tile. */
+  free: boolean;
+  /** Do all 8 neighbours pass `fn`? */
+  neighbours(fn: (nx: number, nz: number) => boolean): boolean;
+  /** Does any of the 4 side neighbours pass `fn`? */
+  side(fn: (nx: number, nz: number) => boolean): boolean;
+  /** Level of a neighbour (the sea is always at level 0). */
+  levelOf(nx: number, nz: number): number;
+}
+
+/** Ramps and every kind of stairs (on an existing ramp: change its look). */
+function rampError(s: Spot, op: TerraOp, dir: number): string | null {
+  const { g, x, z, i, t } = s;
+  if (t === Tile.Ramp) return g.rampStyle(x, z) === styleIndex(op) ? 'It already looks like that.' : null;
+  if (t !== Tile.Ground) return 'Ramps and stairs go on plain ground.';
+  if (!s.free || g.path(x, z)) return 'Clear this spot first.';
+  if (g.reserved[i]) return 'There’s already a ramp right here.';
+  const d = dir >= 0 ? dir : autoRampDir(g, x, z);
+  if (d < 0 || !rampFits(g, x, z, d)) return 'A ramp needs a cliff one level up in front and flat ground behind.';
+  return null;
+}
+
+/** The other operations, one rule set each (checked in this order; the first failure is reported). */
+const RULES: Partial<Record<TerraOp, (s: Spot) => string | null>> = {
+  raise({ g, i, t, L, free, neighbours }) {
+    if (t !== Tile.Ground) return 'You can only raise plain ground.';
+    if (!free) return 'Clear this spot first.';
+    if (g.reserved[i]) return 'Keep the ground around ramps clear.';
+    if (L >= MAX_LEVEL) return 'That’s as high as cliffs go.';
+    if (!neighbours((nx, nz) => isLand(g.tile(nx, nz)) || isFreshWater(g.tile(nx, nz)))) return 'Cliffs need solid ground (or ponds and rivers) all around.';
+    if (!neighbours((nx, nz) => g.level(nx, nz) >= L)) return 'Raise the ground around it first – one level at a time.';
+    return null;
+  },
+  lower({ g, i, t, L, free, neighbours, side }) {
+    if (t !== Tile.Ground || L === 0) return 'There’s no cliff to lower here.';
+    if (!free) return 'Clear this spot first.';
+    if (g.reserved[i]) return 'Keep the ground around ramps clear.';
+    if (!neighbours((nx, nz) => g.level(nx, nz) <= L)) return 'Lower the higher ground around it first.';
+    if (side((nx, nz) => isFreshWater(g.tile(nx, nz)) && g.level(nx, nz) >= L)) return 'The water next to it would spill over – fill it in first.';
+    return null;
+  },
+  unramp({ t }) {
+    if (t !== Tile.Ramp) return 'That isn’t a ramp.';
+    return null;
+  },
+  water({ g, x, z, i, t, L, free, side, levelOf }) {
+    if (t !== Tile.Ground && t !== Tile.Shore) return 'You can only dig water into plain ground or sand.';
+    if (!free || g.path(x, z)) return 'Clear this spot first.';
+    if (g.reserved[i]) return 'Keep the ground around ramps clear.';
+    // Against higher cliffs is fine. Over a cliff edge it would spill – unless there's water below: a waterfall.
+    if (side((nx, nz) => levelOf(nx, nz) < L && !isWaterTile(g.tile(nx, nz))))
+      return 'The water would spill over the cliff edge. Dig water below it first – that makes a waterfall!';
+    return null;
+  },
+  land({ g, i, t, L, side }) {
+    if (t !== Tile.Pond && t !== Tile.River) return 'There’s no pond or river water here.';
+    if (g.bridges[i]) return 'There’s a bridge over this water.';
+    if (side((nx, nz) => isFreshWater(g.tile(nx, nz)) && g.level(nx, nz) > L)) return 'The waterfall above would pour onto it – fill in the upper water first.';
+    return null;
+  },
+};
+
 /**
  * Why `op` can't be done on (x, z), or null if it can. Only terrain rules –
  * ownership, tools, reach and people standing there are checked by the caller.
@@ -64,63 +133,21 @@ function rampFits(g: Grid, x: number, z: number, d: number) {
 export function terraformError(g: Grid, op: TerraOp, x: number, z: number, dir = -1): string | null {
   if (x < 1 || z < 1 || x >= g.size - 1 || z >= g.size - 1) return 'Too close to the edge of the island.';
   const i = z * g.size + x;
-  const t = g.tile(x, z);
-  const L = g.level(x, z);
-  const free = g.occupied[i] === 0;
-  const neighbours = (fn: (nx: number, nz: number) => boolean) => {
-    for (let dz = -1; dz <= 1; dz++)
-      for (let dx = -1; dx <= 1; dx++) if ((dx || dz) && !fn(x + dx, z + dz)) return false;
-    return true;
+  const spot: Spot = {
+    g, x, z, i,
+    t: g.tile(x, z),
+    L: g.level(x, z),
+    free: g.occupied[i] === 0,
+    neighbours(fn) {
+      for (let dz = -1; dz <= 1; dz++)
+        for (let dx = -1; dx <= 1; dx++) if ((dx || dz) && !fn(x + dx, z + dz)) return false;
+      return true;
+    },
+    side: (fn) => DIRS.some(([dx, dz]) => fn(x + dx, z + dz)),
+    levelOf: (nx, nz) => (g.tile(nx, nz) === Tile.Sea ? 0 : g.level(nx, nz)),
   };
-  /** Any of the 4 side neighbours. */
-  const side = (fn: (nx: number, nz: number) => boolean) => DIRS.some(([dx, dz]) => fn(x + dx, z + dz));
-  /** Sea is always at level 0. */
-  const levelOf = (nx: number, nz: number) => (g.tile(nx, nz) === Tile.Sea ? 0 : g.level(nx, nz));
-  if (isRampOp(op)) {
-    // On an existing ramp: change its look.
-    if (t === Tile.Ramp) return g.rampStyle(x, z) === styleIndex(op) ? 'It already looks like that.' : null;
-    if (t !== Tile.Ground) return 'Ramps and stairs go on plain ground.';
-    if (!free || g.path(x, z)) return 'Clear this spot first.';
-    if (g.reserved[i]) return 'There’s already a ramp right here.';
-    const d = dir >= 0 ? dir : autoRampDir(g, x, z);
-    if (d < 0 || !rampFits(g, x, z, d)) return 'A ramp needs a cliff one level up in front and flat ground behind.';
-    return null;
-  }
-  switch (op) {
-    case 'raise':
-      if (t !== Tile.Ground) return 'You can only raise plain ground.';
-      if (!free) return 'Clear this spot first.';
-      if (g.reserved[i]) return 'Keep the ground around ramps clear.';
-      if (L >= MAX_LEVEL) return 'That’s as high as cliffs go.';
-      if (!neighbours((nx, nz) => isLand(g.tile(nx, nz)) || isFresh(g.tile(nx, nz)))) return 'Cliffs need solid ground (or ponds and rivers) all around.';
-      if (!neighbours((nx, nz) => g.level(nx, nz) >= L)) return 'Raise the ground around it first – one level at a time.';
-      return null;
-    case 'lower':
-      if (t !== Tile.Ground || L === 0) return 'There’s no cliff to lower here.';
-      if (!free) return 'Clear this spot first.';
-      if (g.reserved[i]) return 'Keep the ground around ramps clear.';
-      if (!neighbours((nx, nz) => g.level(nx, nz) <= L)) return 'Lower the higher ground around it first.';
-      if (side((nx, nz) => isFresh(g.tile(nx, nz)) && g.level(nx, nz) >= L)) return 'The water next to it would spill over – fill it in first.';
-      return null;
-    case 'unramp':
-      if (t !== Tile.Ramp) return 'That isn’t a ramp.';
-      return null;
-    case 'water':
-      if (t !== Tile.Ground && t !== Tile.Shore) return 'You can only dig water into plain ground or sand.';
-      if (!free || g.path(x, z)) return 'Clear this spot first.';
-      if (g.reserved[i]) return 'Keep the ground around ramps clear.';
-      // Against higher cliffs is fine. Over a cliff edge it would spill – unless there's water below: a waterfall.
-      if (side((nx, nz) => levelOf(nx, nz) < L && !isWaterTile(g.tile(nx, nz))))
-        return 'The water would spill over the cliff edge. Dig water below it first – that makes a waterfall!';
-      return null;
-    case 'land':
-      if (t !== Tile.Pond && t !== Tile.River) return 'There’s no pond or river water here.';
-      if (g.bridges[i]) return 'There’s a bridge over this water.';
-      if (side((nx, nz) => isFresh(g.tile(nx, nz)) && g.level(nx, nz) > L)) return 'The waterfall above would pour onto it – fill in the upper water first.';
-      return null;
-    default:
-      return 'Unknown terraforming.';
-  }
+  if (isRampOp(op)) return rampError(spot, op, dir);
+  return RULES[op]?.(spot) ?? (op in RULES ? null : 'Unknown terraforming.');
 }
 
 /** Is a filled-in water tile on the beach (mostly sand or sea around it)? */

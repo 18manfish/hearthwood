@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import { BIOMES, CLIFF, Tile, baseHeight, hashString, isWaterTile, type BiomeId, type Grid, type Season, type InteriorTheme, SEA_DEEP } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
-import { findWaterfalls } from './water.ts';
 import { hasTileset, piece, type Family } from './tileAssets.ts';
 
 export interface TerrainOptions {
@@ -153,6 +152,8 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
       }
     };
     const dirt = new THREE.Color(snowy ? '#e6e9ec' : '#9a7a55');
+    const isFresh = (k: Tile) => k === Tile.Pond || k === Tile.River;
+    const waterTop = (wx: number, wz: number) => (g0.tile(wx, wz) === Tile.Sea ? 0 : g0.level(wx, wz)) * CLIFF;
     /** Any tile that isn't coast: flat ground or a ramp, with rocky edges where its neighbours are lower. */
     const tiledTile = (x: number, z: number, t: Tile, h: [number, number, number, number], c: THREE.Color) => {
       const fam: Family = t === Tile.Ground || t === Tile.Ramp ? 'cliff' : 'bank';
@@ -177,7 +178,14 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
         const footB = (X: number, Z: number) => N(0, sz, Math.min(x + 1, Math.max(x, X)), Ze);
         const footD = N(sx, sz, Xe, Ze);
         const variant = hashString(`${x},${z},${q}`) % 3;
-        if (lowerA && lowerB) {
+        // Beside a waterfall: a sharp rock corner (two straight faces), so the falling
+        // water tucks into the rock instead of leaving a rounded gap.
+        const fallBeside = (ux: number, uz: number, lx: number, lz: number) =>
+          isFresh(g0.tile(ux, uz)) && isWaterTile(g0.tile(lx, lz)) && waterTop(lx, lz) < waterTop(ux, uz) - 0.01;
+        if (lowerA && lowerB && (fallBeside(x + sx, z, x + sx, z + sz) || fallBeside(x, z + sz, x + sx, z + sz))) {
+          emitPiece(piece(fam, 'edge', variant), false, sx, sz, cx, cz, T, footA, fam, topC, faceC, tileColor(x + sx, z));
+          emitPiece(piece(fam, 'edge', (variant + 1) % 3), true, sx, sz, cx, cz, T, footB, fam, topC, faceC, tileColor(x, z + sz));
+        } else if (lowerA && lowerB) {
           const fA = footA(Xe, Ze), fB = footB(Xe, Ze);
           const floorC = tileColor(fA <= fB ? x + sx : x, fA <= fB ? z : z + sz);
           emitPiece(piece(fam, 'outer'), false, sx, sz, cx, cz, T, (X, Z) => Math.min(footA(X, Z), footB(X, Z)), fam, topC, faceC, floorC);
@@ -317,26 +325,6 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
         // Top surface: [x0z0, x1z0, x1z1, x0z1]
         quad([x, h[0], z], [x, h[3], z + 1], [x + 1, h[2], z + 1], [x + 1, h[1], z], c);
         edgeFaces(x, z, t, h, c);
-      }
-    // Waterfalls: close the sides of the falling water with rock, so you never see under the terrain.
-    if (!interior)
-      for (const f of findWaterfalls(g0)) {
-        const { x, z, dx, dz, top } = f;
-        const px = dz !== 0 ? 1 : 0, pz = dx !== 0 ? 1 : 0;
-        const L = g0.level(x, z);
-        const bed = Math.min(...corners(x + dx, z + dz)) - 0.05;
-        for (const s of [-1, 1]) {
-          const sx = x + px * s, sz = z + pz * s;
-          // A wider river carries on beside it: no wall in between.
-          if (isWaterTile(g0.tile(sx, sz)) && g0.level(sx, sz) >= L) continue;
-          const yTop = top + 0.03; // up to the water line: above it the rock beside is solid
-          const wc = cliff.clone().multiplyScalar(0.9);
-          // In the plane between the river and its side neighbour, from mid-tile to just past the fall.
-          const ex = x + 0.5 + dx * 0.5, ez = z + 0.5 + dz * 0.5;
-          const bx = ex + px * s * 0.5, bz = ez + pz * s * 0.5;
-          const a0 = [bx - dx * 0.55, bz - dz * 0.55], a1 = [bx + dx * 0.16, bz + dz * 0.16];
-          quad([a0[0], yTop, a0[1]], [a0[0], bed, a0[1]], [a1[0], bed, a1[1]], [a1[0], yTop, a1[1]], wc);
-        }
       }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

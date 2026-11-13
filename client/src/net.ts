@@ -12,6 +12,9 @@ export class Net {
   private handlers = new Set<Handler>();
   private seq = 0;
   private pending = new Map<number, (m: Extract<ServerMessage, { t: 'res' }>) => void>();
+  /** Called as each action goes out and when its answer arrives (sounds hook in here). */
+  onActSent: ((a: Extract<ClientMessage, { t: 'act' }>['a']) => void) | null = null;
+  onActDone: ((a: Extract<ClientMessage, { t: 'act' }>['a'], r: Extract<ServerMessage, { t: 'res' }>) => void) | null = null;
   private retry = 0;
   private closedByServer = false;
   /** serverTime ≈ Date.now() + clockOffset */
@@ -96,7 +99,12 @@ export class Net {
   /** Send an action and resolve with the server's verdict. */
   act(a: Extract<ClientMessage, { t: 'act' }>['a']): Promise<Extract<ServerMessage, { t: 'res' }>> {
     const seq = this.nextSeq();
-    return new Promise((resolve) => {
+    this.onActSent?.(a);
+    return new Promise((resolve0) => {
+      const resolve = (r: Extract<ServerMessage, { t: 'res' }>) => {
+        this.onActDone?.(a, r);
+        resolve0(r);
+      };
       this.pending.set(seq, resolve);
       this.send({ t: 'act', seq, a });
       setTimeout(() => {

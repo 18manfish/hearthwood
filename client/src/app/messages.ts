@@ -5,6 +5,7 @@ import { net } from '../net.ts';
 import { set, state } from '../state.ts';
 import { showCreator } from '../ui/creator.ts';
 import { game, app, startGame, statusScreen } from './session.ts';
+import { fishBite, fishResult } from '../audio/actions.ts';
 
 export function bindMessages() {
   net.on((m: ServerMessage) => {
@@ -79,11 +80,13 @@ export function bindMessages() {
         game.hud?.onTalk(m.v);
         return;
       case 'fish':
+        fishResult(m.ok);
         game.world?.handle(m);
         if (!m.ok) game.hud?.toast(m.msg, 'warn');
         else game.hud?.toast(`🎣 ${m.msg}`, 'good');
         return;
       case 'bite':
+        fishBite();
         if (game.world?.cast && !game.world.cast.id) game.world.cast.id = m.castId;
         game.world?.handle(m);
         game.hud?.setPrompt('❗ Reel in!', true);

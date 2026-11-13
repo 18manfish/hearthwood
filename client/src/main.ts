@@ -4,13 +4,20 @@
 //   app/messages.ts  server messages → state, HUD and world
 //   app/actions.ts   what input does in the world (interact, place, paint, back)
 //   input/keyboard.ts, input/pad.ts   keyboard and controller
+//   audio/            synthesized sound effects and ambience
 
 import './style.css';
 import { bindAuth, bindStatus, boot } from './app/boot.ts';
 import { bindMessages } from './app/messages.ts';
 import { bindPad } from './input/pad.ts';
+import { initAudio } from './audio/engine.ts';
+import { actionDone, actionSent } from './audio/actions.ts';
+import { net } from './net.ts';
 
 // Same order as before the split: status → controller → messages → auth → boot.
+initAudio();
+net.onActSent = actionSent;
+net.onActDone = actionDone;
 bindStatus();
 bindPad();
 bindMessages();

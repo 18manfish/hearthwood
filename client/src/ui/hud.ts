@@ -1,75 +1,54 @@
 // In-game HUD and menus. All buttons only *ask* the server; results come back
 // as messages that update `state`, which re-renders the relevant UI.
+// The Hud keeps the shell (top bar, prompt, chat, toasts, panel host); the hotbar and
+// each panel live in ./hud.
 
-import {
-  BUILDINGS, BUILDABLE, CHAPTERS, ITEMS, ITEM_LIST, MYSTERY_TOUR_COST, RECIPES, SHOP_STOCK, SHARED_LOCATIONS, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
-  VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, BIOMES, localTime, villagerDef, friendshipLevel, FRIENDSHIP_LEVELS,
-  type Access, type Building, type BuildingType, type Ingredient, type RecipeDef, type TalkView, type MapIsland, type Look, type TravelTarget,
-} from '@hearthwood/shared';
+import { CHAPTERS, ITEMS, localTime, type Building, type TalkView, type MapIsland } from '@hearthwood/shared';
 import { net } from '../net.ts';
-import { logout } from '../auth.ts';
 import { state, watch } from '../state.ts';
 import { debug, type World, type Tool } from '../game/World.ts';
-import {
-  BOTTLE_MAX_CHARS, HOTBAR_INFO, HOTBAR_TOOLS, HOTBAR_SIZE, DEFAULT_HOTBAR, PERMITS, PERMIT_BY_ID, TERRA_PERMIT, BIRDS, FISH, relocationCost,
-  type Hotbar, type HotbarTool, type TerraOp, type PermitId,
-} from '@hearthwood/shared';
-import { DEV_COMMANDS, SEASONS_BY_MODEL, PATHS, ENTERABLE, TERRA_INFO, TERRA_OPS, type DevCommand, type Weather, type Season } from '@hearthwood/shared';
+import { DEFAULT_HOTBAR, type Hotbar, type HotbarTool, type TerraOp } from '@hearthwood/shared';
+import { PATHS, TERRA_INFO } from '@hearthwood/shared';
 import { h, clear } from './dom.ts';
-import { renderWorldMap, BIOME_ICON } from './map.ts';
-import { lookEditor, Preview } from './creator.ts';
+import { BIOME_ICON } from './map.ts';
+import { Preview } from './creator.ts';
+import { type PanelId, SEASON_ICON, WEATHER_ICON, cap } from './hud/common.ts';
+import { assignSlot, cycleSlot, cycleTerra, renderHotbar, selectSlot, selectTool, swapSlots } from './hud/hotbar.ts';
+import { albumPanel } from './hud/panels/album.ts';
+import { bagPanel } from './hud/panels/bag.ts';
+import { buildPanel } from './hud/panels/build.ts';
+import { openBuilding } from './hud/panels/building.ts';
+import { craftPanel } from './hud/panels/craft.ts';
+import { debugPanel } from './hud/panels/debug.ts';
+import { friendsPanel } from './hud/panels/friends.ts';
+import { goalsPanel } from './hud/panels/goals.ts';
+import { islandPanel } from './hud/panels/island.ts';
+import { mailPanel, writeBottle } from './hud/panels/mail.ts';
+import { mapPanel } from './hud/panels/map.ts';
+import { closeDialog, onTalk, openVillager } from './hud/panels/villager.ts';
 
-const WEATHER_ICON: Record<string, string> = { clear: '☀️', cloudy: '☁️', rain: '🌧️', storm: '⛈️', snow: '❄️', fog: '🌫️', sandstorm: '🌪️', heatwave: '🔥' };
-const SEASON_ICON: Record<string, string> = { spring: '🌸', summer: '🌻', autumn: '🍂', winter: '⛄', wet: '🌧️', dry: '🌞', hot: '🔆', cool: '🌙' };
-
-type PanelId = 'goals' | 'bag' | 'craft' | 'build' | 'map' | 'friends' | 'mail' | 'island' | 'debug' | 'album';
-
-function have(id: string) {
-  return state.inv[id] ?? 0;
-}
-
-function hasPermit(id: string) {
-  return !!state.self?.permits.includes(id);
-}
-
-/** Does the player have what this hotbar tool needs? */
-function toolOwned(t: HotbarTool) {
-  const info = HOTBAR_INFO[t];
-  if (info.permit) return hasPermit(info.permit);
-  return !info.items.length || info.items.some((id) => have(id) > 0);
-}
-
-function tagCount(tag: string) {
-  let n = 0;
-  for (const [id, q] of Object.entries(state.inv)) if (ITEMS[id]?.tags.includes(tag as never) && ITEMS[id].category !== 'tool') n += q;
-  return n;
-}
-
-function ingLabel(ing: Ingredient) {
-  if ('item' in ing) return { label: `${ITEMS[ing.item].icon} ${ITEMS[ing.item].name}`, have: have(ing.item), need: ing.qty };
-  return { label: `any ${ing.tag}`, have: tagCount(ing.tag), need: ing.qty };
-}
+export { ITEM_LIST } from '@hearthwood/shared';
 
 export class Hud {
   readonly root = h('div', { class: 'hud' });
-  private loc = h('div', { class: 'loc' });
-  private coins = h('div', { class: 'coins' });
-  private hotbar = h('div', { class: 'hotbar' });
-  private prompt = h('div', { class: 'prompt', style: 'display:none' });
-  private log = h('div', { class: 'log' });
+  loc = h('div', { class: 'loc' });
+  coins = h('div', { class: 'coins' });
+  hotbar = h('div', { class: 'hotbar' });
+  prompt = h('div', { class: 'prompt', style: 'display:none' });
+  log = h('div', { class: 'log' });
   readonly chatInput = h('input', { placeholder: 'Press Enter to chat…', maxlength: 140 }) as HTMLInputElement;
-  private toasts = h('div', { class: 'toasts' });
-  private panelHost = h('div');
-  private dialogHost = h('div');
-  private badges: Record<string, HTMLElement> = {};
+  toasts = h('div', { class: 'toasts' });
+  panelHost = h('div');
+  dialogHost = h('div');
+  badges: Record<string, HTMLElement> = {};
   panel: PanelId | null = null;
-  private panelRefresh: (() => void) | null = null;
+  panelRefresh: (() => void) | null = null;
   talkingTo: string | null = null;
   /** Show controller button glyphs instead of keyboard keys. */
   padMode = false;
-  private lastPrompt: { text: string | null; bite: boolean } = { text: null, bite: false };
+  lastPrompt: { text: string | null; bite: boolean } = { text: null, bite: false };
 
-  constructor(app: HTMLElement, private world: World) {
+  constructor(app: HTMLElement, readonly world: World) {
     const btn = (icon: string, key: string, id: PanelId, title: string) => {
       const badge = h('span', { class: 'badge', style: 'display:none' });
       this.badges[id] = badge;
@@ -174,14 +153,14 @@ export class Hud {
   }
 
   // ── HUD rendering ───────────────────────────────────────────────────────
-  private render() {
+  render() {
     this.coins.textContent = `🪙 ${state.coins.toLocaleString()}`;
     this.renderLoc();
-    this.renderHotbar();
+    renderHotbar(this);
     this.renderBadges();
   }
 
-  private renderLoc() {
+  renderLoc() {
     const env = state.env;
     const room = state.room;
     if (!env || !room) return;
@@ -202,120 +181,12 @@ export class Hud {
     return state.self?.hotbar ?? DEFAULT_HOTBAR;
   }
 
-  private setSlots(slots: Hotbar) {
-    if (state.self) state.self.hotbar = slots;
-    net.send({ t: 'hotbar', slots });
-    this.renderHotbar();
-    this.panelRefresh?.();
-  }
-
-  /** Put a tool into a slot; if it already sits elsewhere, the two slots swap. */
-  assignSlot(i: number, t: HotbarTool | null) {
-    const s = [...this.slots];
-    const j = t ? s.indexOf(t) : -1;
-    if (j >= 0) s[j] = s[i];
-    s[i] = t;
-    this.setSlots(s);
-  }
-
-  swapSlots(i: number, j: number) {
-    const s = [...this.slots];
-    [s[i], s[j]] = [s[j], s[i]];
-    this.setSlots(s);
-  }
-
-  private dragFrom = -1;
-  renderHotbar() {
-    clear(this.hotbar);
-    this.slots.forEach((tool, i) => {
-      const info = tool ? HOTBAR_INFO[tool] : null;
-      const owned = tool ? toolOwned(tool) : false;
-      const n = tool === 'sapling' ? have('sapling') : 0;
-      const el = h('button', {
-        class: `slot${tool && this.world.tool === tool ? ' sel' : ''}${tool && !owned ? ' off' : ''}${tool ? '' : ' empty'}`,
-        title: `${info ? info.name : 'Empty slot'} – right-click to change, drag to rearrange`,
-        draggable: 'true',
-        onclick: () => this.selectSlot(i),
-        oncontextmenu: (e: Event) => { e.preventDefault(); this.slotPicker(i, el); },
-        ondragstart: () => (this.dragFrom = i),
-        ondragover: (e: Event) => e.preventDefault(),
-        ondrop: (e: Event) => { e.preventDefault(); if (this.dragFrom >= 0 && this.dragFrom !== i) this.swapSlots(this.dragFrom, i); this.dragFrom = -1; },
-      }, h('span', { class: 'k' }, String((i + 1) % 10)), info ? info.icon : '', n ? h('span', { class: 'n' }, String(n)) : null);
-      this.hotbar.appendChild(el);
-    });
-  }
-
-  /** Small pop-up above a slot to choose what goes in it. */
-  private slotPicker(i: number, anchor: HTMLElement) {
-    document.querySelector('.slot-picker')?.remove();
-    const box = h('div', { class: 'slot-picker' });
-    const close = () => { box.remove(); window.removeEventListener('pointerdown', outside, true); };
-    const outside = (e: Event) => { if (!box.contains(e.target as Node)) close(); };
-    for (const t of HOTBAR_TOOLS) {
-      const info = HOTBAR_INFO[t];
-      box.append(h('button', { class: `btn small${this.slots[i] === t ? '' : ' ghost'}${toolOwned(t) ? '' : ' off'}`, title: info.name, onclick: () => { this.assignSlot(i, t); close(); } }, `${info.icon} ${info.name}`));
-    }
-    box.append(h('button', { class: 'btn ghost small', onclick: () => { this.assignSlot(i, null); close(); } }, '⬜ Empty'));
-    const r = anchor.getBoundingClientRect();
-    box.style.left = `${Math.max(8, r.left + r.width / 2 - 90)}px`;
-    box.style.bottom = `${window.innerHeight - r.top + 8}px`;
-    this.root.appendChild(box);
-    setTimeout(() => window.addEventListener('pointerdown', outside, true));
-  }
-
-  selectSlot(i: number) {
-    const t = this.slots[i];
-    if (t) this.selectTool(t);
-  }
-
-  /** LB / RB: step through the filled slots. */
-  cycleSlot(dir: 1 | -1) {
-    const s = this.slots;
-    let i = Math.max(0, s.indexOf(this.world.tool));
-    for (let k = 0; k < HOTBAR_SIZE; k++) {
-      i = (i + dir + HOTBAR_SIZE) % HOTBAR_SIZE;
-      if (s[i]) return this.selectTool(s[i]!);
-    }
-  }
+  dragFrom = -1;
 
   /** Last terraforming operation used with each tool. */
-  private terraOp: Record<'pick' | 'spade', TerraOp> = { pick: 'raise', spade: 'water' };
+  terraOp: Record<'pick' | 'spade', TerraOp> = { pick: 'raise', spade: 'water' };
 
-  selectTool(t: Tool) {
-    const wasTerra = !!this.world.paint?.terra;
-    if (t === 'pick' || t === 'spade') {
-      const permit = PERMIT_BY_ID[HOTBAR_INFO[t].permit as PermitId];
-      // Builders and residents use the owner's permits (the server checks).
-      if (!hasPermit(permit.id) && state.room?.role === 'owner') return this.toast(`You need a ${permit.name} – buy it at the Town Hall.`, 'warn');
-      if (!state.room?.canBuild) return this.toast('You can only reshape your own island.', 'warn');
-      this.world.tool = t;
-      this.world.startTerra(this.terraOp[t]);
-      this.setPrompt('');
-    } else {
-      this.world.tool = t;
-      if (wasTerra) {
-        this.world.stopPaint();
-        this.setPrompt(this.world.target?.label ?? null);
-      }
-    }
-    this.renderHotbar();
-  }
-
-  /** R / Ⓨ while terraforming: next operation of the same tool. */
-  cycleTerra() {
-    const op = this.world.paint?.terra;
-    if (!op) return;
-    const permit = TERRA_PERMIT[op];
-    const ops = PERMIT_BY_ID[permit].ops;
-    const next = ops[(ops.indexOf(op) + 1) % ops.length];
-    const tool = permit === 'permit_cliff' ? 'pick' : 'spade';
-    this.terraOp[tool] = next;
-    this.world.startTerra(next);
-    this.setPrompt('');
-    this.toast(`${TERRA_INFO[next].icon} ${TERRA_INFO[next].name}`);
-  }
-
-  private renderBadges() {
+  renderBadges() {
     const set = (id: string, n: number) => {
       const b = this.badges[id];
       if (!b) return;
@@ -334,8 +205,8 @@ export class Hud {
     else this.open(id);
   }
 
-  private preview: Preview | null = null;
-  private debugTimer: ReturnType<typeof setInterval> | null = null;
+  preview: Preview | null = null;
+  debugTimer: ReturnType<typeof setInterval> | null = null;
   close() {
     if (this.debugTimer) clearInterval(this.debugTimer);
     this.debugTimer = null;
@@ -346,7 +217,7 @@ export class Hud {
     this.panelRefresh = null;
   }
 
-  private frame(title: string, body: HTMLElement, id: PanelId | null = null) {
+  frame(title: string, body: HTMLElement, id: PanelId | null = null) {
     if (this.preview && !body.contains(this.preview.el)) { this.preview.dispose(); this.preview = null; }
     clear(this.panelHost);
     this.panel = id;
@@ -359,7 +230,7 @@ export class Hud {
   }
 
   /** Mount a panel whose body re-renders on every state change. */
-  private live(title: string, id: PanelId | null, render: (body: HTMLElement) => void) {
+  live(title: string, id: PanelId | null, render: (body: HTMLElement) => void) {
     const body = h('div');
     const draw = () => {
       const scroll = body.parentElement?.scrollTop ?? 0;
@@ -373,679 +244,32 @@ export class Hud {
   }
 
   open(id: PanelId) {
-    this.closeDialog();
+    closeDialog(this);
     switch (id) {
-      case 'goals': return this.live('Goals', id, (b) => this.goals(b));
-      case 'bag': return this.live('Pockets', id, (b) => this.bag(b, true));
-      case 'craft': return this.live('Crafting', id, (b) => this.craft(b, ['hand', 'workbench']));
-      case 'build': return this.live('Build', id, (b) => this.build(b));
+      case 'goals': return this.live('Goals', id, (b) => goalsPanel(this, b));
+      case 'bag': return this.live('Pockets', id, (b) => bagPanel(this, b, true));
+      case 'craft': return this.live('Crafting', id, (b) => craftPanel(this, b, ['hand', 'workbench']));
+      case 'build': return this.live('Build', id, (b) => buildPanel(this, b));
       case 'map':
         net.send({ t: 'map' });
-        return this.live('World map', id, (b) => this.map(b));
-      case 'friends': return this.live('Friends', id, (b) => this.friends(b));
+        return this.live('World map', id, (b) => mapPanel(this, b));
+      case 'friends': return this.live('Friends', id, (b) => friendsPanel(this, b));
       case 'mail': return this.live('Letters', id, (b) => {
         b.append(h('p', { class: 'muted' }, 'Read your letters anywhere. To send one, walk up to your mailbox 📮 (build it from the Build menu).'));
-        this.mail(b, false);
+        mailPanel(this, b, false);
       });
-      case 'island': return this.live('⚙️ Options & island', id, (b) => this.island(b));
-      case 'album': return this.live('📖 Album', id, (b) => this.album(b));
-      case 'debug': return this.debugPanel();
+      case 'island': return this.live('⚙️ Options & island', id, (b) => islandPanel(this, b));
+      case 'album': return this.live('📖 Album', id, (b) => albumPanel(this, b));
+      case 'debug': return debugPanel(this);
     }
-  }
-
-  /** Who you're logged in as, log-out and links to the tools. */
-  private accountBox(b: HTMLElement) {
-    const self = state.self!;
-    b.append(h('div', { class: 'row', style: 'justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px' },
-      h('div', {}, h('b', {}, self.username ? `👤 ${self.username}` : '👤 Guest (dev mode)'), h('div', { class: 'muted' }, `Friend code ${self.code}`)),
-      h('div', { class: 'row', style: 'gap:6px' },
-        self.admin ? h('a', { class: 'btn ghost small', href: '/admin.html', target: '_blank' }, '🛡️ Admin tool') : null,
-        state.dev ? h('a', { class: 'btn ghost small', href: '/editor.html', target: '_blank' }, '🛠️ Game creation tool') : null,
-        h('button', { class: 'btn ghost small', onclick: async () => { await logout(); location.reload(); } }, 'Log out'))));
-  }
-
-  /** Write a message in a bottle and throw it into the sea. */
-  writeBottle() {
-    const text = h('textarea', { rows: 4, maxlength: BOTTLE_MAX_CHARS, placeholder: 'Dear stranger…', style: 'width:100%' }) as HTMLTextAreaElement;
-    const body = h('div', { class: 'col' },
-      h('p', { class: 'muted' }, 'Stand near the sea and throw it in. Within a day it washes up on a random player’s beach.'),
-      text,
-      h('button', { class: 'btn', onclick: async () => {
-        const r = await this.act({ k: 'bottle', text: text.value });
-        if (r.ok) this.close();
-      } }, '🍾 Throw it into the sea'));
-    this.frame('🍾 Message in a bottle', body);
-    setTimeout(() => text.focus());
   }
 
   // ── Album ───────────────────────────────────────────────────────────────
-  private albumTab: 'fish' | 'birds' = 'fish';
-  private album(b: HTMLElement) {
-    const a = state.album;
-    const fishN = FISH.filter((f) => a.fish[f.id]).length;
-    const birdN = BIRDS.filter((x) => a.birds[x.id]).length;
-    const tab = (id: 'fish' | 'birds', label: string) =>
-      h('button', { class: `btn small${this.albumTab === id ? '' : ' ghost'}`, onclick: () => { this.albumTab = id; this.panelRefresh?.(); } }, label);
-    b.append(h('div', { class: 'row', style: 'margin-bottom:10px' }, tab('fish', `🐟 Fish ${fishN}/${FISH.length}`), tab('birds', `🐦 Birds ${birdN}/${BIRDS.length}`)));
-    const hours = (hr?: [number, number]) => (hr ? `${String(hr[0]).padStart(2, '0')}:00–${String(hr[1]).padStart(2, '0')}:00` : 'all day');
-    const when = (s?: string[]) => (s ? s.map((x) => SEASON_ICON[x] ?? '').join('') + ' ' + s.join(', ') : 'all year');
-    const grid = h('div', { class: 'grid album' });
-    const entries = this.albumTab === 'fish'
-      ? FISH.map((f) => ({ id: f.id, name: f.name, icon: f.icon, sell: f.sell, e: a.fish[f.id], hint: `${f.water === 'sea' ? '🌊 Sea' : f.water === 'river' ? '🏞️ Rivers' : '🪷 Ponds'} · ${hours(f.hours)} · ${when(f.seasons)}` }))
-      : BIRDS.map((x) => ({ id: x.id, name: x.name, icon: x.icon, sell: x.sell, e: a.birds[x.id], hint: `${x.biomes.map((bi) => BIOME_ICON[bi]).join('')} ${x.perch === 'shore' ? '· on beaches ' : ''}· ${hours(x.hours)} · ${when(x.seasons)}` }));
-    for (const en of entries) {
-      const got = !!en.e;
-      grid.append(h('div', { class: `tile${got ? '' : ' unknown'}` },
-        h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'ico' }, got ? en.icon : '❔'), got ? h('b', {}, `×${en.e!.n}`) : null),
-        h('div', { class: 'nm' }, got ? en.name : '???'),
-        h('div', { class: 'muted' }, got ? `First caught ${new Date(en.e!.first).toLocaleDateString()} ${BIOME_ICON[en.e!.biome as keyof typeof BIOME_ICON] ?? ''} · sells for ${en.sell}` : en.hint)));
-    }
-    b.append(grid);
-    const total = fishN + birdN, all = FISH.length + BIRDS.length;
-    b.append(h('p', { class: 'muted', style: 'margin-top:10px' }, total === all ? '🏆 Album complete – amazing!' : `${total}/${all} discovered. Uncaught entries show where and when to look.`));
-  }
+  albumTab: 'fish' | 'birds' = 'fish';
 
   // ── Developer debug menu (F3 / `) ───────────────────────────────────────
-  private debugPanel() {
-    const body = h('div', { class: 'col' });
-    const stats = h('pre', { style: 'margin:0;background:#2b2118;color:#d7f5c4;padding:10px 12px;border-radius:12px;font-size:12px;line-height:1.45;white-space:pre-wrap' });
-    const w = this.world;
-    const drawStats = () => {
-      const me = w.me;
-      const g = w.grid;
-      const tx = me ? Math.floor(me.x) : 0, tz = me ? Math.floor(me.z) : 0;
-      const info = (w.renderer as unknown as { info?: { render?: { calls?: number; triangles?: number } } }).info?.render;
-      const env = state.env;
-      stats.textContent = [
-        `FPS ${debug.fps}   ping ${net.rtt} ms   clock offset ${Math.round(net.clockOffset)} ms`,
-        `room ${state.room?.id} (${state.room?.kind}${state.room?.interior ? ':' + state.room.interior : ''})  biome ${state.room?.biome}`,
-        me && g ? `pos ${me.x.toFixed(2)}, ${me.z.toFixed(2)}  tile ${tx},${tz}  type ${g.tile(tx, tz)}  level ${g.level(tx, tz)}  ramp ${g.ramp(tx, tz)}  y ${g.surfaceY(me.x, me.z).toFixed(2)}` : 'pos –',
-        `objects ${w.objects.size}  buildings ${w.buildings.size}  players ${w.players.size}  target ${w.target?.label ?? '–'}`,
-        env ? `env ${env.season} / ${env.weather} (${Math.round(env.intensity * 100)}%) ${env.tempC}°C  day ${env.islandDay}  ${env.dayKey} ${env.hour}:${String(env.minute).padStart(2, '0')} ${env.geo.tz} (${env.geo.lat}, ${env.geo.lon})` : '',
-        info ? `draw calls ${info.calls ?? '?'}  triangles ${info.triangles ?? '?'}` : '',
-        `server dev mode: ${state.dev ? 'ON' : 'off (start with npm run dev:fast for server commands)'}`,
-      ].filter(Boolean).join('\n');
-    };
-    drawStats();
-    this.debugTimer = setInterval(drawStats, 400);
 
-    const slider = (label: string, min: number, max: number, step: number, get: () => number, set: (v: number) => void, fmt = (v: number) => v.toFixed(3)) => {
-      const out = h('span', { class: 'muted' }, fmt(get()));
-      const inp = h('input', { type: 'range', min, max, step, value: String(get()), style: 'flex:1', oninput: (e: Event) => { const v = Number((e.target as HTMLInputElement).value); set(v); out.textContent = fmt(v); } });
-      return h('div', { class: 'row' }, h('b', { style: 'width:150px' }, label), inp, out);
-    };
-    const toggle = (label: string, get: () => boolean, set: (v: boolean) => void) =>
-      h('label', { class: 'row', style: 'cursor:pointer' }, h('input', { type: 'checkbox', checked: get(), onchange: (e: Event) => set((e.target as HTMLInputElement).checked) }), label);
-    const weathers: Weather[] = ['clear', 'cloudy', 'rain', 'storm', 'snow', 'fog', 'sandstorm', 'heatwave'];
-    const dev = (cmd: DevCommand, ...args: (string | number)[]) => net.send({ t: 'dev', cmd, args: args.map(String) });
-    const visWeather = h('select', { onchange: (e: Event) => { const v = (e.target as HTMLSelectElement).value; debug.weather = v ? (v as Weather) : null; } },
-      h('option', { value: '' }, '(real weather)'), weathers.map((x) => h('option', { value: x, selected: debug.weather === x }, x))) as HTMLSelectElement;
-
-    // Season: on a dev server this changes the island for real (fish, weather,
-    // visuals for everyone); otherwise it is a local visual preview.
-    const model = state.room ? BIOMES[state.room.biome].seasonModel : 'temperate';
-    const seasonSel = h('select', {
-      onchange: (e: Event) => {
-        const v = (e.target as HTMLSelectElement).value;
-        if (state.dev) {
-          debug.season = null;
-          dev('season', v || 'normal');
-        } else debug.season = v ? (v as Season) : null;
-      },
-    }, h('option', { value: '' }, `(real: ${state.env?.season ?? '?'})`),
-      SEASONS_BY_MODEL[model].map((x) => h('option', { value: x, selected: (debug.season ?? null) === x }, x))) as HTMLSelectElement;
-    const seasonRow = h('div', { class: 'row' }, h('b', { style: 'width:150px' }, 'Season'), seasonSel,
-      h('span', { class: 'muted' }, state.dev ? 'applies to the whole island (fish, weather, visuals)' : 'visual preview only'));
-
-    body.append(
-      stats,
-      h('h3', {}, 'Season'),
-      seasonRow,
-      h('h3', {}, 'Client (visual only)'),
-      slider('World bend', 0, 0.03, 0.0005, () => debug.bend, (v) => (debug.bend = v)),
-      slider('Time of day shift', -12, 12, 0.25, () => debug.timeOffsetH, (v) => (debug.timeOffsetH = v), (v) => `${v >= 0 ? '+' : ''}${v}h`),
-      h('div', { class: 'row' }, h('b', { style: 'width:150px' }, 'Weather preview'), visWeather),
-      h('div', { class: 'row', style: 'gap:16px' },
-        toggle('Shadows', () => debug.shadows, (v) => (debug.shadows = v)),
-        toggle('Name labels', () => debug.labels, (v) => (debug.labels = v)),
-        toggle('Collision grid', () => debug.grid, (v) => { debug.grid = v; w.toggleGridOverlay(v); })),
-    );
-
-    const give = h('select', {}, ITEM_LIST.map((it) => h('option', { value: it.id }, `${it.icon} ${it.name}`))) as HTMLSelectElement;
-    const qty = h('input', { type: 'number', value: '10', min: 1, max: 999, style: 'width:70px' }) as HTMLInputElement;
-    const srvWeather = h('select', {}, h('option', { value: 'normal' }, '(normal)'), weathers.map((x) => h('option', { value: x }, x))) as HTMLSelectElement;
-    const b = (label: string, fn: () => void) => h('button', { class: 'btn small', disabled: !state.dev, onclick: fn }, label);
-    body.append(
-      h('h3', { style: 'margin-top:6px' }, 'Server (dev mode)'),
-      state.dev ? '' : h('p', { class: 'muted' }, 'These need the server running with DEV_FAST=1 (npm run dev:fast).'),
-      h('div', { class: 'row' }, b('🧰 Material kit', () => dev('kit')), b('🪙 +1000', () => dev('coins', 1000)), b('🪙 +10000', () => dev('coins', 10000)), b('🗑️ Empty pockets', () => dev('clearinv')), b('📜 All permits', () => dev('permits')), b('🐦 Land birds', () => dev('birds', 4))),
-      h('div', { class: 'row' }, b('📅 Day +1', () => dev('day', 1)), b('Day +7', () => dev('day', 7)), b('Day +30', () => dev('day', 30)), b('⏩ Finish building & growth', () => dev('finish')), b('♻️ Respawn resources', () => dev('respawn'))),
-      h('div', { class: 'row' }, give, qty, b('Give', () => dev('give', give.value, Math.max(1, Math.min(999, Number(qty.value) || 1))))),
-      h('div', { class: 'row' }, h('b', {}, 'Island weather'), srvWeather, b('Set (30 min)', () => dev('weather', srvWeather.value))),
-      h('div', { class: 'row' }, b('📍 Teleport to spawn', () => state.room && dev('tp', state.room.spawn.x, state.room.spawn.z)),
-        b('🏠 Go home', () => net.send({ t: 'travel', to: { kind: 'home' } }))),
-      h('p', { class: 'muted' }, `Chat shortcuts: ${DEV_COMMANDS.map((c) => '/' + c).join(' ')}`),
-    );
-    this.frame('🐞 Developer debug', body, 'debug');
-  }
-
-  private goals(b: HTMLElement) {
-    const q = state.quest;
-    if (!q) return b.append('Loading…');
-    if (q.chapter > CHAPTERS.length) {
-      b.append(h('h3', {}, '🎉 Your town is complete!'), h('p', {}, 'All seven villagers live here and every shop is open. Keep befriending your neighbours, decorating, fishing and visiting friends.'));
-    } else {
-      const c = CHAPTERS[q.chapter - 1];
-      const behind = q.islandDay > c.byDay;
-      b.append(
-        h('div', { class: 'row', style: 'justify-content:space-between' },
-          h('h3', {}, `Chapter ${c.id}: ${c.title}`),
-          h('span', { class: `pill ${behind ? 'no' : 'ok'}` }, `Target: day ${c.byDay} · today: day ${q.islandDay}${behind ? ' (take your time!)' : ''}`)),
-        h('p', {}, c.intro),
-        h('div', { class: 'col' }, c.goals.map((g, i) => h('div', { class: `goal${q.done[i] ? ' done' : ''}` }, q.done[i] ? '✅' : '⬜', g.label))),
-        h('p', { class: 'muted' }, `Reward: ${c.reward.coins} coins${c.reward.items ? ' + ' + Object.entries(c.reward.items).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(', ') : ''}`),
-      );
-    }
-    b.append(h('h3', { style: 'margin-top:14px' }, 'Your journey'),
-      h('div', { class: 'list' }, CHAPTERS.map((c) => h('div', { class: 'item' }, `${c.id < (q.chapter) ? '✅' : c.id === q.chapter ? '👉' : '🔒'} ${c.title}`, h('span', { class: 'muted' }, `by day ${c.byDay}`)))),
-      h('p', { class: 'muted' }, 'Tips: shake trees for branches, pick up loose stones by hand, pick bushes for fibre. Buildings unlock as your island ages – time follows the real calendar.'));
-  }
-
-  /** Hotbar editor (works with mouse and controller): one dropdown per slot. */
-  private hotbarEditor(b: HTMLElement) {
-    const row = h('div', { class: 'hotbar-edit' });
-    this.slots.forEach((cur, i) => {
-      const sel = h('select', { title: `Slot ${(i + 1) % 10}`, onchange: () => this.assignSlot(i, (sel.value || null) as HotbarTool | null) },
-        h('option', { value: '' }, `${(i + 1) % 10}: –`),
-        HOTBAR_TOOLS.map((t) => h('option', { value: t, selected: cur === t }, `${(i + 1) % 10}: ${HOTBAR_INFO[t].icon} ${HOTBAR_INFO[t].name}${toolOwned(t) ? '' : ' (not owned)'}`))) as HTMLSelectElement;
-      row.append(sel);
-    });
-    b.append(h('h3', {}, '🧰 Hotbar'), h('p', { class: 'muted' }, 'Choose a tool for each slot (picking one already in use swaps them). You can also right-click or drag slots on the hotbar.'), row);
-  }
-
-  private bag(b: HTMLElement, pockets = false) {
-    if (pockets) {
-      this.hotbarEditor(b);
-      b.append(h('div', { class: 'row', style: 'margin:8px 0 12px' }, h('button', { class: 'btn ghost small', onclick: () => this.open('album') }, '📖 Open album (K)')), h('h3', {}, '🎒 Items'));
-    }
-    const items = Object.entries(state.inv).filter(([, n]) => n > 0).sort((a, c) => ITEMS[a[0]].category.localeCompare(ITEMS[c[0]].category) || a[0].localeCompare(c[0]));
-    if (!items.length) return b.append(h('p', { class: 'muted' }, 'Your pockets are empty. Shake some trees!'));
-    const canBuild = state.room?.canDecorate;
-    b.append(h('p', { class: 'muted' }, 'Sell items at the storage chest in your tent or house, or at the town hall.'));
-    const grid = h('div', { class: 'grid' });
-    for (const [id, n] of items) {
-      const it = ITEMS[id];
-      const actions = h('div', { class: 'row' });
-      if (it.placeable && canBuild) actions.append(h('button', { class: 'btn small', onclick: () => { this.close(); this.world.startPlaceGhost(id); this.setPrompt(''); } }, 'Place'));
-      if (id === 'message_bottle') actions.append(h('button', { class: 'btn small', onclick: () => this.writeBottle() }, 'Write & throw'));
-      if (it.wear) actions.append(h('button', { class: 'btn small', onclick: () => this.act({ k: 'wear', item: state.self?.hat === id ? null : id }) }, state.self?.hat === id ? 'Take off' : 'Wear'));
-      actions.append(h('button', { class: 'btn ghost small', title: `${it.sell} each`, onclick: () => this.act({ k: 'sell', item: id, n: 1 }) }, `Sell ${it.sell}`));
-      if (n > 1) actions.append(h('button', { class: 'btn ghost small', onclick: () => this.act({ k: 'sell', item: id, n }) }, 'All'));
-      grid.append(h('div', { class: 'tile' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'ico' }, it.icon), h('b', {}, `×${n}`)), h('div', { class: 'nm' }, it.name), actions));
-    }
-    b.append(grid);
-  }
-
-  private craft(b: HTMLElement, stations: RecipeDef['station'][]) {
-    const recipes = RECIPES.filter((r) => stations.includes(r.station));
-    const grid = h('div', { class: 'grid' });
-    for (const r of recipes) {
-      const out = ITEMS[r.output];
-      const ings = r.ingredients.map(ingLabel);
-      const owned = out.stack === 1 && have(r.output) > 0;
-      const ok = ings.every((i) => i.have >= i.need) && !owned;
-      const stationName = r.station === 'hand' ? 'by hand' : `at ${BUILDINGS[r.station].name}`;
-      grid.append(h('div', { class: `tile${ok ? '' : ' locked'}` },
-        h('div', { class: 'row' }, h('span', { class: 'ico' }, out.icon), h('div', {}, h('div', { class: 'nm' }, `${out.name}${r.qty > 1 ? ` ×${r.qty}` : ''}`), h('div', { class: 'muted' }, stationName))),
-        h('div', { class: 'col', style: 'gap:2px' }, ings.map((i) => h('div', { class: 'muted', style: i.have >= i.need ? '' : 'color:#b84358' }, `${i.label} ${i.have}/${i.need}`))),
-        h('button', { class: 'btn small', disabled: !ok, onclick: () => this.act({ k: 'craft', recipe: r.id }) }, owned ? 'Owned' : 'Make')));
-    }
-    b.append(grid);
-  }
-
-  private build(b: HTMLElement) {
-    const room = state.room;
-    if (!room?.canBuild) return b.append(h('p', {}, 'You can only build on your own island.'));
-    const now = net.serverNow();
-    const blds = [...this.world.buildings.values()];
-    const done = (t: BuildingType) => blds.filter((x) => x.type === t && x.completeAt <= now).length;
-    const total = (t: BuildingType) => blds.filter((x) => x.type === t).length;
-    const day = state.env?.islandDay ?? 1;
-    // Paths – painted tile by tile.
-    const pathGrid = h('div', { class: 'grid' });
-    for (const p of PATHS) {
-      const afford = Object.entries(p.cost).every(([id, n]) => have(id) >= n) && (!p.tool || have('shovel') + have('iron_shovel') > 0);
-      const costText = Object.keys(p.cost).length ? Object.entries(p.cost).map(([id, n]) => `${ITEMS[id].icon} ${n}`).join(' ') + ' per tile' : 'free · needs a shovel';
-      pathGrid.append(h('div', { class: `tile${afford ? '' : ' locked'}` },
-        h('div', { class: 'row' }, h('span', { class: 'path-swatch', style: `background:${p.color}` }), h('div', {}, h('div', { class: 'nm' }, p.name), h('div', { class: 'muted' }, costText))),
-        h('button', { class: 'btn small', disabled: !afford, onclick: () => { this.close(); this.world.startPaint(p.id); this.setPrompt(''); } }, 'Lay path')));
-    }
-    pathGrid.append(h('div', { class: 'tile' },
-      h('div', { class: 'row' }, h('span', { class: 'ico' }, '🧽'), h('div', {}, h('div', { class: 'nm' }, 'Remove paths'), h('div', { class: 'muted' }, 'Materials are refunded'))),
-      h('button', { class: 'btn ghost small', onclick: () => { this.close(); this.world.startPaint(0); this.setPrompt(''); } }, 'Eraser')));
-    // Terraforming – needs the tools and a Town Hall.
-    const terraGrid = h('div', { class: 'grid' });
-    for (const op of TERRA_OPS) {
-      const info = TERRA_INFO[op];
-      const permit = PERMIT_BY_ID[TERRA_PERMIT[op]];
-      const lock = hasPermit(permit.id) || room.role !== 'owner' ? null : `Needs the ${permit.name} (Town Hall)`;
-      terraGrid.append(h('div', { class: `tile${lock ? ' locked' : ''}` },
-        h('div', { class: 'row' }, h('span', { class: 'ico' }, info.icon), h('div', {}, h('div', { class: 'nm' }, info.name), h('div', { class: 'muted' }, lock ?? info.hint))),
-        h('button', { class: 'btn small', disabled: !!lock, onclick: () => {
-          this.close();
-          const tool = permit.id === 'permit_cliff' ? 'pick' : 'spade';
-          this.terraOp[tool] = op;
-          this.selectTool(tool);
-        } }, 'Use')));
-    }
-    // Moving buildings.
-    const moveGrid = h('div', { class: 'grid' });
-    for (const bl of blds) {
-      const d = BUILDINGS[bl.type];
-      if (d.fixed || bl.type === 'dock') continue;
-      if (bl.ownerId && bl.ownerId !== state.self?.id && room.role !== 'owner') continue; // someone else's home
-      const cost = relocationCost(bl.w, bl.h);
-      const afford = state.coins >= cost;
-      moveGrid.append(h('div', { class: `tile${afford ? '' : ' locked'}` },
-        h('div', { class: 'row' }, h('span', { class: 'ico' }, d.icon), h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'muted' }, `🪙 ${cost} to move`))),
-        h('button', { class: 'btn small', disabled: !afford, onclick: () => { this.close(); this.world.startMoveGhost(bl); this.setPrompt(''); } }, 'Move')));
-    }
-    b.append(h('h3', {}, '🛤️ Paths'), pathGrid, h('h3', { style: 'margin-top:14px' }, '⛰️ Terraforming'), terraGrid);
-    if (moveGrid.childElementCount) b.append(h('h3', { style: 'margin-top:14px' }, '🚚 Move a building'), h('p', { class: 'muted' }, 'Pick it up, then click its new spot (walk close first). Villagers and furniture inside move along.'), moveGrid);
-    b.append(h('h3', { style: 'margin-top:14px' }, '🏗️ Buildings'));
-
-    const grid = h('div', { class: 'grid' });
-    for (const t of BUILDABLE) {
-      const d = BUILDINGS[t];
-      let lock: string | null = null;
-      const missing = d.requires.filter((r) => done(r) < 1);
-      let max = d.max;
-      if (t === 'villager_house' && day < VILLAGER_HOUSE_MONTH_TWO_MIN_DAY && !state.dev) max = VILLAGER_HOUSE_MONTH_ONE_LIMIT;
-      if (missing.length) lock = `Needs ${missing.map((m) => BUILDINGS[m].name).join(', ')}`;
-      else if (!state.dev && day < d.minDay) lock = `Unlocks on day ${d.minDay}`;
-      else if (total(t) >= max) lock = total(t) >= d.max ? 'Built' : `More on day ${VILLAGER_HOUSE_MONTH_TWO_MIN_DAY}`;
-      const afford = Object.entries(d.cost).every(([id, n]) => have(id) >= n);
-      grid.append(h('div', { class: `tile${lock ? ' locked' : ''}` },
-        h('div', { class: 'row' }, h('span', { class: 'ico' }, d.icon), h('div', {}, h('div', { class: 'nm' }, d.name), h('div', { class: 'muted' }, `${d.w}×${d.h}${d.buildMinutes ? ` · ${d.buildMinutes >= 60 ? d.buildMinutes / 60 + 'h' : d.buildMinutes + 'm'} build` : ''}${d.max > 1 ? ` · ${total(t)}/${d.max}` : ''}`))),
-        h('div', { class: 'muted' }, d.description),
-        h('div', { class: 'col', style: 'gap:2px' }, Object.entries(d.cost).map(([id, n]) => h('div', { class: 'muted', style: have(id) >= n ? '' : 'color:#b84358' }, `${ITEMS[id].icon} ${ITEMS[id].name} ${have(id)}/${n}`))),
-        lock ? h('span', { class: 'pill' }, lock) : h('button', { class: 'btn small', disabled: !afford, onclick: () => { this.close(); this.world.startBuildGhost(t); this.setPrompt(''); } }, afford ? 'Choose spot' : 'Need materials')));
-    }
-    b.append(grid);
-  }
-
-  private mapSel: { kind: 'island'; isl: MapIsland } | { kind: 'shared'; id: string } | null = null;
-  private map(b: HTMLElement) {
-    const info = h('div', { class: 'card map-info' });
-    const drawInfo = () => {
-      clear(info);
-      const sel = this.mapSel;
-      if (!sel) {
-        info.append(h('h3', {}, 'Where to?'), h('p', { class: 'muted' }, '⭐ shared locations are open to all. Coloured dots are islands you may visit: 🟡 yours, 🩷 friends, ⚪ public.'));
-      } else if (sel.kind === 'shared') {
-        const s = SHARED_LOCATIONS.find((x) => x.id === sel.id)!;
-        info.append(h('h3', {}, `⭐ ${s.name}`), h('p', {}, s.blurb), h('button', { class: 'btn', onclick: () => this.travel({ kind: 'shared', id: s.id }) }, 'Travel'));
-      } else {
-        const i = sel.isl;
-        info.append(h('h3', {}, `${BIOME_ICON[i.biome]} ${i.name}`), h('div', { class: 'muted' }, `${i.mine ? 'Your island' : `${i.owner}’s island`} · ${BIOMES[i.biome].name}${i.visitors ? ` · ${i.visitors} here now` : ''}`),
-          h('button', { class: 'btn', style: 'margin-top:8px', onclick: () => this.travel(i.mine ? { kind: 'home' } : { kind: 'island', id: i.id }) }, i.mine ? 'Go home' : 'Visit'));
-      }
-      const code = h('input', { placeholder: 'Invite code', maxlength: 12, style: 'width:120px' }) as HTMLInputElement;
-      info.append(h('div', { class: 'row', style: 'margin-top:12px' }, code, h('button', { class: 'btn small', onclick: () => code.value.trim() && this.travel({ kind: 'code', code: code.value.trim().toUpperCase() }) }, 'Visit by code')));
-      info.append(h('button', { class: 'btn ghost small', style: 'margin-top:8px', onclick: () => this.travel({ kind: 'home' }) }, '🏠 Go home'));
-    };
-    drawInfo();
-    const wrap = h('div', { class: 'map-wrap' }, renderWorldMap({
-      mode: 'travel',
-      islands: state.map,
-      onShared: (id) => { this.mapSel = { kind: 'shared', id }; drawInfo(); },
-      onIsland: (isl) => { this.mapSel = { kind: 'island', isl }; drawInfo(); },
-    }), info);
-    b.append(wrap);
-  }
-
-  private travel(to: TravelTarget) {
-    net.send({ t: 'travel', to });
-    this.close();
-  }
-
-  private friends(b: HTMLElement) {
-    const self = state.self;
-    const code = h('input', { placeholder: 'Friend code', maxlength: 12, style: 'width:140px' }) as HTMLInputElement;
-    b.append(
-      h('div', { class: 'row' }, h('span', {}, 'Your friend code:'), h('span', { class: 'pill', style: 'font-size:16px' }, self?.code ?? '…'),
-        h('button', { class: 'btn ghost small', onclick: () => navigator.clipboard?.writeText(self?.code ?? '') }, 'Copy')),
-      h('div', { class: 'row', style: 'margin:10px 0' }, code, h('button', { class: 'btn small', onclick: () => { if (code.value.trim()) net.send({ t: 'friend', op: 'request', code: code.value.trim().toUpperCase() }); code.value = ''; } }, 'Add friend')),
-    );
-    if (state.incoming.length) b.append(h('h3', {}, 'Requests'), h('div', { class: 'list' }, state.incoming.map((f) => h('div', { class: 'item' }, `💌 ${f.name}`,
-      h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: () => net.send({ t: 'friend', op: 'accept', id: f.id }) }, 'Accept'), h('button', { class: 'btn ghost small', onclick: () => net.send({ t: 'friend', op: 'decline', id: f.id }) }, 'Decline'))))));
-    if (state.outgoing.length) b.append(h('h3', { style: 'margin-top:10px' }, 'Pending'), h('div', { class: 'list' }, state.outgoing.map((f) => h('div', { class: 'item' }, `⏳ ${f.name}`, h('button', { class: 'btn ghost small', onclick: () => net.send({ t: 'friend', op: 'cancel', id: f.id }) }, 'Cancel')))));
-    b.append(h('h3', { style: 'margin-top:10px' }, `Friends (${state.friends.length})`));
-    if (!state.friends.length) b.append(h('p', { class: 'muted' }, 'Share your code with friends so you can visit each other’s islands.'));
-    b.append(h('div', { class: 'list' }, state.friends.map((f) => h('div', { class: 'item' }, h('span', {}, f.online ? '🟢 ' : '⚪ ', h('b', {}, f.name), h('span', { class: 'muted' }, ` · ${f.code}`)),
-      h('div', { class: 'row' },
-        f.islandId ? h('button', { class: 'btn small', onclick: () => this.travel({ kind: 'island', id: f.islandId! }) }, 'Visit') : null,
-        h('button', { class: 'btn ghost small', onclick: () => { if (confirm(`Remove ${f.name} from your friends?`)) net.send({ t: 'friend', op: 'remove', id: f.id }); } }, 'Remove'))))));
-  }
-
-  private mail(b: HTMLElement, compose: boolean) {
-    if (compose) {
-      if (!state.friends.length) b.append(h('p', { class: 'muted' }, 'Add friends (O) to send them letters. Visitors can also leave you letters here.'));
-      else {
-        const to = h('select', {}, state.friends.map((f) => h('option', { value: f.id }, f.name))) as HTMLSelectElement;
-        const item = h('select', {}, h('option', { value: '' }, '(no gift)'), Object.entries(state.inv).filter(([id]) => ITEMS[id].category !== 'tool').map(([id, n]) => h('option', { value: id }, `${ITEMS[id].icon} ${ITEMS[id].name} (${n})`))) as HTMLSelectElement;
-        const text = h('textarea', { rows: 3, maxlength: 280, placeholder: 'Write a letter…' }) as HTMLTextAreaElement;
-        b.append(h('div', { class: 'col', style: 'margin-bottom:14px' }, h('h3', {}, '✉️ Send a letter'),
-          h('div', { class: 'field' }, 'To', to), h('div', { class: 'field' }, 'Attach a gift', item), h('div', { class: 'field' }, 'Message', text),
-          h('button', { class: 'btn', onclick: () => this.act({ k: 'mail', to: to.value, text: text.value, item: item.value || undefined, n: item.value ? 1 : undefined }) }, 'Send')));
-      }
-    }
-    b.append(h('h3', {}, `Inbox (${state.mail.length})`));
-    if (!state.mail.length) b.append(h('p', { class: 'muted' }, 'No letters yet.'));
-    b.append(h('div', { class: 'list' }, state.mail.map((m) => h('div', { class: 'item' },
-      h('div', {}, h('b', {}, `From ${m.fromName}`), h('div', {}, m.text || h('i', { class: 'muted' }, '(no message)')), m.item ? h('div', { class: 'muted' }, `Gift: ${ITEMS[m.item]?.icon} ${m.n}× ${ITEMS[m.item]?.name}`) : null),
-      h('button', { class: 'btn small', onclick: () => this.act({ k: 'takeMail', mailId: m.id }) }, m.item ? 'Take gift' : 'Discard')))));
-  }
-
-  /** The town billboard: read notes, pin your own, take yours down. */
-  private billboard(b: HTMLElement) {
-    const posts = state.room?.board ?? [];
-    const ago = (t: number) => {
-      const m = Math.max(0, Math.round((net.serverNow() - t) / 60000));
-      return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
-    };
-    const text = h('textarea', { rows: 2, maxlength: 140, placeholder: 'Selling peaches, meet at the fountain at 8! …' }) as HTMLTextAreaElement;
-    const left = h('span', { class: 'muted' }, '140');
-    text.addEventListener('input', () => (left.textContent = String(140 - text.value.length)));
-    b.append(
-      h('div', { class: 'col', style: 'margin-bottom:12px' },
-        h('div', { class: 'field' }, 'Pin a note for everyone who visits', text),
-        h('div', { class: 'row', style: 'justify-content:space-between' }, left,
-          h('button', { class: 'btn', onclick: () => {
-            const v = text.value.trim();
-            if (!v) return;
-            net.send({ t: 'board', op: 'post', text: v });
-            text.value = '';
-            left.textContent = '140';
-          } }, '📌 Pin note'))),
-      h('h3', {}, `Notes (${posts.length})`),
-    );
-    if (!posts.length) b.append(h('p', { class: 'muted' }, 'Nothing pinned yet – be the first!'));
-    const colors = ['#fff8b5', '#ffd6e0', '#cdeffd', '#d9f7c8'];
-    b.append(h('div', { class: 'grid', style: 'grid-template-columns:repeat(auto-fill,minmax(200px,1fr))' }, posts.map((p, i) =>
-      h('div', { class: 'tile', style: `background:${colors[i % colors.length]};transform:rotate(${((i * 37) % 5) - 2}deg)` },
-        h('div', { style: 'font-weight:700;white-space:pre-wrap;word-break:break-word' }, p.text),
-        h('div', { class: 'row', style: 'justify-content:space-between' },
-          h('span', { class: 'muted' }, `— ${p.name}, ${ago(p.at)}`),
-          p.by === state.self?.id ? h('button', { class: 'btn ghost small', onclick: () => net.send({ t: 'board', op: 'delete', id: p.id }) }, 'Take down') : '')))));
-  }
-
-  /** Leave a letter (and optional gift) in someone else's mailbox. */
-  private letterTo(b: HTMLElement, ownerId: string, ownerName: string) {
-    const item = h('select', {}, h('option', { value: '' }, '(no gift)'), Object.entries(state.inv).filter(([id]) => ITEMS[id].category !== 'tool').map(([id, n]) => h('option', { value: id }, `${ITEMS[id].icon} ${ITEMS[id].name} (${n})`))) as HTMLSelectElement;
-    const text = h('textarea', { rows: 3, maxlength: 280, placeholder: `Write ${ownerName} a letter…` }) as HTMLTextAreaElement;
-    b.append(h('div', { class: 'col' },
-      h('p', { class: 'muted' }, `Drop a letter into ${ownerName}’s mailbox – they’ll find it next time they check their mail.`),
-      h('div', { class: 'field' }, 'Attach a gift', item), h('div', { class: 'field' }, 'Message', text),
-      h('button', { class: 'btn', onclick: async () => {
-        const r = await this.act({ k: 'mail', to: ownerId, text: text.value, item: item.value || undefined, n: item.value ? 1 : undefined });
-        if (r.ok) this.close();
-      } }, '✉️ Post letter')));
-  }
-
-  private island(b: HTMLElement) {
-    const self = state.self;
-    if (!self) return;
-    this.accountBox(b);
-    const opts: [Access, string, string][] = [
-      ['private', '🔒 Nobody', 'Only you.'],
-      ['friends', '💌 Friends', 'Everyone on your friend list.'],
-      ['invite', '🎟️ Friends + invite code', 'Friends, plus anyone you give the code to.'],
-      ['public', '🌍 Everyone', 'Listed on the world map for all players.'],
-    ];
-    b.append(h('h3', {}, 'Who may visit your island?'), h('div', { class: 'list' }, opts.map(([a, label, desc]) => h('label', { class: 'item', style: 'cursor:pointer' },
-      h('div', {}, h('b', {}, label), h('div', { class: 'muted' }, desc)),
-      h('input', { type: 'radio', name: 'access', checked: self.access === a, onchange: () => net.send({ t: 'access', access: a }) })))));
-    b.append(h('div', { class: 'row', style: 'margin-top:10px' }, 'Invite code:', h('span', { class: 'pill', style: 'font-size:16px' }, self.inviteCode ?? '–'),
-      h('button', { class: 'btn ghost small', onclick: () => navigator.clipboard?.writeText(self.inviteCode ?? '') }, 'Copy'),
-      h('button', { class: 'btn ghost small', onclick: () => net.send({ t: 'newInvite' }) }, 'New code')),
-      h('p', { class: 'muted' }, 'Generating a new code invalidates the old one.'));
-    const room = state.room;
-    if (room && room.ownerId === self.id) {
-      const visitors = [...this.world.players.entries()].filter(([id]) => id !== self.id);
-      b.append(h('h3', { style: 'margin-top:10px' }, `Visitors here (${visitors.length})`),
-        h('div', { class: 'list' }, visitors.map(([id, p]) => h('div', { class: 'item' }, p.label.element.textContent ?? id, h('button', { class: 'btn warn small', onclick: () => net.send({ t: 'kick', id }) }, 'Send home')))));
-    }
-    this.rolesBox(b);
-    this.geoBox(b);
-    if (state.dev) b.append(h('p', { class: 'muted', style: 'margin-top:12px' }, 'Dev mode: chat /kit, /give <item> [n], /coins [n], /day [n], /finish'));
-  }
-
-  /** Friends who may build on / live on your island, and islands you help on. */
-  private rolesBox(b: HTMLElement) {
-    const self = state.self!;
-    b.append(h('h3', { style: 'margin-top:14px' }, '👷 Builders & residents'),
-      h('p', { class: 'muted' }, 'Builders may build, pave, terraform and place furniture on your island. Residents live there: they can also gather, use your workbench and shops, and build their own tent and house – everything you can, except managing visitors.'));
-    if (!state.friends.length) b.append(h('p', { class: 'muted' }, 'Add friends (O) first.'));
-    else b.append(h('div', { class: 'list' }, state.friends.map((f) => {
-      const cur: string = self.islandRoles[f.id] ?? 'none';
-      const sel = h('select', { onchange: () => net.send({ t: 'role', id: f.id, role: sel.value as 'none' | 'builder' | 'resident' }) },
-        h('option', { value: 'none', selected: cur === 'none' }, 'Visitor'),
-        h('option', { value: 'builder', selected: cur === 'builder' }, '🔨 Builder'),
-        h('option', { value: 'resident', selected: cur === 'resident' }, '🏡 Resident')) as HTMLSelectElement;
-      return h('div', { class: 'item' }, h('span', {}, `${f.online ? '🟢' : '⚪'} ${f.name}`), sel);
-    })));
-    if (self.helping.length) {
-      b.append(h('h3', { style: 'margin-top:14px' }, '🧭 Islands you help on'), h('div', { class: 'list' }, self.helping.map((i) => h('div', { class: 'item' },
-        h('div', {}, h('b', {}, i.name), h('div', { class: 'muted' }, `${i.owner}’s island · ${i.role === 'resident' ? '🏡 resident' : '🔨 builder'}`)),
-        h('button', { class: 'btn small', onclick: () => { this.close(); this.travel({ kind: 'island', id: i.id }); } }, 'Go there')))));
-    }
-  }
-
-  /** Where you are in the world: drives your island's sun, seasons and clock. */
-  private geoBox(b: HTMLElement) {
-    const self = state.self!;
-    const zones = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [self.geo.tz];
-    if (!zones.includes(self.geo.tz)) zones.unshift(self.geo.tz);
-    const tz = h('select', {}, zones.map((z) => h('option', { value: z, selected: z === self.geo.tz }, z.replace(/_/g, ' ')))) as HTMLSelectElement;
-    const lat = h('input', { type: 'number', step: '0.5', min: -90, max: 90, value: String(self.geo.lat), style: 'width:90px' }) as HTMLInputElement;
-    const lon = h('input', { type: 'number', step: '0.5', min: -180, max: 180, value: String(self.geo.lon), style: 'width:90px' }) as HTMLInputElement;
-    const note = h('span', { class: 'muted' });
-    b.append(h('h3', { style: 'margin-top:14px' }, '📍 Location & time zone'),
-      h('p', { class: 'muted' }, 'Your island follows the real sun, seasons and clock of this place (stored roughly, to the nearest ~50 km).'),
-      h('div', { class: 'col' },
-        h('label', { class: 'row' }, 'Time zone', tz),
-        h('label', { class: 'row' }, 'Latitude', lat, 'Longitude', lon),
-        h('div', { class: 'row' },
-          h('button', { class: 'btn ghost small', onclick: () => {
-            const z = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            if (z) tz.value = z;
-            note.textContent = navigator.geolocation ? 'Asking your browser…' : 'This browser can’t share a location.';
-            navigator.geolocation?.getCurrentPosition(
-              (p) => { lat.value = String(Math.round(p.coords.latitude * 2) / 2); lon.value = String(Math.round(p.coords.longitude * 2) / 2); note.textContent = 'Found you – press Save.'; },
-              () => { note.textContent = 'Location not shared – time zone set, enter coordinates by hand.'; },
-              { timeout: 8000 });
-          } }, '📡 Use this device'),
-          h('button', { class: 'btn small', onclick: () => {
-            const la = Number(lat.value), lo = Number(lon.value);
-            if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) return this.toast('Latitude −90…90, longitude −180…180.', 'warn');
-            net.send({ t: 'geo', lat: la, lon: lo, tz: tz.value });
-          } }, 'Save'),
-          note)));
-  }
-
-  // ── Buildings ───────────────────────────────────────────────────────────
-  openBuilding(bld: Building) {
-    const def = BUILDINGS[bld.type];
-    const now = net.serverNow();
-    if (bld.completeAt > now) {
-      const mins = Math.ceil((bld.completeAt - now) / 60000);
-      return this.toast(`${def.name} will be ready in ${mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`}.`);
-    }
-    const room = state.room!;
-    const own = room.role === 'owner' || room.role === 'resident';
-    // Every enterable building opens its interior; services are at the counter inside.
-    if (ENTERABLE.includes(bld.type)) return this.travel({ kind: 'enter', id: bld.id });
-    const service: BuildingType = bld.type === 'counter' && bld.role ? bld.role : bld.type;
-    switch (service) {
-      case 'dock':
-        if (room.kind === 'tour') return this.travel({ kind: 'home' });
-        return this.open('map');
-      case 'campfire':
-        if (!own) return this.toast('A cosy campfire.');
-        return this.live('🔥 Campfire cooking', null, (b) => this.craft(b, ['campfire']));
-      case 'workbench':
-        if (!own) return this.toast('A sturdy workbench.');
-        return this.live('🛠️ Workbench', null, (b) => this.craft(b, ['hand', 'workbench']));
-      case 'restaurant':
-        if (!own) return this.toast('“Sorry, the kitchen is for the chef only!”');
-        return this.live('🍽️ Restaurant kitchen', null, (b) => this.craft(b, ['restaurant', 'campfire']));
-      case 'exit':
-        return this.travel({ kind: 'exit' });
-      case 'bed':
-        return this.toast(room.interior === 'tent' ? 'You curl up in the sleeping bag for a moment… zZz' : 'You stretch out on the comfy bed… zZz', 'good');
-      case 'chest':
-        if (!own) return this.toast('That’s not your chest.');
-        return this.live('🧰 Storage chest', null, (b) => {
-          b.append(h('h3', {}, 'Sell box'));
-          this.bag(b);
-        });
-      case 'town_hall':
-        return this.live('🏛️ Town Hall', null, (b) => {
-          if (own) {
-            const vs = state.quest?.villagers ?? 0;
-            b.append(h('p', {}, `Welcome, mayor! ${vs}/7 villagers live here.`), h('h3', {}, '📜 Permits'));
-            const pg = h('div', { class: 'grid' });
-            for (const pm of PERMITS) {
-              const owned = hasPermit(pm.id);
-              pg.append(h('div', { class: `tile${owned ? '' : state.coins < pm.price ? ' locked' : ''}` },
-                h('div', { class: 'row' }, h('span', { class: 'ico' }, pm.icon), h('div', {}, h('div', { class: 'nm' }, pm.name), h('div', { class: 'muted' }, pm.desc))),
-                h('button', { class: 'btn small', disabled: owned || state.coins < pm.price, onclick: () => this.act({ k: 'permit', id: pm.id }) }, owned ? 'Owned ✓' : `🪙 ${pm.price}`)));
-            }
-            b.append(pg, h('h3', {}, 'Sell goods'));
-            this.bag(b);
-            b.append(h('hr'));
-            this.island(b);
-          } else b.append(h('p', {}, `Welcome to the Town Hall! The mayor is ${room.ownerName}.`));
-        });
-      case 'tool_store':
-      case 'furniture_store':
-        return this.live(`${BUILDINGS[service].icon} ${BUILDINGS[service].name}`, null, (b) => this.shop(b, service));
-      case 'clothing_shop': {
-        // Rendered once (it hosts a live 3D preview).
-        const body = h('div');
-        this.shop(body, service);
-        return this.frame(`${BUILDINGS[service].icon} ${BUILDINGS[service].name}`, body);
-      }
-      case 'billboard':
-        return this.live('📌 Billboard', null, (b) => this.billboard(b));
-      case 'mailbox':
-        if (room.kind === 'shared') return this.live(`📮 ${room.name} mailbox`, null, (b) => this.mail(b, true));
-        if (own) return this.live('📮 Your mailbox', null, (b) => this.mail(b, true));
-        return this.live(`📮 ${room.ownerName}’s mailbox`, null, (b) => this.letterTo(b, room.ownerId!, room.ownerName ?? 'them'));
-      case 'travel_agent':
-        return this.live('✈️ Travel Agent', null, (b) => {
-          b.append(h('p', {}, 'Fancy an adventure? A mystery tour takes you to a random, untouched island packed with resources. Gather everything you like, then return via the dock.'),
-            h('button', { class: 'btn', disabled: !own, onclick: () => this.travel({ kind: 'tour' }) }, `🎫 Mystery tour (${MYSTERY_TOUR_COST} coins)`),
-            h('button', { class: 'btn ghost', style: 'margin-left:8px', onclick: () => this.open('map') }, '🗺️ World map'));
-        });
-    }
-  }
-
-  private shop(b: HTMLElement, type: BuildingType) {
-    const stock = SHOP_STOCK[type] ?? [];
-    b.append(h('p', { class: 'muted' }, `You have 🪙 ${state.coins.toLocaleString()}`));
-    const grid = h('div', { class: 'grid' });
-    for (const id of stock) {
-      const it = ITEMS[id];
-      grid.append(h('div', { class: 'tile' }, h('span', { class: 'ico' }, it.icon), h('div', { class: 'nm' }, it.name), h('div', { class: 'muted' }, `🪙 ${it.buy}${have(id) ? ` · own ${have(id)}` : ''}`),
-        h('button', { class: 'btn small', disabled: state.coins < (it.buy ?? 0), onclick: () => this.act({ k: 'buy', shop: type, item: id, n: 1 }) }, 'Buy')));
-    }
-    b.append(grid);
-    if (type === 'clothing_shop' && state.self) {
-      const self = state.self;
-      const look: Look = { ...self.look };
-      const prevEl = h('div', { class: 'preview', style: 'height:260px;position:relative;border-radius:16px;background:#eef7e6' });
-      b.append(h('h3', { style: 'margin-top:14px' }, '💇 Makeover (200 coins)'));
-      const ed = lookEditor(() => self.gender, look, () => prev.set(self.gender, look, self.hat));
-      b.append(h('div', { class: 'row', style: 'align-items:flex-start' }, h('div', { style: 'width:200px' }, prevEl), ed.root));
-      b.append(h('button', { class: 'btn', onclick: () => this.act({ k: 'restyle', look }) }, 'Apply makeover'));
-      const prev = new Preview(prevEl);
-      prev.set(self.gender, look, self.hat);
-      this.preview = prev;
-    }
-  }
-
-  // ── Villager dialog ─────────────────────────────────────────────────────
-  openVillager(id: string) {
-    this.talkingTo = id;
-    this.act({ k: 'talk', vid: id });
-  }
-
-  closeDialog() {
-    clear(this.dialogHost);
-    this.talkingTo = null;
-  }
-
-  onTalk(v: TalkView) {
-    const def = villagerDef(v.vid)!;
-    this.talkingTo = v.vid;
-    this.world.say(v.vid, v.reaction === 'love' ? '😍' : v.reaction === 'like' ? '😊' : v.reaction === 'dislike' ? '😖' : '💬');
-    clear(this.dialogHost);
-    const lvl = friendshipLevel(v.points);
-    const nextMin = v.next ?? FRIENDSHIP_LEVELS[FRIENDSHIP_LEVELS.length - 1].min;
-    const curMin = FRIENDSHIP_LEVELS[lvl.level].min;
-    const pct = v.next ? Math.round(((v.points - curMin) / (nextMin - curMin)) * 100) : 100;
-    const line = h('div', { class: 'line' });
-    const more = h('div', { class: 'more' });
-    const picker = h('div');
-    const box = h('div', { class: 'dialog' },
-      h('div', { class: 'who' }, `${def.name} the ${def.personality} ${def.species}`),
-      line,
-      more,
-      h('div', { class: 'row', style: 'justify-content:space-between' },
-        h('div', { style: 'flex:1;max-width:260px' }, h('div', { class: 'row' }, h('span', { class: 'hearts' }, '♥'.repeat(lvl.level + 1) + '♡'.repeat(4 - lvl.level)), h('b', {}, v.levelName)), h('div', { class: 'bar' }, h('div', { style: `width:${pct}%` }))),
-        h('div', { class: 'row' },
-          h('button', { class: 'btn ghost small', onclick: () => this.act({ k: 'talk', vid: v.vid }) }, '💬 Chat'),
-          h('button', { class: 'btn small', disabled: v.giftedToday, title: v.giftedToday ? 'One gift per day' : '', onclick: () => this.giftPicker(picker, v.vid) }, v.giftedToday ? '🎁 Gifted today' : '🎁 Give gift'),
-          h('button', { class: 'btn ghost small', onclick: () => this.closeDialog() }, 'Bye!'))),
-      picker,
-      h('div', { class: 'muted', style: 'margin-top:6px' }, `Hint: ${def.name} likes ${def.likes.join(' & ')} things.`));
-    this.dialogHost.appendChild(box);
-    // Pages (one per line of text), typed out; replies after the last page.
-    const pages = v.line.split('\n').map((p) => p.trim()).filter(Boolean);
-    let page = 0;
-    let typing = 0;
-    const type = (text: string, done?: () => void) => {
-      const run = ++typing;
-      let i = 0;
-      const tick = () => {
-        if (run !== typing) return;
-        line.textContent = text.slice(0, i);
-        if (i++ < text.length) setTimeout(tick, 18);
-        else done?.();
-      };
-      tick();
-    };
-    const showPage = () => {
-      clear(more);
-      type(pages[page] ?? '', () => {
-        if (page < pages.length - 1) {
-          more.append(h('button', { class: 'btn ghost small', onclick: () => { page++; showPage(); } }, `Next ▸ (${page + 1}/${pages.length})`));
-        } else if (v.replies?.length) {
-          more.append(h('div', { class: 'row replies' }, v.replies.map((r) => h('button', { class: 'btn small', onclick: () => { clear(more); type(r.answer); } }, r.text))));
-        }
-      });
-    };
-    showPage();
-  }
-
-  private giftPicker(host: HTMLElement, vid: string) {
-    clear(host);
-    const items = Object.entries(state.inv).filter(([id, n]) => n > 0 && ITEMS[id].category !== 'tool');
-    if (!items.length) return host.append(h('p', { class: 'muted' }, 'Nothing to give.'));
-    host.append(h('div', { class: 'row', style: 'margin-top:10px' }, items.map(([id, n]) => h('button', { class: 'btn ghost small', title: ITEMS[id].name, onclick: () => this.act({ k: 'gift', vid, item: id }) }, `${ITEMS[id].icon} ${n}`))));
-  }
+  mapSel: { kind: 'island'; isl: MapIsland } | { kind: 'shared'; id: string } | null = null;
 
   // ── Actions ─────────────────────────────────────────────────────────────
   async act(a: Parameters<typeof net.act>[0]) {
@@ -1055,10 +279,57 @@ export class Hud {
     this.gain(r.gained);
     return r;
   }
-}
 
-function cap(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
+  // ── API (the work lives in ./hud) ──────────────────────────────────
+  /** Put a tool into a slot; if it already sits elsewhere, the two slots swap. */
+  assignSlot(i: number, t: HotbarTool | null) {
+    return assignSlot(this, i, t);
+  }
 
-export { ITEM_LIST };
+  swapSlots(i: number, j: number) {
+    return swapSlots(this, i, j);
+  }
+
+  renderHotbar() {
+    return renderHotbar(this);
+  }
+
+  selectSlot(i: number) {
+    return selectSlot(this, i);
+  }
+
+  /** LB / RB: step through the filled slots. */
+  cycleSlot(dir: 1 | -1) {
+    return cycleSlot(this, dir);
+  }
+
+  selectTool(t: Tool) {
+    return selectTool(this, t);
+  }
+
+  /** R / Ⓨ while terraforming: next operation of the same tool. */
+  cycleTerra() {
+    return cycleTerra(this);
+  }
+
+  /** Write a message in a bottle and throw it into the sea. */
+  writeBottle() {
+    return writeBottle(this);
+  }
+
+  openBuilding(bld: Building) {
+    return openBuilding(this, bld);
+  }
+
+  openVillager(id: string) {
+    return openVillager(this, id);
+  }
+
+  closeDialog() {
+    return closeDialog(this);
+  }
+
+  onTalk(v: TalkView) {
+    return onTalk(this, v);
+  }
+}

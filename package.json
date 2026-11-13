@@ -16,7 +16,7 @@
     "start": "npm run start -w server",
     "typecheck": "tsc -p shared && tsc -p server && tsc -p client",
     "test": "npm run test -w server",
-    "typecheck:stub": "tsc -p tools/tsconfig.client.stub.json && tsc -p tools/tsconfig.server.stub.json",
+    "typecheck:stub": "tsc -p tools/tsconfig.client.stub.json && tsc -p tools/tsconfig.server.stub.json && tsc -p tools/tsconfig.golden.json",
     "test:golden": "node --import tsx --import ./tools/golden/register.mjs tools/golden/run.ts",
     "test:golden:update": "node --import tsx --import ./tools/golden/register.mjs tools/golden/run.ts --update"
   },

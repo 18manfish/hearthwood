@@ -126,8 +126,8 @@ if (want('movement')) {
     const rng = new S.Rng(seed);
     const out: unknown[] = [];
     for (let i = 0; i < 3000; i++) {
-      const fx = rng.next() * g.size, fz = rng.next() * g.size;
-      const tx = fx + (rng.next() - 0.5) * 0.6, tz = fz + (rng.next() - 0.5) * 0.6;
+      const fx = rng.float() * g.size, fz = rng.float() * g.size;
+      const tx = fx + (rng.float() - 0.5) * 0.6, tz = fz + (rng.float() - 0.5) * 0.6;
       out.push(+g.canMove(fx, fz, tx, tz), +g.canMove(fx, fz, tx, tz, 0.22, false), +g.stepOk(Math.floor(fx), Math.floor(fz), Math.floor(tx), Math.floor(tz)));
       const sm = S.slideMove(g, fx, fz, tx - fx, tz - fz);
       out.push(r5(sm.x), r5(sm.z));
@@ -136,7 +136,7 @@ if (want('movement')) {
     const place: unknown[] = [];
     for (const type of Object.keys(S.BUILDINGS) as S.BuildingType[])
       for (let i = 0; i < 40; i++) {
-        const x = Math.floor(rng.next() * g.size), z = Math.floor(rng.next() * g.size);
+        const x = Math.floor(rng.float() * g.size), z = Math.floor(rng.float() * g.size);
         place.push(S.placeError(g, type, x, z));
       }
     record(`movement/${seed}/placement`, place);
@@ -151,8 +151,8 @@ if (want('terraform')) {
     const rng = new S.Rng(seed * 7 + 1);
     const log: unknown[] = [];
     for (let i = 0; i < 1500; i++) {
-      const op = S.TERRA_OPS[Math.floor(rng.next() * S.TERRA_OPS.length)];
-      const x = Math.floor(rng.next() * g.size), z = Math.floor(rng.next() * g.size);
+      const op = S.TERRA_OPS[Math.floor(rng.float() * S.TERRA_OPS.length)];
+      const x = Math.floor(rng.float() * g.size), z = Math.floor(rng.float() * g.size);
       const err = S.terraformError(g, op, x, z);
       log.push(op, x, z, err);
       if (!err) log.push(S.applyTerrainAndWater(g, S.terraformChanges(g, op, x, z)));
@@ -231,7 +231,7 @@ async function clientGoldens() {
   const L = layout(7, 'tropical');
   const L2 = layout(7, 'nordic');
   for (const [vs, snowy] of [['summer', false], ['autumn', false], ['winter', true]] as const) {
-    const objs = [...L.objects, ...L2.objects].map((o) => graph(models.objectModel(o, vs as S.Season, vs, snowy) as unknown as O));
+    const objs = ([[L, 'tropical'], [L2, 'nordic']] as const).flatMap(([LL, bb]) => LL.objects.map((o) => graph(models.objectModel(o, vs as S.Season, vs, snowy, S.BIOMES[bb].bushColor, S.BIOMES[bb].bushItem) as unknown as O)));
     record(`client/models/objects/${vs}`, objs, `${objs.length} objects`);
   }
   const blds: unknown[] = [];

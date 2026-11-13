@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "lib": ["ES2022", "DOM", "DOM.Iterable"], "types": ["node"], "typeRoots": ["../node_modules/@types"] },
+  "include": ["golden/*.ts", "../client/src/game", "../shared/src", "stubs/three.d.ts"]
+}

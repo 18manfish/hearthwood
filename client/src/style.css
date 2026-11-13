@@ -70,7 +70,7 @@ h1, h2, h3 { margin: 0; }
 .panel .map-info { position: static; width: auto; margin-top: 10px; }
 
 /* ── HUD ───────────────────────────────────────────────── */
-.hud { position: absolute; inset: 0; pointer-events: none; }
+.hud { position: absolute; inset: 0; pointer-events: none; z-index: 1; } /* above the 3D view and its name labels */
 .hud > * { pointer-events: auto; }
 .loc { position: absolute; left: 14px; top: 14px; background: rgba(255, 253, 247, 0.92); border-radius: var(--radius); padding: 10px 14px; box-shadow: var(--shadow); min-width: 220px; }
 .loc .name { font-weight: 900; font-size: 18px; }
@@ -138,6 +138,8 @@ h1, h2, h3 { margin: 0; }
 .tabs button.sel { background: var(--leaf); color: white; }
 .label3d { font-weight: 900; font-size: 12px; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.7); white-space: nowrap; pointer-events: none; transform: translateY(-6px); }
 .label3d.vill { color: #fff4c2; }
+/* Names are off unless the player turns them on in ⚙️ Options (speech bubbles stay). */
+.hide-names .label3d { display: none !important; }
 .bubble { background: white; color: var(--ink); text-shadow: none; padding: 3px 9px; border-radius: 12px; font-size: 12px; max-width: 200px; white-space: normal; box-shadow: var(--shadow); }
 
 /* ── Island previews in the location picker ───────────── */

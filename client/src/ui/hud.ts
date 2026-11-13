@@ -27,6 +27,7 @@ import { mailPanel, writeBottle } from './hud/panels/mail.ts';
 import { mapPanel } from './hud/panels/map.ts';
 import { closeDialog, onTalk, openVillager } from './hud/panels/villager.ts';
 import { mountFps } from './hud/fps.ts';
+import { initNames } from './hud/names.ts';
 
 export { ITEM_LIST } from '@hearthwood/shared';
 
@@ -69,6 +70,7 @@ export class Hud {
       this.panelHost,
     );
     mountFps(this.root);
+    initNames();
     app.appendChild(this.root);
 
     this.chatInput.addEventListener('keydown', (e) => {

@@ -8,6 +8,7 @@ import { h } from '../../dom.ts';
 import { travelTo } from './map.ts';
 import type { Hud } from '../../hud.ts';
 import { fpsVisible, setFpsVisible } from '../fps.ts';
+import { namesVisible, setNamesVisible } from '../names.ts';
 
 export function islandPanel(hud: Hud, b: HTMLElement) {
   const self = state.self;
@@ -40,11 +41,14 @@ export function islandPanel(hud: Hud, b: HTMLElement) {
 
 /** Screen options that only affect this browser. */
 function displayBox(b: HTMLElement) {
-  const fps = h('input', { type: 'checkbox', checked: fpsVisible(), onchange: () => setFpsVisible(fps.checked) }) as HTMLInputElement;
+  const toggle = (label: string, desc: string, on: boolean, set: (v: boolean) => void) => {
+    const box = h('input', { type: 'checkbox', checked: on, onchange: () => set(box.checked) }) as HTMLInputElement;
+    return h('label', { class: 'item', style: 'cursor:pointer' }, h('div', {}, h('b', {}, label), h('div', { class: 'muted' }, desc)), box);
+  };
   b.append(h('h3', { style: 'margin-top:10px' }, '🖥️ Display'),
-    h('div', { class: 'list' }, h('label', { class: 'item', style: 'cursor:pointer' },
-      h('div', {}, h('b', {}, 'Show FPS counter'), h('div', { class: 'muted' }, 'Frames per second, in the bottom-right corner.')),
-      fps)));
+    h('div', { class: 'list' },
+      toggle('Show names', 'Player and villager names above their heads.', namesVisible(), (v) => setNamesVisible(v)),
+      toggle('Show FPS counter', 'Frames per second, in the bottom-right corner.', fpsVisible(), (v) => setFpsVisible(v))));
 }
 
 /** Friends who may build on / live on your island, and islands you help on. */

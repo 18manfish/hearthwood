@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import { type Building, BUILDINGS, hashString } from '@hearthwood/shared';
 import { bend } from '../bend.ts';
-import { emojiSprite } from './furniture.ts';
 import { mat, part } from './primitives.ts';
 
 export function houseBody(g: THREE.Group, w: number, d: number, wallH: number, wall: string, roof: string, door = '#7a4f2a') {
@@ -34,9 +33,6 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
     for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(part('box', '#d9a441', 0.08, 1.4, 0.08, (x * ww) / 2.2, 0.7, (z * dd) / 2.2));
     g.add(part('box', mat('#ffffff', { opacity: 0.25 }), ww * 0.9, 1.2, dd * 0.9, 0, 0.7, 0, false));
     g.add(part('box', '#a0703f', 0.5, 0.25, 0.3, ww / 3, 0.15, dd / 3));
-    const s = emojiSprite('🚧', 0.7);
-    s.position.set(0, 1.9, 0);
-    g.add(s);
     return g;
   }
   switch (b.type) {
@@ -173,15 +169,11 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       break;
     }
     case 'counter': {
-      // Service counter with a bell and a sign showing what it's for.
+      // Service counter with a bell.
       g.add(part('box', '#8b5e34', b.w - 0.1, 0.9, 0.7, 0, 0.45, 0));
       g.add(part('box', '#c49a62', b.w + 0.05, 0.08, 0.8, 0, 0.94, 0));
       g.add(part('cyl', '#f6c445', 0.08, 0.06, 0.08, 0.5, 1.0, 0.15));
       g.add(part('sphere', '#f6c445', 0.03, 0.03, 0.03, 0.5, 1.05, 0.15, false));
-      const role = b.role ? BUILDINGS[b.role] : null;
-      const s = emojiSprite(role?.icon ?? '🛎️', 0.6);
-      s.position.set(0, 1.75, -0.1);
-      g.add(s);
       break;
     }
     case 'billboard': {
@@ -201,9 +193,6 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
         g.add(n);
         g.add(part('sphere', '#e53935', 0.02, 0.02, 0.02, nx, ny + 0.08, 0.11, false));
       }
-      const s = emojiSprite('📌', 0.5);
-      s.position.set(0, 2.25, 0.1);
-      g.add(s);
       break;
     }
     case 'campfire': {
@@ -239,11 +228,8 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       g.add(part('cyl', '#7a5230', 0.03, 0.3, 0.03, -0.2, 0.62, 0.05));
       break;
     case 'dock': {
-      // The deck itself is part of the boardwalk mesh; add mooring posts and a sign.
+      // The deck itself is part of the boardwalk mesh; add mooring posts.
       for (const x of [-b.w / 2 + 0.1, b.w / 2 - 0.1]) g.add(part('cyl', '#5d4037', 0.08, 0.6, 0.08, x, 0.35, b.h / 2 - 0.15));
-      const s = emojiSprite('⚓', 0.6);
-      s.position.set(0, 1.2, b.h / 2 - 0.3);
-      g.add(s);
       break;
     }
     case 'cabin':
@@ -278,9 +264,6 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       g.add(hand);
       g.add(part('cyl', '#555555', 0.02, 0.6, 0.02, 0, 4.4, 0));
       g.add(part('box', '#e74c3c', 0.4, 0.25, 0.02, 0.2, 4.55, 0));
-      const s = emojiSprite(def.icon, 0.7);
-      s.position.set(0, 2.0, b.h / 2 + 0.1);
-      g.add(s);
       break;
     }
     case 'villager_house':
@@ -288,9 +271,6 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       break;
     default: {
       houseBody(g, b.w, b.h, 1.5, def.color, def.roof);
-      const s = emojiSprite(def.icon, 0.75);
-      s.position.set(0, 1.95, b.h / 2 + 0.1);
-      g.add(s);
       // Awning
       g.add(part('box', def.roof, b.w - 0.3, 0.06, 0.5, 0, 1.25, b.h / 2 - 0.0));
     }

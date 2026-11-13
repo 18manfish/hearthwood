@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { BIOMES, CLIFF, Tile, baseHeight, hashString, isWaterTile, type BiomeId, type Grid, type Season, type InteriorTheme, SEA_DEEP } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
+import { findWaterfalls } from './water.ts';
 import { hasTileset, piece, type Family } from './tileAssets.ts';
 
 export interface TerrainOptions {
@@ -317,6 +318,26 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
         quad([x, h[0], z], [x, h[3], z + 1], [x + 1, h[2], z + 1], [x + 1, h[1], z], c);
         edgeFaces(x, z, t, h, c);
       }
+    // Waterfalls: close the sides of the falling water with rock, so you never see under the terrain.
+    if (!interior)
+      for (const f of findWaterfalls(g0)) {
+        const { x, z, dx, dz, top } = f;
+        const px = dz !== 0 ? 1 : 0, pz = dx !== 0 ? 1 : 0;
+        const L = g0.level(x, z);
+        const bed = Math.min(...corners(x + dx, z + dz)) - 0.05;
+        for (const s of [-1, 1]) {
+          const sx = x + px * s, sz = z + pz * s;
+          // A wider river carries on beside it: no wall in between.
+          if (isWaterTile(g0.tile(sx, sz)) && g0.level(sx, sz) >= L) continue;
+          const yTop = top + 0.03; // up to the water line: above it the rock beside is solid
+          const wc = cliff.clone().multiplyScalar(0.9);
+          // In the plane between the river and its side neighbour, from mid-tile to just past the fall.
+          const ex = x + 0.5 + dx * 0.5, ez = z + 0.5 + dz * 0.5;
+          const bx = ex + px * s * 0.5, bz = ez + pz * s * 0.5;
+          const a0 = [bx - dx * 0.55, bz - dz * 0.55], a1 = [bx + dx * 0.16, bz + dz * 0.16];
+          quad([a0[0], yTop, a0[1]], [a0[0], bed, a0[1]], [a1[0], bed, a1[1]], [a1[0], yTop, a1[1]], wc);
+        }
+      }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -334,81 +355,6 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
 
 /** The water surface sits this far above a water tile's cliff level (matches the sea plane). */
 export const WATER_LEVEL_Y = -0.12;
-
-/** Scrolling stripes for waterfalls (one shared texture, animated by the world). */
-export const fallTexture = (() => {
-  const c = document.createElement('canvas');
-  c.width = 32;
-  c.height = 64;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#8fd3ef';
-  g.fillRect(0, 0, 32, 64);
-  for (let i = 0; i < 14; i++) {
-    g.fillStyle = `rgba(255,255,255,${0.35 + (i % 3) * 0.2})`;
-    g.fillRect((i * 7) % 32, (i * 23) % 64, 2 + (i % 3), 10 + (i % 4) * 6);
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-})();
-
-/**
- * Water above sea level (rivers and ponds up on cliffs) plus waterfalls where a
- * river drops to lower water. Sea-level water is drawn by the world's sea plane.
- */
-export function buildWater(g0: Grid, color: string): THREE.Group {
-  const group = new THREE.Group();
-  const size = g0.size;
-  const surf: number[] = [];
-  const fall: number[] = [];
-  const fallUv: number[] = [];
-  const foam: number[] = [];
-  const wet = (x: number, z: number) => isWaterTile(g0.tile(x, z));
-  for (let z = 0; z < size; z++)
-    for (let x = 0; x < size; x++) {
-      const t = g0.tile(x, z);
-      if (t !== Tile.River && t !== Tile.Pond) continue;
-      const L = g0.level(x, z);
-      const y = L * CLIFF + WATER_LEVEL_Y;
-      if (L > 0) surf.push(x, y, z, x, y, z + 1, x + 1, y, z + 1, x, y, z, x + 1, y, z + 1, x + 1, y, z);
-      // Waterfalls: down to neighbouring water that sits lower.
-      for (const [dx, dz] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
-        const nx = x + dx, nz = z + dz;
-        if (!wet(nx, nz)) continue;
-        const M = g0.tile(nx, nz) === Tile.Sea ? 0 : g0.level(nx, nz);
-        if (M >= L) continue;
-        const yb = M * CLIFF + WATER_LEVEL_Y;
-        // Edge between the tiles, nudged a little outwards so it doesn't touch the cliff face.
-        const ex = dx === 1 ? x + 1.02 : dx === -1 ? x - 0.02 : null;
-        const ez = dz === 1 ? z + 1.02 : dz === -1 ? z - 0.02 : null;
-        const [ax, az, bx, bz] = ex !== null ? [ex, z, ex, z + 1] : [x, ez!, x + 1, ez!];
-        const hgt = y - yb;
-        fall.push(ax, y, az, ax, yb, az, bx, yb, bz, ax, y, az, bx, yb, bz, bx, y, bz);
-        fallUv.push(0, hgt, 0, 0, 1, 0, 0, hgt, 1, 0, 1, hgt);
-        // Foam where it lands.
-        const fx = (ax + bx) / 2 + dx * 0.35, fz = (az + bz) / 2 + dz * 0.35;
-        const s = 0.6;
-        const fy = yb + 0.03;
-        foam.push(fx - s, fy, fz - s, fx - s, fy, fz + s, fx + s, fy, fz + s, fx - s, fy, fz - s, fx + s, fy, fz + s, fx + s, fy, fz - s);
-      }
-    }
-  const mk = (pos: number[], material: THREE.Material, uv?: number[]) => {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, material);
-    m.receiveShadow = true;
-    group.add(m);
-    return m;
-  };
-  if (surf.length) mk(surf, bend(new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.82, roughness: 0.25, metalness: 0.05, side: THREE.DoubleSide })));
-  if (fall.length) {
-    mk(fall, bend(new THREE.MeshStandardMaterial({ map: fallTexture, transparent: true, opacity: 0.9, roughness: 0.3, side: THREE.DoubleSide })), fallUv);
-    mk(foam, bend(new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, roughness: 0.6, depthWrite: false })));
-  }
-  return group;
-}
 
 export function waterColor(biome: BiomeId) {
   return biome === 'tropical' ? '#3fd0d4' : biome === 'nordic' ? '#3f8fb0' : '#4fb7d8';

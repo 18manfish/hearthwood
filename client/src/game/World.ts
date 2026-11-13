@@ -9,7 +9,8 @@ import {
   TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, isRampOp, terraformError, BIRD_BY_ID, type TerraOp, type HotbarTool,
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season, SEA_LEVEL } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
-import { buildDocks, buildTerrainMesh, buildWater, fallTexture, waterColor } from './terrain.ts';
+import { buildDocks, buildTerrainMesh, waterColor } from './terrain.ts';
+import { buildWater, seaColor } from './water.ts';
 import { buildDockModels, buildStairs } from './tileAssets.ts';
 import { buildPaths, disposePaths, setPathSnow } from './paths.ts';
 import { buildFoliage, disposeFoliage } from './foliage.ts';
@@ -86,6 +87,7 @@ export class World {
   private aurora: THREE.Group;
   private water: THREE.Mesh;
   private terrain: THREE.Mesh | null = null;
+  private waterFx: THREE.Group | null = null;
   private world = new THREE.Group();
   private objMeshes = new Map<string, THREE.Object3D>();
   private bldMeshes = new Map<string, THREE.Object3D>();
@@ -161,7 +163,8 @@ export class World {
     // Finely subdivided so it can follow the world bend; it travels with the player.
     const wg = new THREE.PlaneGeometry(220, 220, 110, 110);
     wg.rotateX(-Math.PI / 2);
-    this.water = new THREE.Mesh(wg, bend(new THREE.MeshStandardMaterial({ color: '#4fb7d8', transparent: true, opacity: 0.82, roughness: 0.25, metalness: 0.05 })));
+    // Light and fairly clear: the depth tint (water.ts) darkens it where the sea gets deep.
+    this.water = new THREE.Mesh(wg, bend(new THREE.MeshStandardMaterial({ color: '#4fb7d8', transparent: true, opacity: 0.66, roughness: 0.25, metalness: 0.05 })));
     this.water.position.y = WATER_Y;
     this.water.receiveShadow = true;
     this.scene.add(this.water);
@@ -542,10 +545,11 @@ export class World {
     const m = buildTerrainMesh(this.grid, { biome: this.room.biome, ...this.visual(), interior: this.room.interior, theme: this.room.theme });
     m.add(buildDockModels(this.grid) ?? buildDocks(this.grid)); // boardwalks & piers ride along with the terrain mesh
     m.add(buildStairs(this.grid));
-    if (this.room.kind !== 'interior') m.add(buildWater(this.grid, waterColor(this.room.biome))); // raised rivers, waterfalls
+    this.waterFx = this.room.kind !== 'interior' ? buildWater(this.grid, waterColor(this.room.biome)) : null; // depth, rivers, waterfalls, surf
+    if (this.waterFx) m.add(this.waterFx);
     this.terrain = m;
     this.world.add(m);
-    (this.water.material as THREE.MeshStandardMaterial).color.set(waterColor(this.room.biome));
+    (this.water.material as THREE.MeshStandardMaterial).color.set(seaColor(waterColor(this.room.biome)));
   }
 
   /** Debug overlay: red = blocked, yellow = reserved (ramp landings), blue = ramps. */
@@ -1360,8 +1364,9 @@ export class World {
     if (w === 'storm' && Math.random() < dt * 0.15) this.flash = 1;
     this.flash = Math.max(0, this.flash - dt * 4);
     // Gentle water motion.
-    this.water.position.y = WATER_Y + Math.sin(t * 0.8) * 0.015;
-    fallTexture.offset.y = (t * 1.6) % 1; // waterfalls tumble
+    const bob = Math.sin(t * 0.8) * 0.015;
+    this.water.position.y = WATER_Y + bob;
+    (this.waterFx?.userData.tick as ((t: number, bob: number) => void) | undefined)?.(t, bob); // flow, waterfalls, surf
   }
 
   /** Warm, cosy, weather-free light indoors. */

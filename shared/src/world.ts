@@ -417,34 +417,35 @@ export class Grid {
    * being drawn (a point on a tile border belongs to both tiles).
    */
   coastY(px: number, pz: number, t: Tile): number {
-    const [dl, ds, dn] = this.coastDist(px, pz);
+    const [dl, ds, dn, dr] = this.coastDist(px, pz);
     if (t === Tile.Sea || t === Tile.Dock || t === Tile.River) return BEACH_EDGE + (SEA_DEEP - BEACH_EDGE) * smoothstep(dn / SEA_SHELF);
-    if (dl <= 0) return BEACH_TOP;
-    return BEACH_TOP + (BEACH_EDGE - BEACH_TOP) * smoothstep(dl / (dl + ds));
+    // The beach slopes down to the sea; beside a river it only dips right at the bank.
+    const h = dl <= 0 ? BEACH_TOP : BEACH_TOP + (BEACH_EDGE - BEACH_TOP) * smoothstep(dl / (dl + ds));
+    return dr >= RIVER_BANK ? h : BEACH_EDGE + (h - BEACH_EDGE) * smoothstep(dr / RIVER_BANK);
   }
 
-  /** Distances to [land, sea, anything not sea], bilinear from a cached quarter-tile field. */
-  private coastDist(px: number, pz: number): [number, number, number] {
+  /** Distances to [land, sea, anything not sea or river, sea-level river], bilinear from a cached field. */
+  private coastDist(px: number, pz: number): [number, number, number, number] {
     const f = (this.coast ??= this.buildCoastField());
     const gx = (px + COAST_MARGIN) * COAST_RES, gz = (pz + COAST_MARGIN) * COAST_RES;
     const ix = Math.floor(gx), iz = Math.floor(gz);
-    if (ix < 0 || iz < 0 || ix >= f.w - 1 || iz >= f.w - 1) return [COAST_FAR, 0, COAST_FAR]; // open ocean
+    if (ix < 0 || iz < 0 || ix >= f.w - 1 || iz >= f.w - 1) return [COAST_FAR, 0, COAST_FAR, COAST_FAR]; // open ocean
     const fx = gx - ix, fz = gz - iz;
-    const out: [number, number, number] = [0, 0, 0];
-    for (let k = 0; k < 3; k++) {
+    const out: [number, number, number, number] = [0, 0, 0, 0];
+    for (let k = 0; k < 4; k++) {
       const a = f.d[k], i = iz * f.w + ix;
       out[k] = (a[i] * (1 - fx) + a[i + 1] * fx) * (1 - fz) + (a[i + f.w] * (1 - fx) + a[i + f.w + 1] * fx) * fz;
     }
     return out;
   }
 
-  private coast: { w: number; d: [Float32Array, Float32Array, Float32Array] } | null = null;
+  private coast: { w: number; d: Float32Array[] } | null = null;
 
   private buildCoastField() {
     const M = COAST_MARGIN, R = COAST_FAR;
     const w = (this.size + 2 * M) * COAST_RES + 1;
-    const d: [Float32Array, Float32Array, Float32Array] = [new Float32Array(w * w), new Float32Array(w * w), new Float32Array(w * w)];
-    // Tile classes once: 0 sea, 1 beach & fresh water, 2 land; plus prefix sums to skip uniform areas.
+    const d = [0, 1, 2, 3].map(() => new Float32Array(w * w));
+    // Tile classes once: 0 sea, 1 beach & fresh water, 2 land, 3 sea-level river; plus prefix sums to skip uniform areas.
     const o = M + R + 1, tw = this.size + 2 * o;
     const cls = new Uint8Array(tw * tw);
     const s0 = new Int32Array((tw + 1) * (tw + 1)), s2 = new Int32Array((tw + 1) * (tw + 1));
@@ -452,7 +453,7 @@ export class Grid {
       for (let x = 0; x < tw; x++) {
         const k = this.tile(x - o, z - o);
         const lv0 = this.level(x - o, z - o) === 0;
-        const c = k === Tile.Sea || k === Tile.Dock || (k === Tile.River && lv0) ? 0 : (k === Tile.Shore && lv0) || k === Tile.Pond || k === Tile.River ? 1 : 2;
+        const c = k === Tile.Sea || k === Tile.Dock ? 0 : k === Tile.River && lv0 ? 3 : (k === Tile.Shore && lv0) || k === Tile.Pond || k === Tile.River ? 1 : 2;
         cls[z * tw + x] = c;
         const j = (z + 1) * (tw + 1) + x + 1;
         s0[j] = s0[j - 1] + s0[j - tw - 1] - s0[j - tw - 2] + (c === 0 ? 1 : 0);
@@ -469,9 +470,9 @@ export class Grid {
         const x0 = Math.floor(px) - R + o, z0 = Math.floor(pz) - R + o;
         const x1 = x0 + 2 * R, z1 = z0 + 2 * R;
         const n0 = box(s0, x0, z0, x1, z1), n2 = box(s2, x0, z0, x1, z1);
-        if (n0 === all) { d[0][idx] = R; d[1][idx] = 0; d[2][idx] = R; continue; }
-        if (n2 === all) { d[0][idx] = 0; d[1][idx] = R; d[2][idx] = 0; continue; }
-        let dl = R, ds = R, dn = R;
+        if (n0 === all) { d[0][idx] = R; d[1][idx] = 0; d[2][idx] = R; d[3][idx] = R; continue; }
+        if (n2 === all) { d[0][idx] = 0; d[1][idx] = R; d[2][idx] = 0; d[3][idx] = R; continue; }
+        let dl = R, ds = R, dn = R, dr = R;
         for (let z = z0; z <= z1; z++) {
           const dz = Math.max(z - o - pz, 0, pz - (z - o + 1));
           if (dz >= R) continue;
@@ -481,6 +482,7 @@ export class Grid {
             const c = cls[z * tw + x];
             const dd = Math.hypot(dx, dz);
             if (c === 0) { if (dd < ds) ds = dd; }
+            else if (c === 3) { if (dd < dr) dr = dd; }
             else {
               if (dd < dn) dn = dd;
               if (c === 2 && dd < dl) dl = dd; // ponds & river mouths cut into the beach instead of raising it
@@ -490,6 +492,7 @@ export class Grid {
         d[0][idx] = dl;
         d[1][idx] = ds;
         d[2][idx] = dn;
+        d[3][idx] = dr;
       }
     return { w, d };
   }
@@ -604,6 +607,8 @@ const COAST_MARGIN = 10;
 /** Land-mask value where the sea starts now (beaches run from 0.74; the sea used to start at 0.83). */
 const BEACH_OUTER = 0.92;
 const COAST_FAR = 5;
+/** How far from a sea-level river its sandy bank dips down (tiles). */
+const RIVER_BANK = 0.55;
 /** Coast field samples per tile (bilinear in between). */
 const COAST_RES = 2;
 

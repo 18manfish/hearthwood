@@ -3,6 +3,7 @@
 import { ITEMS } from '@hearthwood/shared';
 import { state } from '../../../state.ts';
 import { h } from '../../dom.ts';
+import { itemIcon } from '../common.ts';
 import { hotbarEditor } from '../hotbar.ts';
 import { writeBottle } from './mail.ts';
 import type { Hud } from '../../hud.ts';
@@ -25,7 +26,7 @@ export function bagPanel(hud: Hud, b: HTMLElement, pockets = false) {
     if (it.wear) actions.append(h('button', { class: 'btn small', onclick: () => hud.act({ k: 'wear', item: state.self?.hat === id ? null : id }) }, state.self?.hat === id ? 'Take off' : 'Wear'));
     actions.append(h('button', { class: 'btn ghost small', title: `${it.sell} each`, onclick: () => hud.act({ k: 'sell', item: id, n: 1 }) }, `Sell ${it.sell}`));
     if (n > 1) actions.append(h('button', { class: 'btn ghost small', onclick: () => hud.act({ k: 'sell', item: id, n }) }, 'All'));
-    grid.append(h('div', { class: 'tile' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'ico' }, it.icon), h('b', {}, `×${n}`)), h('div', { class: 'nm' }, it.name), actions));
+    grid.append(h('div', { class: 'tile' }, h('div', { class: 'row', style: 'justify-content:space-between' }, itemIcon(id), h('b', {}, `×${n}`)), h('div', { class: 'nm' }, it.name), actions));
   }
   b.append(grid);
 }

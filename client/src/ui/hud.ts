@@ -61,7 +61,7 @@ export class Hud {
       h('div', { class: 'topbar' }, this.coins,
         btn('📜', 'G', 'goals', 'Goals'), btn('🎒', 'I', 'bag', 'Pockets'), btn('🔨', 'C', 'craft', 'Craft'),
         btn('🏗️', 'B', 'build', 'Build'), btn('🗺️', 'M', 'map', 'World map'), btn('💌', 'O', 'friends', 'Friends'),
-        btn('📬', 'L', 'mail', 'Mail'), btn('📖', 'K', 'album', 'Album'), btn('⚙️', 'V', 'island', 'Options & island'), btn('🐞', 'F3', 'debug', 'Developer debug')),
+        btn('📬', 'L', 'mail', 'Mail'), btn('📖', 'K', 'album', 'Journal'), btn('⚙️', 'V', 'island', 'Options & island'), btn('🐞', 'F3', 'debug', 'Developer debug')),
       this.hotbar,
       this.prompt,
       h('div', { class: 'chat' }, this.log, this.chatInput),
@@ -221,20 +221,23 @@ export class Hud {
     this.panelRefresh = null;
   }
 
-  frame(title: string, body: HTMLElement, id: PanelId | null = null) {
+  /** Show a panel. `bare`: the body brings its own look (e.g. the journal is a book), no panel card. */
+  frame(title: string, body: HTMLElement, id: PanelId | null = null, bare = false) {
     if (this.preview && !body.contains(this.preview.el)) { this.preview.dispose(); this.preview = null; }
     clear(this.panelHost);
     this.panel = id;
     this.panelRefresh = null;
     const back = h('div', { class: 'panel-back', onclick: (e: Event) => { if (e.target === back) this.close(); } },
-      h('div', { class: 'panel' },
-        h('header', {}, h('h2', {}, title), h('button', { class: 'btn ghost small', onclick: () => this.close() }, '✕')),
-        h('div', { class: 'body' }, body)));
+      bare
+        ? h('div', { class: 'panel-bare', 'aria-label': title }, body)
+        : h('div', { class: 'panel' },
+          h('header', {}, h('h2', {}, title), h('button', { class: 'btn ghost small', onclick: () => this.close() }, '✕')),
+          h('div', { class: 'body' }, body)));
     this.panelHost.appendChild(back);
   }
 
   /** Mount a panel whose body re-renders on every state change. */
-  live(title: string, id: PanelId | null, render: (body: HTMLElement) => void) {
+  live(title: string, id: PanelId | null, render: (body: HTMLElement) => void, bare = false) {
     const body = h('div');
     const draw = () => {
       const scroll = body.parentElement?.scrollTop ?? 0;
@@ -243,7 +246,7 @@ export class Hud {
       if (body.parentElement) body.parentElement.scrollTop = scroll;
     };
     draw();
-    this.frame(title, body, id);
+    this.frame(title, body, id, bare);
     this.panelRefresh = draw;
   }
 
@@ -263,13 +266,16 @@ export class Hud {
         mailPanel(this, b, false);
       });
       case 'island': return this.live('⚙️ Options & island', id, (b) => islandPanel(this, b));
-      case 'album': return this.live('📖 Album', id, (b) => albumPanel(this, b));
+      case 'album': return this.live('📖 Journal', id, (b) => albumPanel(this, b), true);
       case 'debug': return debugPanel(this);
     }
   }
 
   // ── Album ───────────────────────────────────────────────────────────────
   albumTab: 'fish' | 'birds' = 'fish';
+  /** Journal: page of the list (per tab) and the animal open on the facing page. */
+  albumPage = 0;
+  albumSel: string | null = null;
 
   // ── Developer debug menu (F3 / `) ───────────────────────────────────────
 

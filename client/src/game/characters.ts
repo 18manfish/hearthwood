@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { garmentOf, ITEMS, type VillagerDef } from '@hearthwood/shared';
 import { mat, part } from './models.ts';
+import { fishingRodModel } from './models/fishing.ts';
 
 export interface Rig {
   root: THREE.Group;
@@ -227,21 +228,20 @@ export function makeVillager(def: VillagerDef): Rig {
   return rig;
 }
 
-export function setTool(rig: Rig, tool: 'axe' | 'shovel' | 'rod' | null) {
+export function setTool(rig: Rig, tool: 'axe' | 'shovel' | 'rod' | 'rod_pro' | null) {
   if (rig.tool.userData.kind === tool) return;
   rig.tool.userData.kind = tool;
   rig.tool.clear();
   if (!tool) return;
+  if (tool === 'rod' || tool === 'rod_pro') {
+    rig.tool.add(fishingRodModel(tool === 'rod_pro' ? 'pro' : 'basic'));
+    return;
+  }
   const handle = part('cyl', '#7a5230', 0.025, 0.55, 0.025, 0, 0, 0.18);
   handle.rotation.x = Math.PI / 2;
   rig.tool.add(handle);
   if (tool === 'axe') rig.tool.add(part('box', '#9e9e9e', 0.04, 0.16, 0.14, 0, 0.06, 0.4));
   if (tool === 'shovel') rig.tool.add(part('box', '#9e9e9e', 0.16, 0.02, 0.18, 0, 0, 0.5));
-  if (tool === 'rod') {
-    const r = part('cyl', '#3e2723', 0.012, 1.1, 0.012, 0, 0.25, 0.6);
-    r.rotation.x = Math.PI / 2.6;
-    rig.tool.add(r);
-  }
 }
 
 /** Walk cycle / idle bob. `swing` > 0 plays a one-shot tool swing. */

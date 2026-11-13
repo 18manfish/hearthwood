@@ -101,7 +101,7 @@ export function updateLocal(self: World, dt: number) {
   bendLabel(self, me);
   me.swing = Math.max(0, me.swing - dt * 2.5);
   animateRig(me.rig, dt, me.speed, me.swing);
-  setTool(me.rig, self.tool === 'axe' && (state.inv.stone_axe || state.inv.iron_axe) ? 'axe' : self.tool === 'shovel' && (state.inv.shovel || state.inv.iron_shovel) ? 'shovel' : self.cast ? 'rod' : null);
+  setTool(me.rig, self.tool === 'axe' && (state.inv.stone_axe || state.inv.iron_axe) ? 'axe' : self.tool === 'shovel' && (state.inv.shovel || state.inv.iron_shovel) ? 'shovel' : self.cast ? (state.inv.pro_rod ? 'rod_pro' : 'rod') : null);
 
   const now = performance.now();
   const moved = Math.hypot(me.x - self.lastSent.x, me.z - self.lastSent.z) > 0.01 || Math.abs(me.r - self.lastSent.r) > 0.05;

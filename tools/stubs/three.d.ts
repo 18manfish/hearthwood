@@ -31,6 +31,8 @@ declare module 'three' {
   export const Matrix4: any; export type Matrix4 = any;
   export const Mesh: any; export type Mesh = any;
   export const MeshBasicMaterial: any; export type MeshBasicMaterial = any;
+  export const Line: any; export type Line = any;
+  export const LineBasicMaterial: any; export type LineBasicMaterial = any;
   export const MeshDepthMaterial: any; export type MeshDepthMaterial = any;
   export const MeshStandardMaterial: any; export type MeshStandardMaterial = any;
   export const Object3D: any; export type Object3D = any;

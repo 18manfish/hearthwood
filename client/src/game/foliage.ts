@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { isFreshWater, BIOMES, Tile, hashString, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
-import { kitGeometry } from './assets/kit.ts';
+import { kitGeometry, kitGeometryByColor } from './assets/kit.ts';
 import { bend } from './bend.ts';
 
 type Vis = 'spring' | 'summer' | 'autumn' | 'winter';
@@ -84,37 +84,43 @@ const KIT: Partial<Record<Kind, { name: string; colors: boolean; scale: number }
   wild: { name: 'wildflowers', colors: true, scale: 1 },
 };
 const DRY_GRASS = { name: 'grass_dry', colors: false, scale: 1.3 };
-const kitGeo = new Map<string, THREE.BufferGeometry | null>();
+/** Kit ground cover, one piece per colour: `color` null means "instance colour only". */
+type KitPart = { geo: THREE.BufferGeometry; color: string | null };
+const kitGeo = new Map<string, KitPart[]>();
 
 /** The kit geometry for a kind (normals up, so it's lit like the ground), or null. */
-function kitFor(kind: Kind, dry: boolean): { geo: THREE.BufferGeometry; colors: boolean } | null {
+function kitFor(kind: Kind, dry: boolean): KitPart[] | null {
   const k = kind === 'grass' && dry ? DRY_GRASS : KIT[kind];
   if (!k) return null;
   if (!kitGeo.has(k.name)) {
-    const g = kitGeometry(k.name, k.colors);
-    if (g) {
-      g.scale(k.scale, k.scale, k.scale);
-      g.computeVertexNormals();
-      const n = g.attributes.normal as THREE.BufferAttribute;
+    // Models with their own colours are split by colour and drawn with plain material
+    // colours (vertex-coloured instances came out black on some GPUs).
+    const parts: KitPart[] | null = k.colors
+      ? kitGeometryByColor(k.name)
+      : ((g) => (g ? [{ geo: g, color: null }] : null))(kitGeometry(k.name));
+    if (!parts) return null; // not loaded (yet): try again next build
+    for (const { geo } of parts) {
+      geo.scale(k.scale, k.scale, k.scale);
+      geo.computeVertexNormals();
+      const n = geo.attributes.normal as THREE.BufferAttribute;
       if (kind !== 'snow' && kind !== 'pebbles') for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
     }
-    if (!g) return null; // not loaded (yet): try again next build
-    kitGeo.set(k.name, g);
+    kitGeo.set(k.name, parts);
   }
-  const geo = kitGeo.get(k.name);
-  return geo ? { geo, colors: k.colors } : null;
+  return kitGeo.get(k.name) ?? null;
 }
 
 const MATERIALS = new Map<string, THREE.Material>();
-function material(kind: Kind, vertexColors = false) {
-  const key = `${kind}|${vertexColors}`;
+/** Shared material per kind and part colour (times the per-instance colour). */
+function material(kind: Kind, color: string | null = null) {
+  const key = `${kind}|${color ?? ''}`;
   let m = MATERIALS.get(key);
   if (!m) {
     const sway = kind !== 'leaf' && kind !== 'snow' && kind !== 'pebbles';
     const solid = kind === 'snow' || kind === 'pebbles';
-    // Per-instance colours (times the model's own colours for kit pieces); both faces lit like the ground.
+    // Both faces lit like the ground (thin blades seen from behind would go dark).
     m = bend(new THREE.MeshStandardMaterial({
-      color: '#ffffff', roughness: 1, side: solid ? THREE.FrontSide : THREE.DoubleSide, flatShading: solid, vertexColors,
+      color: color ?? '#ffffff', roughness: 1, side: solid ? THREE.FrontSide : THREE.DoubleSide, flatShading: solid,
     }), { sway, twoSidedLight: !solid });
     MATERIALS.set(key, m);
   }
@@ -246,23 +252,24 @@ export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis
   for (const kind of Object.keys(out) as Kind[]) {
     const list = out[kind];
     if (!list.length) continue;
-    const k = kitFor(kind, pal.dry);
-    const geo = k?.geo ?? GEO[kind];
-    if (!geo) continue;
-    const mesh = new THREE.InstancedMesh(geo, material(kind, !!k?.colors), list.length);
-    list.forEach((it, idx) => {
-      q.setFromAxisAngle(up, it.rot);
-      m4.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.s, it.s, it.s));
-      mesh.setMatrixAt(idx, m4);
-      col.set(it.color).offsetHSL(0, 0, ((idx * 7919) % 100) / 100 * 0.06 - 0.03);
-      mesh.setColorAt(idx, col);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.receiveShadow = true;
-    mesh.castShadow = false;
-    mesh.frustumCulled = false; // instances span the whole island; the bend moves them anyway
-    group.add(mesh);
+    const parts: KitPart[] = kitFor(kind, pal.dry) ?? (GEO[kind] ? [{ geo: GEO[kind]!, color: null }] : []);
+    // Every colour of a model is its own instanced mesh with the same placements.
+    for (const part of parts) {
+      const mesh = new THREE.InstancedMesh(part.geo, material(kind, part.color), list.length);
+      list.forEach((it, idx) => {
+        q.setFromAxisAngle(up, it.rot);
+        m4.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.s, it.s, it.s));
+        mesh.setMatrixAt(idx, m4);
+        col.set(it.color).offsetHSL(0, 0, ((idx * 7919) % 100) / 100 * 0.06 - 0.03);
+        mesh.setColorAt(idx, col);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.receiveShadow = true;
+      mesh.castShadow = false;
+      mesh.frustumCulled = false; // instances span the whole island; the bend moves them anyway
+      group.add(mesh);
+    }
   }
   return group;
 }

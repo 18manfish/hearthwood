@@ -106,6 +106,7 @@ export class Float32BufferAttribute extends BufferAttribute { constructor(a, n) 
 export class BufferGeometry {
   constructor() { this.attributes = {}; this.index = null; this.isBufferGeometry = true; }
   setAttribute(k, v) { this.attributes[k] = v; return this; }
+  setFromPoints(pts) { const arr = new Float32Array(pts.length * 3); pts.forEach((p, i) => { arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z; }); return this.setAttribute('position', new BufferAttribute(arr, 3)); }
   getAttribute(k) { return this.attributes[k]; }
   setIndex(i) { this.index = i ? (i.array ? i : new BufferAttribute(Uint32Array.from(i), 1)) : null; return this; }
   computeVertexNormals() { return this; }
@@ -144,6 +145,7 @@ export class MeshStandardMaterial extends Material {}
 export class MeshBasicMaterial extends Material {}
 export class MeshDepthMaterial extends Material {}
 export class PointsMaterial extends Material {}
+export class LineBasicMaterial extends Material {}
 export class SpriteMaterial extends Material {}
 
 let ids = 0;
@@ -177,6 +179,7 @@ export class InstancedMesh extends Mesh {
   setColorAt() {}
 }
 export class Points extends Mesh { constructor(g, m) { super(g, m); this.isPoints = true; } }
+export class Line extends Mesh { constructor(g, m) { super(g, m); this.isLine = true; } }
 export class Sprite extends Mesh { constructor(m) { super(new BufferGeometry(), m); this.isSprite = true; } }
 export class Light extends Object3D { constructor(color, intensity) { super(); this.color = new Color(color); this.intensity = intensity ?? 1; this.shadow = { camera: {}, mapSize: { set() {} } }; this.target = new Object3D(); } }
 export class DirectionalLight extends Light {}

@@ -11,15 +11,14 @@
 
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { BIOMES, Grid, CLIFF, decodeTiles, type TerraOp, type Building, type RoomView, type ServerMessage, type WorldObject, type BuildingType } from '@hearthwood/shared';
+import { BIOMES, Grid, decodeTiles, type TerraOp, type Building, type RoomView, type ServerMessage, type WorldObject, type BuildingType } from '@hearthwood/shared';
 import { bendFocusZ, bendStrength } from './bend.ts';
 import { disposePaths } from './paths.ts';
 import { disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
 import { windTime } from './bend.ts';
-import { mat, part } from './models.ts';
 import { state, watch } from '../state.ts';
-import { WATER_Y, debug, type Mover, type Target, type Tool } from './world/common.ts';
+import { debug, type Mover, type Target, type Tool } from './world/common.ts';
 import { addPlayer, groundY, interp, removeMover, say, swing, updateLocal } from './world/entities/players.ts';
 import { upsertVillager } from './world/entities/villagers.ts';
 import { handle } from './world/messages.ts';
@@ -28,7 +27,8 @@ import { addSealife, animateSealife, clearSealife } from './world/entities/seali
 import { rebuildPaths, toggleGridOverlay } from './world/room/terrainLayer.ts';
 import { refreshVisuals, resize, updateEnvironment, currentVisual, zoom } from './world/scene/environment.ts';
 import { computeTarget, facingTile } from './world/targeting.ts';
-import { endCast, startCast } from './world/tools/fishing.ts';
+import { endCast, startCast, updateFishing } from './world/tools/fishing.ts';
+import { bobberModel, fishingLineModel } from './models/fishing.ts';
 import { cancelGhost, rotateGhost, startBuildGhost, startMoveGhost, startPlaceGhost, updateGhost } from './world/tools/ghost.ts';
 import { paintFacing, paintHere, startPaint, startTerra, stopPaint, updatePaintGhost } from './world/tools/paint.ts';
 import { createAurora, createRain, createSea, createStars } from './world/scene/sky.ts';
@@ -74,7 +74,9 @@ export class World {
   camDist = 13;
   seasonKey = '';
   clock = new THREE.Clock();
-  bobber: THREE.Mesh;
+  bobber: THREE.Group;
+  /** The fishing line from the rod tip to the float. */
+  fishLine: THREE.Line;
   cast: { id: string | null; x: number; z: number; bite: boolean; window: number; at: number } | null = null;
   ghost: { group: THREE.Group; type: 'build'; building: BuildingType; tx: number; tz: number; ok: boolean; moving?: string } | { group: THREE.Group; type: 'place'; item: string; rot: number; tx: number; tz: number; ok: boolean } | null = null;
   /** Path painting: type 1..5, or 0 for the eraser. */
@@ -139,9 +141,11 @@ export class World {
     ({ rain: this.rain, vel: this.rainVel } = createRain());
     this.scene.add(this.rain);
 
-    this.bobber = part('sphere', mat('#e53935'), 0.1, 0.1, 0.1, 0, 0, 0, false);
+    this.bobber = bobberModel();
     this.bobber.visible = false;
     this.scene.add(this.bobber);
+    this.fishLine = fishingLineModel();
+    this.scene.add(this.fishLine);
 
     resize(this);
     window.addEventListener('resize', () => resize(this));
@@ -188,6 +192,7 @@ export class World {
     if (debug.grid) toggleGridOverlay(this, true);
     this.cast = null;
     this.bobber.visible = false;
+    this.fishLine.visible = false;
     cancelGhost(this);
     stopPaint(this);
   }
@@ -267,11 +272,8 @@ export class World {
     updateEnvironment(this, dt, t);
     animateProps(this, t);
     animateSealife(this, t, dt);
-    // Fishing bobber.
-    if (this.cast) {
-      const bite = this.cast.bite;
-      this.bobber.position.y = WATER_Y + (this.grid?.level(this.cast.x, this.cast.z) ?? 0) * CLIFF + (bite ? -0.08 + Math.sin(t * 30) * 0.04 : 0.03 + Math.sin(t * 3) * 0.02);
-    }
+    // Fishing: the float bobs, the line follows the rod tip.
+    updateFishing(this, t);
     // Camera follow.
     const fx = this.me?.x ?? 24, fz = this.me?.z ?? 24;
     const fy = this.me ? groundY(this, this.me.x, this.me.z) : 0;

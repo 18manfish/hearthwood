@@ -103,31 +103,44 @@ export function kitClip(name: string): THREE.AnimationClip | null {
 }
 
 /**
- * All the geometry of a kit model merged into one, for instancing (ground cover).
- * With `colors` the parts' colours become vertex colours.
+ * The geometry of a kit model for instancing (ground cover), merged into one piece
+ * per part colour – drawn with plain material colours, not vertex colours (some
+ * GPUs drew vertex-coloured instances black).
  */
-export function kitGeometry(name: string, colors = false): THREE.BufferGeometry | null {
+export function kitGeometryByColor(name: string): { color: string; geo: THREE.BufferGeometry }[] | null {
   const t = templates.get(name);
   if (!t) return null;
   t.root.updateMatrixWorld(true);
-  const pos: number[] = [];
-  const col: number[] = [];
+  const parts = new Map<string, number[]>();
   const v = new THREE.Vector3();
-  const c = new THREE.Color();
   t.root.traverse((o: THREE.Object3D) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     const g = (m.geometry as THREE.BufferGeometry).index ? (m.geometry as THREE.BufferGeometry).toNonIndexed() : (m.geometry as THREE.BufferGeometry);
     const p = g.attributes.position as THREE.BufferAttribute;
-    c.set(m.userData.color as string);
+    const color = m.userData.color as string;
+    let pos = parts.get(color);
+    if (!pos) parts.set(color, (pos = []));
     for (let i = 0; i < p.count; i++) {
       v.set(p.getX(i), p.getY(i), p.getZ(i)).applyMatrix4(m.matrixWorld);
       pos.push(v.x, v.y, v.z);
-      if (colors) col.push(c.r, c.g, c.b);
     }
   });
+  return [...parts].map(([color, pos]) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    return { color, geo };
+  });
+}
+
+/** All the geometry of a kit model merged into one, for instancing (ground cover). */
+export function kitGeometry(name: string): THREE.BufferGeometry | null {
+  const parts = kitGeometryByColor(name);
+  if (!parts) return null;
+  if (parts.length === 1) return parts[0].geo;
+  const pos: number[] = [];
+  for (const { geo } of parts) for (const v of geo.attributes.position.array as Float32Array) pos.push(v);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  if (colors) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }

@@ -13,6 +13,7 @@ import { bindPad } from './input/pad.ts';
 import { initAudio } from './audio/engine.ts';
 import { actionDone, actionSent } from './audio/actions.ts';
 import { net } from './net.ts';
+import { watchEmojis } from './ui/emoji.ts';
 
 // Same order as before the split: status → controller → messages → auth → boot.
 initAudio();
@@ -22,4 +23,5 @@ bindStatus();
 bindPad();
 bindMessages();
 bindAuth();
+watchEmojis(document.body); // pixel icons instead of emoji, everywhere
 boot();

@@ -1,6 +1,7 @@
 // Admin tool: look after every player and island. Talks to /api/admin/* with
 // the admin's login token; every change is validated and audited by the server.
 
+import { drawEmoji, watchEmojis } from '../ui/emoji.ts';
 import '../style.css';
 import '../tools.css';
 import {
@@ -398,7 +399,7 @@ function islandEditor(v: IslandView, focus?: string) {
       g.strokeStyle = isSel ? '#ff3b30' : '#3b2f25';
       g.lineWidth = isSel ? 3 : 1;
       g.strokeRect(b.x * cell + 1, b.z * cell + 1, b.w * cell - 2, b.h * cell - 2);
-      g.fillText(def?.icon ?? '🏠', (b.x + b.w / 2) * cell, (b.z + b.h / 2) * cell);
+      drawEmoji(g, def?.icon ?? '🏠', (b.x + b.w / 2) * cell, (b.z + b.h / 2) * cell, Math.max(12, cell * 1.1), draw);
     }
     for (const o of d.objects) {
       const isSel = sel?.kind === 'object' && sel.o === o;
@@ -419,7 +420,7 @@ function islandEditor(v: IslandView, focus?: string) {
     }
     for (const vl of v.villagers) {
       if (vl.home) continue;
-      g.fillText('🐾', vl.x * cell, vl.z * cell);
+      drawEmoji(g, '🐾', vl.x * cell, vl.z * cell, Math.max(12, cell * 1.1), draw);
     }
     g.font = `bold ${Math.max(10, cell)}px system-ui`;
     for (const pl of v.players) {
@@ -433,7 +434,7 @@ function islandEditor(v: IslandView, focus?: string) {
       g.strokeText(pl.name, pl.x * cell, pl.z * cell - cell);
       g.fillText(pl.name, pl.x * cell, pl.z * cell - cell);
     }
-    g.fillText('⚓', (v.spawn.x) * cell, (v.spawn.z) * cell);
+    drawEmoji(g, '⚓', v.spawn.x * cell, v.spawn.z * cell, Math.max(12, cell * 1.1), draw);
     status.textContent = dirty.size ? `Unsaved: ${[...dirty].join(', ')}` : 'No unsaved changes';
     saveBtn.disabled = !dirty.size;
   }
@@ -991,4 +992,5 @@ async function start() {
   });
   route();
 }
+watchEmojis(document.body);
 start();

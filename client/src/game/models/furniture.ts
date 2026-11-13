@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { furnitureShape, ITEMS } from '@hearthwood/shared';
 import { kitModel } from '../assets/kit.ts';
 import { bend } from '../bend.ts';
+import { drawEmoji } from '../../ui/emoji.ts';
 import { mat, part } from './primitives.ts';
 
 const HULLS = ['#e8604c', '#3fa7d6', '#f2c14e', '#59cd90'];
@@ -130,11 +131,19 @@ export function emojiSprite(emoji: string, size = 0.8) {
     ctx.lineWidth = 6;
     ctx.strokeStyle = '#eadfcb';
     ctx.stroke();
-    ctx.font = '72px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(emoji, 64, 70);
     const tex = new THREE.CanvasTexture(c);
+    // The pixel icon (redrawn once it has loaded).
+    const face = () => {
+      ctx.fillStyle = '#fffdf7';
+      ctx.beginPath();
+      ctx.arc(64, 64, 52, 0, Math.PI * 2);
+      ctx.fill();
+      drawEmoji(ctx, emoji, 64, 66, 80, () => {
+        face();
+        tex.needsUpdate = true;
+      });
+    };
+    face();
     tex.colorSpace = THREE.SRGBColorSpace;
     m = bend(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
     signCache.set(emoji, m);

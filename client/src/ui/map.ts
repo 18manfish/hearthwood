@@ -2,6 +2,18 @@
 
 import { BIOMES, BIOME_IDS, SHARED_LOCATIONS, hashString, type BiomeId, type MapIsland } from '@hearthwood/shared';
 import { svg } from './dom.ts';
+import { emojiIconUrl } from './emoji.ts';
+
+/** An emoji's pixel icon in the SVG map, centred at (x, y); the emoji as text without one. */
+function svgIcon(emoji: string, x: number, y: number, size: number) {
+  const url = emojiIconUrl(emoji);
+  if (!url) {
+    const t = svg('text', { x, y: y + size * 0.35, 'text-anchor': 'middle', 'font-size': size });
+    t.textContent = emoji;
+    return t;
+  }
+  return svg('image', { href: url, x: x - size / 2, y: y - size / 2, width: size, height: size, style: 'image-rendering:pixelated' });
+}
 
 const ICON: Record<BiomeId, string> = {
   grassland: '🌾', tropical: '🏝️', nordic: '🌲', forest_edge: '🍄', oasis: '🌴', jungle: '🦜', desert: '🌵',
@@ -56,9 +68,7 @@ export function renderWorldMap(o: MapOptions): SVGSVGElement {
     const g = svg('g', { class: `region${o.selected === id ? ' sel' : ''}` });
     g.appendChild(svg('path', { d: blob(b.map.x, b.map.y, b.map.r + 8, hashString(id) + 1), fill: '#fff8e1', opacity: 0.85 }));
     g.appendChild(svg('path', { d: blob(b.map.x, b.map.y, b.map.r, hashString(id)), fill: b.map.color, stroke: o.selected === id ? '#fff' : 'none', 'stroke-width': 5 }));
-    const icon = svg('text', { x: b.map.x, y: b.map.y + 2, 'text-anchor': 'middle', 'font-size': 30 });
-    icon.textContent = ICON[id];
-    g.appendChild(icon);
+    g.appendChild(svgIcon(ICON[id], b.map.x, b.map.y - 8, 32));
     const label = svg('text', { x: b.map.x, y: b.map.y + b.map.r * 0.62, 'text-anchor': 'middle', 'font-size': 15, fill: '#3b2f25', stroke: '#fff8e1', 'stroke-width': 4, 'paint-order': 'stroke' });
     label.textContent = b.name;
     g.appendChild(label);
@@ -81,9 +91,7 @@ export function renderWorldMap(o: MapOptions): SVGSVGElement {
   for (const s of SHARED_LOCATIONS) {
     const g = svg('g', { class: 'marker' });
     g.appendChild(svg('circle', { cx: s.map.x, cy: s.map.y, r: 15, fill: '#3b2f25', opacity: 0.85 }));
-    const star = svg('text', { x: s.map.x, y: s.map.y + 6, 'text-anchor': 'middle', 'font-size': 17 });
-    star.textContent = '⭐';
-    g.appendChild(star);
+    g.appendChild(svgIcon('⭐', s.map.x, s.map.y, 20));
     const lbl = svg('text', { x: s.map.x, y: s.map.y + 30, 'text-anchor': 'middle', 'font-size': 13, fill: '#fff', stroke: '#3b2f25', 'stroke-width': 4, 'paint-order': 'stroke' });
     lbl.textContent = s.name;
     g.appendChild(lbl);

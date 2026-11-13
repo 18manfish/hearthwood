@@ -14,6 +14,7 @@ import { chips, dialogueEditor, dialogueSummary, SPECIES_ICON, type DialogueHost
 import { api, clearToken, health, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
 import { h, clear } from '../ui/dom.ts';
+import { watchEmojis } from '../ui/emoji.ts';
 import { birdModel, buildingModel, furnitureModel } from '../game/models.ts';
 import { loadKitAssets } from '../game/assets/kit.ts';
 import { makeVillager, animateRig, type Rig } from '../game/characters.ts';
@@ -596,4 +597,5 @@ async function start() {
   // Bird and furniture previews use the kit models once they're in.
   loadKitAssets().then(render);
 }
+watchEmojis(document.body);
 start();

@@ -130,6 +130,7 @@ export class BufferGeometry {
 const prim = (name) => class extends BufferGeometry { constructor(...args) { super(); this.type = name; this.parameters = args; } };
 export const BoxGeometry = prim('Box'), CircleGeometry = prim('Circle'), ConeGeometry = prim('Cone'), CylinderGeometry = prim('Cylinder');
 export const DodecahedronGeometry = prim('Dodecahedron'), IcosahedronGeometry = prim('Icosahedron'), PlaneGeometry = prim('Plane'), RingGeometry = prim('Ring');
+export const TorusGeometry = prim('Torus');
 export const SphereGeometry = prim('Sphere'), ShapeGeometry = prim('ShapeG'), ExtrudeGeometry = prim('Extrude');
 export class Shape { constructor() { this.cmds = []; return new Proxy(this, { get: (t, k) => (k in t ? t[k] : (...a) => { t.cmds.push([k, ...a]); return t; }) }); } }
 
@@ -155,6 +156,7 @@ export class Object3D {
   add(...cs) { for (const c of cs) { if (c.parent) c.parent.remove(c); c.parent = this; this.children.push(c); } return this; }
   remove(...cs) { for (const c of cs) { const i = this.children.indexOf(c); if (i >= 0) { this.children.splice(i, 1); c.parent = null; } } return this; }
   traverse(fn) { fn(this); for (const c of [...this.children]) c.traverse(fn); }
+  clear() { for (const c of [...this.children]) this.remove(c); return this; }
   getObjectByName(n) { if (this.name === n) return this; for (const c of this.children) { const r = c.getObjectByName(n); if (r) return r; } return undefined; }
   updateMatrixWorld() {} updateMatrix() {} lookAt() {}
   clone(recursive = true) {

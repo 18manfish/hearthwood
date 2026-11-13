@@ -2,6 +2,7 @@
 // the client uses this table for names, icons and tooltips.
 
 import { BIRDS } from './birds.ts';
+import type { WearSlot } from './clothing.ts';
 
 export type ItemCategory =
   | 'material'
@@ -71,8 +72,10 @@ export interface ItemDef {
   stack?: number; // max quantity held (default 999)
   /** Furniture can be placed on the island. */
   placeable?: boolean;
-  /** Clothing slot. */
-  wear?: 'hat';
+  /** Clothing slot (see data/clothing.ts). */
+  wear?: WearSlot;
+  /** Clothing cut the client draws (see GARMENTS); defaults to the item id. */
+  garment?: string;
   /** 3D model used for furniture (see FURNITURE_MODELS); defaults to the item id. */
   model?: string;
   color?: string;
@@ -168,6 +171,30 @@ export const BASE_ITEMS: ItemDef[] = [
   { id: 'beanie', name: 'Knit Beanie', icon: '🧶', category: 'clothing', tags: ['clothing', 'cozy'], sell: 50, buy: 250, wear: 'hat', stack: 1, color: '#c0392b' },
   { id: 'cap', name: 'Explorer Cap', icon: '🧢', category: 'clothing', tags: ['clothing'], sell: 50, buy: 250, wear: 'hat', stack: 1, color: '#2e86de' },
   { id: 'flower_crown', name: 'Flower Crown', icon: '💐', category: 'clothing', tags: ['clothing', 'sweet'], sell: 80, buy: 400, wear: 'hat', stack: 1, color: '#ff8fb1' },
+  { id: 'tshirt_sky', name: 'Sky T-Shirt', icon: '👕', category: 'clothing', tags: ['clothing'], sell: 40, buy: 200, wear: 'top', garment: 'tshirt', stack: 1, color: '#6ec1e4' },
+  { id: 'tshirt_coral', name: 'Coral T-Shirt', icon: '👕', category: 'clothing', tags: ['clothing'], sell: 40, buy: 200, wear: 'top', garment: 'tshirt', stack: 1, color: '#f08a6c' },
+  { id: 'shirt_linen', name: 'Linen Shirt', icon: '👔', category: 'clothing', tags: ['clothing'], sell: 64, buy: 320, wear: 'top', garment: 'shirt', stack: 1, color: '#efe3c8' },
+  { id: 'shirt_gingham', name: 'Gingham Shirt', icon: '👔', category: 'clothing', tags: ['clothing'], sell: 64, buy: 320, wear: 'top', garment: 'shirt', stack: 1, color: '#d9534f' },
+  { id: 'pullover_cream', name: 'Cream Pullover', icon: '🧶', category: 'clothing', tags: ['clothing'], sell: 84, buy: 420, wear: 'top', garment: 'pullover', stack: 1, color: '#f1e6d0' },
+  { id: 'pullover_forest', name: 'Forest Pullover', icon: '🧶', category: 'clothing', tags: ['clothing'], sell: 84, buy: 420, wear: 'top', garment: 'pullover', stack: 1, color: '#3f7a52' },
+  { id: 'dress_sunny', name: 'Sunny Sundress', icon: '👗', category: 'clothing', tags: ['clothing'], sell: 96, buy: 480, wear: 'top', garment: 'dress_short', stack: 1, color: '#f6c945' },
+  { id: 'dress_meadow', name: 'Meadow Dress', icon: '👗', category: 'clothing', tags: ['clothing'], sell: 112, buy: 560, wear: 'top', garment: 'dress_knee', stack: 1, color: '#7fb3e0' },
+  { id: 'dress_evening', name: 'Evening Gown', icon: '👗', category: 'clothing', tags: ['clothing'], sell: 180, buy: 900, wear: 'top', garment: 'dress_long', stack: 1, color: '#7a3b69' },
+  { id: 'skirt_denim', name: 'Denim Miniskirt', icon: '🩳', category: 'clothing', tags: ['clothing'], sell: 52, buy: 260, wear: 'bottom', garment: 'skirt_short', stack: 1, color: '#4a6fa5' },
+  { id: 'skirt_pleated', name: 'Pleated Skirt', icon: '🩳', category: 'clothing', tags: ['clothing'], sell: 60, buy: 300, wear: 'bottom', garment: 'skirt_knee', stack: 1, color: '#2f3e63' },
+  { id: 'skirt_boho', name: 'Long Boho Skirt', icon: '🩳', category: 'clothing', tags: ['clothing'], sell: 76, buy: 380, wear: 'bottom', garment: 'skirt_long', stack: 1, color: '#c9693c' },
+  { id: 'jacket_rain', name: 'Rain Jacket', icon: '🧥', category: 'clothing', tags: ['clothing'], sell: 104, buy: 520, wear: 'outer', garment: 'jacket', stack: 1, color: '#f2c230' },
+  { id: 'jacket_denim', name: 'Denim Jacket', icon: '🧥', category: 'clothing', tags: ['clothing'], sell: 112, buy: 560, wear: 'outer', garment: 'jacket', stack: 1, color: '#5b7fb5' },
+  { id: 'coat_wool', name: 'Wool Coat', icon: '🧥', category: 'clothing', tags: ['clothing'], sell: 172, buy: 860, wear: 'outer', garment: 'coat', stack: 1, color: '#b38a5e' },
+  { id: 'coat_navy', name: 'Navy Peacoat', icon: '🧥', category: 'clothing', tags: ['clothing'], sell: 180, buy: 900, wear: 'outer', garment: 'coat', stack: 1, color: '#2b3a5c' },
+  { id: 'sneakers_white', name: 'White Sneakers', icon: '👟', category: 'clothing', tags: ['clothing'], sell: 48, buy: 240, wear: 'shoes', garment: 'sneakers', stack: 1, color: '#f4f4f2' },
+  { id: 'sneakers_red', name: 'Red Sneakers', icon: '👟', category: 'clothing', tags: ['clothing'], sell: 48, buy: 240, wear: 'shoes', garment: 'sneakers', stack: 1, color: '#d9433c' },
+  { id: 'boots_brown', name: 'Leather Boots', icon: '🥾', category: 'clothing', tags: ['clothing'], sell: 76, buy: 380, wear: 'shoes', garment: 'boots', stack: 1, color: '#7a4e2d' },
+  { id: 'sandals_tan', name: 'Sandals', icon: '🩴', category: 'clothing', tags: ['clothing'], sell: 32, buy: 160, wear: 'shoes', garment: 'sandals', stack: 1, color: '#c79a62' },
+  { id: 'gloves_work', name: 'Work Gloves', icon: '🧤', category: 'clothing', tags: ['clothing'], sell: 36, buy: 180, wear: 'gloves', garment: 'gloves', stack: 1, color: '#a0703f' },
+  { id: 'mittens_red', name: 'Red Mittens', icon: '🧤', category: 'clothing', tags: ['clothing'], sell: 32, buy: 160, wear: 'gloves', garment: 'mittens', stack: 1, color: '#c0392b' },
+  { id: 'sun_hat', name: 'Sun Hat', icon: '👒', category: 'clothing', tags: ['clothing'], sell: 60, buy: 300, wear: 'hat', garment: 'sun_hat', stack: 1, color: '#f3e2b5' },
+  { id: 'bucket_hat', name: 'Bucket Hat', icon: '🎩', category: 'clothing', tags: ['clothing'], sell: 52, buy: 260, wear: 'hat', garment: 'bucket_hat', stack: 1, color: '#6d8f5a' },
 ];
 
 export interface FishDef {

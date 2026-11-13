@@ -3,12 +3,14 @@
 
 import {
   type ClientMessage, type Gender, hashString, ISLAND_SIZE, isValidTimeZone, localTime, type Look, makeCode, PROTOCOL_VERSION, type TravelTarget,
+  OUTFIT_SETS, setOutfit,
 } from '@hearthwood/shared';
 import crypto from 'node:crypto';
 import { config } from '../../config.ts';
 import { logger } from '../../log.ts';
 import { Room } from '../Room.ts';
 import { Session } from '../Session.ts';
+import * as inv from '../inventory.ts';
 import { hashToken, hashPassword, newToken, verifyPassword } from '../../auth.ts';
 import type { IslandRecord, PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
@@ -156,6 +158,11 @@ export function createCharacter(game: Game, s: Session, m: Extract<ClientMessage
   p.name = sanitize(game, m.name);
   p.gender = m.gender as Gender;
   p.look = m.look;
+  // Starter clothes: yours to keep, and you're wearing them.
+  const set = OUTFIT_SETS.find((x) => x.id === m.outfit);
+  if (set) for (const item of set.items) inv.add(p, item, 1);
+  p.outfit = set ? setOutfit(set.id) : {};
+  p.hat = p.outfit.hat ?? null;
   p.created = true;
   p.coins = 100;
   const now = Date.now();

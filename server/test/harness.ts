@@ -220,13 +220,17 @@ export class Bot {
 
   async create(biome: string, name: string) {
     this.send({
-      t: 'create', name, islandName: `${name} Isle`, gender: 'girl', biome,
-      look: { skin: '#f1c27d', hair: 'ponytail', hairColor: '#5a3a1e', eyes: '#2b1d14', shirt: '#e74c3c', pants: '#34495e', shoes: '#8d6e63' },
+      t: 'create', name, islandName: `${name} Isle`, gender: 'girl', biome, outfit: 'summer',
+      look: { skin: '#f1c27d', hair: 'ponytail', hairColor: '#5a3a1e', eyes: '#2b1d14', shirt: '#e74c3c', pants: '#34495e', shoes: '#8d6e63', eyeShape: 'happy', mouth: 'grin' },
       geo: { lat: 47.37, lon: 8.54, tz: 'Europe/Zurich' },
     });
-    await this.wait('welcome', (m) => !!m.you);
+    const w = await this.wait('welcome', (m) => !!m.you);
+    this.you = w.you;
     await this.wait('room');
   }
+
+  /** Our own view from the last welcome. */
+  you: Extract<ServerMessage, { t: 'welcome' }>['you'] = null;
 }
 
 /** JSON over HTTP against the test server. */

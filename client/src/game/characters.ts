@@ -1,7 +1,8 @@
-// Chibi characters for players and animal villagers.
+// Chibi characters: the rig, animal villagers, hair and hats. The player model
+// (body, face, clothes) is in player.ts.
 
 import * as THREE from 'three';
-import { ITEMS, type Gender, type Look, type VillagerDef } from '@hearthwood/shared';
+import { garmentOf, ITEMS, type VillagerDef } from '@hearthwood/shared';
 import { mat, part } from './models.ts';
 
 export interface Rig {
@@ -62,7 +63,7 @@ function addFace(head: THREE.Group, eyes: string, z: number, y = 0, blush = true
   if (blush) for (const x of [-0.17, 0.17]) head.add(part('sphere', mat('#ff9aa2', { opacity: 0.7 }), 0.05, 0.025, 0.01, x, y - 0.06, z - 0.03, false));
 }
 
-function addHair(head: THREE.Group, style: string, color: string) {
+export function addHair(head: THREE.Group, style: string, color: string) {
   const c = mat(color);
   const cap = part('sphere', c, 0.34, 0.3, 0.34, 0, 0.06, -0.02);
   cap.scale.set(0.34, 0.3, 0.34);
@@ -100,7 +101,8 @@ function addHair(head: THREE.Group, style: string, color: string) {
       head.add(part('sphere', mat('#e86fae'), 0.05, 0.05, 0.05, 0, 0.12, -0.33));
       return;
     case 'bob':
-      head.add(part('sphere', c, 0.37, 0.33, 0.36, 0, 0.0, -0.04));
+      // Kept behind the face so it frames it instead of covering it.
+      head.add(part('sphere', c, 0.37, 0.34, 0.31, 0, 0.0, -0.085));
       head.add(part('box', c, 0.56, 0.1, 0.18, 0, 0.2, 0.2));
       return;
     case 'pigtails':
@@ -114,7 +116,7 @@ export function setHat(rig: Rig, hat: string | null) {
   rig.hatSlot.clear();
   if (!hat) return;
   const col = ITEMS[hat]?.color ?? '#e8c872';
-  switch (hat) {
+  switch (garmentOf(hat)) {
     case 'straw_hat':
       rig.hatSlot.add(part('cyl', col, 0.5, 0.03, 0.5, 0, 0.26, 0));
       rig.hatSlot.add(part('cyl', col, 0.26, 0.16, 0.26, 0, 0.34, 0));
@@ -128,6 +130,20 @@ export function setHat(rig: Rig, hat: string | null) {
       rig.hatSlot.add(part('sphere', col, 0.34, 0.2, 0.34, 0, 0.18, 0));
       rig.hatSlot.add(part('box', col, 0.32, 0.03, 0.25, 0, 0.17, 0.33));
       break;
+    case 'sun_hat':
+      rig.hatSlot.add(part('cyl', col, 0.58, 0.025, 0.58, 0, 0.24, 0));
+      rig.hatSlot.add(part('sphere', col, 0.27, 0.2, 0.27, 0, 0.27, 0));
+      rig.hatSlot.add(part('cyl', '#e07a5f', 0.272, 0.05, 0.272, 0, 0.29, 0));
+      rig.hatSlot.add(part('sphere', '#ffd166', 0.05, 0.05, 0.03, 0.2, 0.3, 0.17));
+      break;
+    case 'bucket_hat': {
+      rig.hatSlot.add(part('sphere', col, 0.31, 0.24, 0.31, 0, 0.2, 0));
+      const brim = part('cone', col, 0.44, 0.1, 0.44, 0, 0.17, 0);
+      brim.rotation.x = Math.PI;
+      rig.hatSlot.add(brim);
+      rig.hatSlot.add(part('cyl', '#3d3d3d', 0.315, 0.035, 0.315, 0, 0.22, 0));
+      break;
+    }
     case 'flower_crown':
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
@@ -135,16 +151,6 @@ export function setHat(rig: Rig, hat: string | null) {
       }
       break;
   }
-}
-
-export function makePlayer(gender: Gender, look: Look, hat: string | null): Rig {
-  const rig = baseRig(look.skin, look.shirt, look.pants, look.shoes, gender === 'girl');
-  rig.head.add(part('sphere', look.skin, 0.32, 0.3, 0.3, 0, 0, 0));
-  for (const x of [-0.31, 0.31]) rig.head.add(part('sphere', look.skin, 0.06, 0.08, 0.05, x, 0, 0));
-  addFace(rig.head, look.eyes, 0.27);
-  addHair(rig.head, look.hair, look.hairColor);
-  setHat(rig, hat);
-  return rig;
 }
 
 export function makeVillager(def: VillagerDef): Rig {

@@ -114,7 +114,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     color: '#d64541', roof: '#5d4037', description: 'Send letters & gifts to friends. Visitors can leave you a letter, and the flag goes up when you have mail.',
   },
   travel_agent: shop('travel_agent', 'Travel Agent', '✈️', '#e1f0f7', '#2a9d8f', 'Book mystery tours to resource-rich islands.'),
-  clothing_shop: shop('clothing_shop', 'Clothing Shop', '👕', '#fbe3ec', '#c2185b', 'Hats and a full wardrobe makeover.'),
+  clothing_shop: shop('clothing_shop', 'Clothing Shop', '👕', '#fbe3ec', '#c2185b', 'Clothes, hats, shoes and a full makeover.'),
   restaurant: shop('restaurant', 'Restaurant', '🍽️', '#fff2d6', '#e67e22', 'Cook hearty meals from what you gather.'),
   tool_store: shop('tool_store', 'Tool Store', '🧰', '#e8e8e8', '#7f8c8d', 'Sturdier tools and saplings.'),
   furniture_store: shop('furniture_store', 'Furniture Store', '🛋️', '#efe1cf', '#8e5a3c', 'Benches, lamps and other outdoor decor.'),
@@ -243,7 +243,10 @@ export const SHOP_STOCK: Partial<Record<BuildingType, string[]>> = {
     'boho_trunk', 'boho_ladder_shelf', 'boho_room_divider', 'boho_kilim_rug', 'boho_jute_rug', 'boho_macrame', 'boho_tapestry',
     'boho_dreamcatcher', 'boho_lantern', 'boho_floor_lamp', 'boho_monstera', 'boho_plant_stand', 'boho_pampas_vase',
   ],
-  clothing_shop: ['straw_hat', 'beanie', 'cap', 'flower_crown'],
+  clothing_shop: [
+    'straw_hat', 'beanie', 'cap', 'flower_crown', 'sun_hat', 'bucket_hat',
+    'tshirt_sky', 'tshirt_coral', 'shirt_linen', 'shirt_gingham', 'pullover_cream', 'pullover_forest', 'dress_sunny', 'dress_meadow', 'dress_evening', 'skirt_denim', 'skirt_pleated', 'skirt_boho', 'jacket_rain', 'jacket_denim', 'coat_wool', 'coat_navy', 'sneakers_white', 'sneakers_red', 'boots_brown', 'sandals_tan', 'gloves_work', 'mittens_red',
+  ],
 };
 
 export const MYSTERY_TOUR_COST = 500;

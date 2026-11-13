@@ -5,6 +5,7 @@ import {
   ACCESS_LEVELS, BIOME_IDS, BUILDINGS, DEFAULT_GAME_DATA, GAME_TABLES, HOTBAR_TOOLS, ITEMS, PERMITS, PROTOCOL_VERSION, VILLAGERS, FRIENDSHIP_MAX,
   applyGameData, decodeTiles, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
   type Access, type Building, type GameData, type GameTable, type WorldObject,
+  cleanOutfit, outfitOf,
 } from '@hearthwood/shared';
 import crypto from 'node:crypto';
 import { config } from './config.ts';
@@ -428,6 +429,12 @@ function applyPlayerPatch(game: Game, store: Store, p: PlayerRecord, b: Record<s
   set('hat', () => {
     if (b.hat !== null && (typeof b.hat !== 'string' || ITEMS[b.hat]?.wear !== 'hat')) throw new HttpError(400, 'Not a hat.');
     p.hat = b.hat as string | null;
+    p.outfit = { ...outfitOf(p), hat: p.hat ?? undefined };
+    if (!p.hat) delete p.outfit.hat;
+  });
+  set('outfit', () => {
+    p.outfit = cleanOutfit(b.outfit);
+    p.hat = p.outfit.hat ?? null;
   });
   set('role', () => {
     if (b.role !== 'admin' && b.role !== 'player') throw new HttpError(400, 'Role must be admin or player.');

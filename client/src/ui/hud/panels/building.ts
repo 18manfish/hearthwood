@@ -1,6 +1,6 @@
 // Counters inside buildings: town hall services, shops and their stock.
 
-import { type Building, BUILDINGS, type BuildingType, ENTERABLE, HOUSE_TIERS, houseLevel, ITEMS, type Look, MAX_HOUSE_LEVEL, MYSTERY_TOUR_COST, PERMITS, SHOP_STOCK } from '@hearthwood/shared';
+import { type Building, BUILDINGS, type BuildingType, ENTERABLE, equip, outfitOf, type Outfit, HOUSE_TIERS, houseLevel, ITEMS, type Look, MAX_HOUSE_LEVEL, MYSTERY_TOUR_COST, PERMITS, SHOP_STOCK } from '@hearthwood/shared';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { lookEditor, Preview } from '../../creator.ts';
@@ -99,7 +99,9 @@ export function shopPanel(hud: Hud, b: HTMLElement, type: BuildingType) {
   for (const id of stock) {
     const it = ITEMS[id];
     grid.append(h('div', { class: 'tile' }, h('span', { class: 'ico' }, it.icon), h('div', { class: 'nm' }, it.name), h('div', { class: 'muted' }, `🪙 ${it.buy}${have(id) ? ` · own ${have(id)}` : ''}`),
-      h('button', { class: 'btn small', disabled: state.coins < (it.buy ?? 0), onclick: () => hud.act({ k: 'buy', shop: type, item: id, n: 1 }) }, 'Buy')));
+      h('div', { class: 'row' },
+        h('button', { class: 'btn small', disabled: state.coins < (it.buy ?? 0), onclick: () => hud.act({ k: 'buy', shop: type, item: id, n: 1 }) }, 'Buy'),
+        it.wear && type === 'clothing_shop' ? h('button', { class: 'btn ghost small', 'data-try': id }, 'Try on') : '')));
   }
   b.append(grid);
   if (type === 'clothing_shop' && state.self) {
@@ -107,12 +109,20 @@ export function shopPanel(hud: Hud, b: HTMLElement, type: BuildingType) {
     const look: Look = { ...self.look };
     const prevEl = h('div', { class: 'preview', style: 'height:260px;position:relative;border-radius:16px;background:#eef7e6' });
     b.append(h('h3', { style: 'margin-top:14px' }, '💇 Makeover (200 coins)'));
-    const ed = lookEditor(() => self.gender, look, () => prev.set(self.gender, look, self.hat));
+    // Try clothes on before buying them.
+    let trying: Outfit = outfitOf(self);
+    const ed = lookEditor(() => self.gender, look, () => prev.set(self.gender, look, trying));
     b.append(h('div', { class: 'row', style: 'align-items:flex-start' }, h('div', { style: 'width:200px' }, prevEl), ed.root));
     b.append(h('button', { class: 'btn', onclick: () => hud.act({ k: 'restyle', look }) }, 'Apply makeover'));
     const prev = new Preview(prevEl);
-    prev.set(self.gender, look, self.hat);
+    prev.set(self.gender, look, trying);
     hud.preview = prev;
+    for (const btn of grid.querySelectorAll<HTMLElement>('[data-try]')) {
+      btn.onclick = () => {
+        trying = equip(trying, btn.dataset.try!);
+        prev.set(self.gender, look, trying);
+      };
+    }
   }
 }
 

@@ -69,6 +69,7 @@ export function devCommand(game: Game, s: Session, cmd: DevCommand, args: string
     case 'clearinv':
       p.inv = {};
       p.hat = null;
+      p.outfit = {};
       reply('Pockets emptied.');
       break;
     case 'day': {

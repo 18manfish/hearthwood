@@ -4,6 +4,7 @@
 import {
   type Album, DEFAULT_HOTBAR, encodeTiles, LEGACY_ISLAND_SIZE, normalizeHotbar, type SelfView,
   isTransient,
+  outfitOf,
 } from '@hearthwood/shared';
 import { Room } from '../Room.ts';
 import { Session } from '../Session.ts';
@@ -21,7 +22,7 @@ export function albumOf(p: PlayerRecord): Album {
 export function selfView(game: Game, p: PlayerRecord): SelfView {
   const isl = homeIsland(game, p);
   return {
-    id: p.id, name: p.name, code: p.code, gender: p.gender, look: p.look, hat: p.hat,
+    id: p.id, name: p.name, code: p.code, gender: p.gender, look: p.look, hat: p.hat, outfit: outfitOf(p),
     homeIslandId: p.homeIslandId, islandName: isl?.name ?? null, biome: isl?.biome ?? null,
     access: isl?.access ?? 'friends', inviteCode: isl?.inviteCode ?? null, coins: p.coins, inv: p.inv,
     permits: p.permits ?? [], hotbar: normalizeHotbar(p.hotbar ?? DEFAULT_HOTBAR), album: albumOf(p),
@@ -43,7 +44,7 @@ export function sendInv(game: Game, s: Session) {
 
 export function broadcastLook(game: Game, s: Session) {
   const p = s.player!;
-  s.room?.broadcast({ t: 'pLook', id: p.id, look: p.look, hat: p.hat });
+  s.room?.broadcast({ t: 'pLook', id: p.id, look: p.look, hat: p.hat, outfit: outfitOf(p) });
 }
 
 export function notifyMail(game: Game, playerId: string) {

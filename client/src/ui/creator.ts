@@ -2,10 +2,11 @@
 
 import * as THREE from 'three';
 import {
-  BIOMES, BIOME_IDS, CLOTH_COLORS, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, NAME_RE, SKIN_TONES, guessGeoFromTimeZone, computeEnvironment,
-  type BiomeId, type Gender, type Look, type Season,
+  BIOMES, BIOME_IDS, BROWS, CHEEKS, CLOTH_COLORS, EYE_COLORS, EYE_SHAPES, HAIR_COLORS, HAIR_STYLES, ITEMS, MOUTHS, NAME_RE, NOSES, OUTFIT_SETS, SKIN_TONES,
+  guessGeoFromTimeZone, computeEnvironment, setOutfit, type BiomeId, type Gender, type Look, type Outfit, type Season,
 } from '@hearthwood/shared';
-import { makePlayer, animateRig, type Rig } from '../game/characters.ts';
+import { animateRig, type Rig } from '../game/characters.ts';
+import { makePlayer } from '../game/player.ts';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
 import { IslandPreviewer } from './islandPreview.ts';
@@ -15,6 +16,8 @@ export interface CreatorResult {
   islandName: string;
   gender: Gender;
   look: Look;
+  /** Starter clothes (an OUTFIT_SETS id). */
+  outfit: string;
   biome: BiomeId;
   geo: { lat: number; lon: number; tz: string };
 }
@@ -33,8 +36,8 @@ export class Preview {
     const d = new THREE.DirectionalLight('#fff4dc', 1.8);
     d.position.set(2, 4, 3);
     this.scene.add(d);
-    this.camera.position.set(0, 1.0, 4.2);
-    this.camera.lookAt(0, 0.7, 0);
+    this.camera.position.set(0, 1.05, 4.2);
+    this.camera.lookAt(0, 0.75, 0);
     const clock = new THREE.Clock();
     const loop = () => {
       if (this.stopped) return;
@@ -54,10 +57,10 @@ export class Preview {
     };
     loop();
   }
-  set(gender: Gender, look: Look, hat: string | null = null) {
+  set(gender: Gender, look: Look, outfit: Outfit | string | null = {}) {
     const rot = this.rig?.root.rotation.y ?? 0.4;
     if (this.rig) this.scene.remove(this.rig.root);
-    this.rig = makePlayer(gender, look, hat);
+    this.rig = makePlayer(gender, look, outfit);
     this.rig.root.rotation.y = rot;
     this.rig.root.scale.setScalar(1.5);
     this.scene.add(this.rig.root);
@@ -90,14 +93,29 @@ export function lookEditor(gender: () => Gender, look: Look, onChange: () => voi
   };
   drawHair();
   const field = (label: string, el: HTMLElement) => h('div', { class: 'field' }, label, el);
+  // Face: one row of choices per feature.
+  const choice = <K extends 'eyeShape' | 'brows' | 'mouth' | 'nose' | 'cheeks'>(key: K, options: readonly NonNullable<Look[K]>[], labels: Record<string, string>) => {
+    const row = h('div', { class: 'toggle' });
+    const draw = () => {
+      clear(row);
+      const cur = look[key] ?? options[0];
+      for (const o of options) row.appendChild(h('button', { class: cur === o ? 'sel' : '', onclick: () => { look[key] = o; draw(); onChange(); } }, labels[o] ?? o));
+    };
+    draw();
+    return row;
+  };
   root.append(
     field('Skin', swatches(SKIN_TONES, () => look.skin, (c) => { look.skin = c; onChange(); })),
     field('Hairstyle', hairRow),
     field('Hair colour', swatches(HAIR_COLORS, () => look.hairColor, (c) => { look.hairColor = c; onChange(); })),
-    field('Eyes', swatches(EYE_COLORS, () => look.eyes, (c) => { look.eyes = c; onChange(); })),
-    field('Shirt', swatches(CLOTH_COLORS, () => look.shirt, (c) => { look.shirt = c; onChange(); })),
-    field(gender() === 'girl' ? 'Skirt' : 'Shorts', swatches(CLOTH_COLORS, () => look.pants, (c) => { look.pants = c; onChange(); })),
-    field('Shoes', swatches(CLOTH_COLORS, () => look.shoes, (c) => { look.shoes = c; onChange(); })),
+    field('Eye colour', swatches(EYE_COLORS, () => look.eyes, (c) => { look.eyes = c; onChange(); })),
+    field('Eyes', choice('eyeShape', EYE_SHAPES, { round: '● round', happy: '◠ happy', sleepy: '◡ sleepy', wide: '◉ wide', wink: '😉 wink' })),
+    field('Eyebrows', choice('brows', BROWS, { soft: 'soft', bold: 'bold', raised: 'raised', none: 'none' })),
+    field('Nose', choice('nose', NOSES, { dot: 'dot', button: 'button', none: 'none' })),
+    field('Mouth', choice('mouth', MOUTHS, { smile: '◡ smile', grin: '😁 grin', open: '○ open', small: '– small', cat: 'ω cat' })),
+    field('Cheeks', choice('cheeks', CHEEKS, { blush: 'blush', freckles: 'freckles', none: 'none' })),
+    field('Undershirt', swatches(CLOTH_COLORS, () => look.shirt, (c) => { look.shirt = c; onChange(); })),
+    field('Trousers', swatches(CLOTH_COLORS, () => look.pants, (c) => { look.pants = c; onChange(); })),
   );
   return { root, refreshHair: drawHair };
 }
@@ -109,8 +127,10 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
   let gender: Gender = Math.random() < 0.5 ? 'boy' : 'girl';
   const look: Look = {
     skin: SKIN_TONES[1], hair: HAIR_STYLES[gender][0], hairColor: HAIR_COLORS[1], eyes: EYE_COLORS[0],
-    shirt: CLOTH_COLORS[5], pants: CLOTH_COLORS[8], shoes: CLOTH_COLORS[10],
+    shirt: CLOTH_COLORS[7], pants: CLOTH_COLORS[8], shoes: CLOTH_COLORS[10],
+    eyeShape: 'round', brows: 'soft', nose: 'dot', mouth: 'smile', cheeks: 'blush',
   };
+  let outfit = OUTFIT_SETS[0].id;
   let name = '';
   let islandName = '';
   let biome: BiomeId | null = null;
@@ -122,11 +142,21 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
     const nameIn = h('input', { value: name, maxlength: 16, placeholder: 'Your name', oninput: (e: Event) => (name = (e.target as HTMLInputElement).value) });
     const isleIn = h('input', { value: islandName, maxlength: 20, placeholder: 'e.g. Willowbrook', oninput: (e: Event) => (islandName = (e.target as HTMLInputElement).value) });
     const err = h('div', { class: 'muted', style: 'color:#b84358' });
-    const editor = lookEditor(() => gender, look, () => preview?.set(gender, look));
+    const dressUp = () => preview?.set(gender, look, setOutfit(outfit));
+    const editor = lookEditor(() => gender, look, dressUp);
+    // Starter clothes: a few basic sets (you keep them, and can buy more at the Clothing Shop).
+    const sets = h('div', { class: 'toggle', style: 'flex-wrap:wrap' });
+    const setNote = h('div', { class: 'muted', style: 'font-size:12px' });
+    const drawSets = () => {
+      clear(sets);
+      for (const st of OUTFIT_SETS) sets.appendChild(h('button', { class: outfit === st.id ? 'sel' : '', onclick: () => { outfit = st.id; drawSets(); dressUp(); } }, `${st.icon} ${st.name}`));
+      setNote.textContent = (OUTFIT_SETS.find((x) => x.id === outfit)?.items ?? []).map((i) => ITEMS[i]?.name ?? i).join(' · ');
+    };
+    drawSets();
     const gToggle = h('div', { class: 'toggle' });
     const drawG = () => {
       clear(gToggle);
-      for (const g of ['boy', 'girl'] as Gender[]) gToggle.appendChild(h('button', { class: gender === g ? 'sel' : '', onclick: () => { gender = g; drawG(); editor.refreshHair(); preview?.set(gender, look); } }, g === 'boy' ? '👦 Boy' : '👧 Girl'));
+      for (const g of ['boy', 'girl'] as Gender[]) gToggle.appendChild(h('button', { class: gender === g ? 'sel' : '', onclick: () => { gender = g; drawG(); editor.refreshHair(); dressUp(); } }, g === 'boy' ? '👦 Boy' : '👧 Girl'));
     };
     drawG();
     const card = h('div', { class: 'card creator' },
@@ -136,6 +166,7 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
         h('div', { class: 'field' }, 'Name', nameIn),
         h('div', { class: 'field' }, 'I am a…', gToggle),
         editor.root,
+        h('div', { class: 'field' }, 'Clothes', sets, setNote),
         h('div', { class: 'field' }, 'Island name', isleIn),
         err,
         h('div', { class: 'row', style: 'justify-content:flex-end' },
@@ -150,7 +181,7 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
     );
     screen.appendChild(card);
     preview = new Preview(prevEl);
-    preview.set(gender, look);
+    dressUp();
   };
 
   const stepMap = () => {
@@ -210,7 +241,7 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
         h('p', {}, b.blurb),
         h('div', { class: 'muted' }, `Seasons: ${b.seasonModel === 'tropical' ? 'wet & dry' : b.seasonModel === 'arid' ? 'hot & cool' : b.seasonModel === 'boreal' ? 'long winters' : 'four seasons'}`),
         h('div', { class: 'col', style: 'margin-top:10px' },
-          h('button', { class: 'btn', onclick: () => { previewer.dispose(); onDone({ name, islandName, gender, look, biome: biome!, geo }); } }, `Settle on ${islandName}!`),
+          h('button', { class: 'btn', onclick: () => { previewer.dispose(); onDone({ name, islandName, gender, look, outfit, biome: biome!, geo }); } }, `Settle on ${islandName}!`),
           h('button', { class: 'btn ghost small', onclick: () => { previewer.dispose(); stepLook(); } }, '← Back'),
         ),
       );

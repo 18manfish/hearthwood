@@ -12,8 +12,12 @@ import { isPermit } from './data/permits.ts';
 import type { GeoInfo } from './env.ts';
 import { BOTTLE_MAX_CHARS } from './data/beach.ts';
 import { HOTBAR_SIZE, HOTBAR_TOOLS, type Hotbar } from './data/hotbar.ts';
+import {
+  BROWS, CHEEKS, EYE_SHAPES, MOUTHS, NOSES, OUTFIT_SET_IDS, WEAR_SLOTS,
+  type BrowStyle, type CheekStyle, type EyeShape, type MouthStyle, type NoseStyle, type Outfit,
+} from './data/clothing.ts';
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
@@ -33,10 +37,20 @@ export interface Look {
   skin: string;
   hair: string;
   hairColor: string;
+  /** Eye colour. */
   eyes: string;
+  /** The undershirt everyone always wears. */
   shirt: string;
+  /** The trousers everyone always wears. */
   pants: string;
+  /** Unused since shoes became clothing items (kept for old saves). */
   shoes: string;
+  // Face (missing in old saves: the defaults).
+  eyeShape?: EyeShape;
+  brows?: BrowStyle;
+  mouth?: MouthStyle;
+  nose?: NoseStyle;
+  cheeks?: CheekStyle;
 }
 
 export type Access = 'private' | 'friends' | 'invite' | 'public';
@@ -50,6 +64,7 @@ export const NAME_RE = /^[\p{L}\p{N} _.'-]{2,16}$/u;
 
 export const lookParser: Parser<Look> = s.obj({
   skin: color, hair: s.oneOf(ALL_HAIR as string[]), hairColor: color, eyes: color, shirt: color, pants: color, shoes: color,
+  eyeShape: s.opt(s.oneOf(EYE_SHAPES)), brows: s.opt(s.oneOf(BROWS)), mouth: s.opt(s.oneOf(MOUTHS)), nose: s.opt(s.oneOf(NOSES)), cheeks: s.opt(s.oneOf(CHEEKS)),
 });
 
 // ── Actions ───────────────────────────────────────────────────────────────
@@ -76,7 +91,8 @@ export const actionParser = s.union('k', {
   gift: s.obj({ k: s.lit('gift'), vid: id, item: itemId }),
   buy: s.obj({ k: s.lit('buy'), shop: s.guard(isBuildingType, 'building'), item: itemId, n: s.int(1, 99) }),
   sell: s.obj({ k: s.lit('sell'), item: itemId, n: qty }),
-  wear: s.obj({ k: s.lit('wear'), item: s.nullable(itemId) }),
+  /** Put on an item (item null: take off what's in `slot`, the hat by default). */
+  wear: s.obj({ k: s.lit('wear'), item: s.nullable(itemId), slot: s.opt(s.oneOf(WEAR_SLOTS)) }),
   restyle: s.obj({ k: s.lit('restyle'), look: lookParser }),
   mail: s.obj({ k: s.lit('mail'), to: id, text: s.str(0, 280), item: s.opt(itemId), n: s.opt(qty) }),
   takeMail: s.obj({ k: s.lit('takeMail'), mailId: id }),
@@ -112,6 +128,8 @@ export const clientMessageParser = s.union('t', {
     islandName: s.str(2, 20, NAME_RE),
     gender: s.oneOf(['boy', 'girl'] as const),
     look: lookParser,
+    /** Starter clothes (see OUTFIT_SETS). */
+    outfit: s.opt(s.oneOf(OUTFIT_SET_IDS)),
     biome: s.guard(isBiome, 'biome'),
     geo: s.obj({ lat: s.num(-90, 90), lon: s.num(-180, 180), tz: s.str(1, 64, /^[A-Za-z0-9_+\-/]+$/) }),
   }),
@@ -149,6 +167,7 @@ export interface PlayerView {
   gender: Gender;
   look: Look;
   hat: string | null;
+  outfit: Outfit;
   x: number;
   z: number;
   r: number;
@@ -257,6 +276,7 @@ export interface SelfView {
   gender: Gender;
   look: Look;
   hat: string | null;
+  outfit: Outfit;
   homeIslandId: string | null;
   islandName: string | null;
   biome: BiomeId | null;
@@ -323,7 +343,7 @@ export type ServerMessage =
   | { t: 'env'; env: EnvView }
   | { t: 'pAdd'; p: PlayerView }
   | { t: 'pDel'; id: string }
-  | { t: 'pLook'; id: string; look: Look; hat: string | null }
+  | { t: 'pLook'; id: string; look: Look; hat: string | null; outfit: Outfit }
   | { t: 'ps'; l: [string, number, number, number][] }
   | { t: 'vs'; l: [string, number, number, number, 0 | 1][] }
   | { t: 'oAdd'; o: WorldObject[] }

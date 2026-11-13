@@ -7,6 +7,7 @@ export * from './terraform.ts';
 export * from './interiors.ts';
 export * from './protocol.ts';
 export * from './data/items.ts';
+export * from './data/clothing.ts';
 export * from './data/biomes.ts';
 export * from './data/buildings.ts';
 export * from './data/recipes.ts';

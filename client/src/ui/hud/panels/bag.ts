@@ -1,6 +1,6 @@
 // 🎒 Pockets panel: inventory, wearing and placing items.
 
-import { ITEMS } from '@hearthwood/shared';
+import { ITEMS, outfitOf } from '@hearthwood/shared';
 import { state } from '../../../state.ts';
 import { h } from '../../dom.ts';
 import { itemIcon } from '../common.ts';
@@ -23,7 +23,10 @@ export function bagPanel(hud: Hud, b: HTMLElement, pockets = false) {
     const actions = h('div', { class: 'row' });
     if (it.placeable && canBuild) actions.append(h('button', { class: 'btn small', onclick: () => { hud.close(); hud.world.startPlaceGhost(id); hud.setPrompt(''); } }, 'Place'));
     if (id === 'message_bottle') actions.append(h('button', { class: 'btn small', onclick: () => writeBottle(hud) }, 'Write & throw'));
-    if (it.wear) actions.append(h('button', { class: 'btn small', onclick: () => hud.act({ k: 'wear', item: state.self?.hat === id ? null : id }) }, state.self?.hat === id ? 'Take off' : 'Wear'));
+    if (it.wear) {
+      const worn = state.self ? outfitOf(state.self)[it.wear] === id : false;
+      actions.append(h('button', { class: 'btn small', onclick: () => hud.act({ k: 'wear', item: worn ? null : id, slot: it.wear }) }, worn ? 'Take off' : 'Wear'));
+    }
     actions.append(h('button', { class: 'btn ghost small', title: `${it.sell} each`, onclick: () => hud.act({ k: 'sell', item: id, n: 1 }) }, `Sell ${it.sell}`));
     if (n > 1) actions.append(h('button', { class: 'btn ghost small', onclick: () => hud.act({ k: 'sell', item: id, n }) }, 'All'));
     grid.append(h('div', { class: 'tile' }, h('div', { class: 'row', style: 'justify-content:space-between' }, itemIcon(id), h('b', {}, `×${n}`)), h('div', { class: 'nm' }, it.name), actions));

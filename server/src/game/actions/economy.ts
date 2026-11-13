@@ -1,12 +1,19 @@
 // Crafting, permits, shopping and selling, clothes and hairstyles.
 
 import {
-  BUILDINGS, HAIR_STYLES, HOUSE_TIERS, houseLevel, ITEMS, PERMIT_BY_ID, RECIPES, SHOP_STOCK,
+  BUILDINGS, equip, HAIR_STYLES, outfitOf, type Outfit, type WearSlot, HOUSE_TIERS, houseLevel, ITEMS, PERMIT_BY_ID, RECIPES, SHOP_STOCK,
 } from '@hearthwood/shared';
 import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
+import type { PlayerRecord } from '../../types.ts';
 import { ownHouse } from '../services/progress.ts';
 import { fail, give, type Handlers, log, nearCompleted } from './context.ts';
+
+/** Put on an outfit (the hat field mirrors its hat for older code). */
+export function dress(p: PlayerRecord, o: Outfit) {
+  p.outfit = o;
+  p.hat = o.hat ?? null;
+}
 
 export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'upgrade' | 'buy' | 'sell' | 'wear' | 'restyle'> = {
   craft(ctx, a) {
@@ -87,15 +94,21 @@ export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'upgrade' | 'b
     if (!ctx.room.ownsHere(ctx.p.id)) return fail('Sell items at home.');
     if (!nearCompleted(ctx, ['tent', 'cabin', 'town_hall', 'chest'])) return fail('Sell at your storage chest or the Town Hall counter.');
     if (inv.count(ctx.p, a.item) < a.n) return fail('You don’t have that many.');
-    if (ctx.p.hat === a.item && inv.count(ctx.p, a.item) <= a.n) ctx.p.hat = null;
+    // Selling the last one of something you're wearing takes it off.
+    const worn = outfitOf(ctx.p);
+    const slot = (Object.keys(worn) as WearSlot[]).find((k) => worn[k] === a.item);
+    if (slot && inv.count(ctx.p, a.item) <= a.n) {
+      dress(ctx.p, equip(worn, null, slot));
+      ctx.game.broadcastLook(ctx.s);
+    }
     const price = ITEMS[a.item].sell * a.n;
     inv.remove(ctx.p, a.item, a.n);
     ctx.p.coins += price;
     return { ok: true, msg: `Sold for ${price} coins.` };
   },
   wear(ctx, a) {
-    if (a.item !== null && (ITEMS[a.item].wear !== 'hat' || inv.count(ctx.p, a.item) < 1)) return fail('You can’t wear that.');
-    ctx.p.hat = a.item;
+    if (a.item !== null && (!ITEMS[a.item].wear || inv.count(ctx.p, a.item) < 1)) return fail('You can’t wear that.');
+    dress(ctx.p, equip(outfitOf(ctx.p), a.item, a.slot ?? 'hat'));
     ctx.game.broadcastLook(ctx.s);
     return { ok: true };
   },

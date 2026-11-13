@@ -4,6 +4,7 @@
 
 import { BASE_ITEMS, FISH, FISH_SHADOWS, FURNITURE_MODELS, ITEM_CATEGORIES, ITEM_TAGS, rebuildItems, type FishDef, type ItemDef } from './data/items.ts';
 import { BIRDS, rebuildBirds, type BirdDef } from './data/birds.ts';
+import { ALL_GARMENTS, GARMENTS, WEAR_SLOTS } from './data/clothing.ts';
 import { RECIPES, type RecipeDef } from './data/recipes.ts';
 import { BUILDINGS, SHOP_STOCK, rebuildBuildable, type BuildingDef } from './data/buildings.ts';
 import { VILLAGERS, type VillagerDef } from './data/villagers.ts';
@@ -116,7 +117,8 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'stack', type: 'number', help: 'Max carried (default 999)' },
       { key: 'placeable', type: 'boolean', help: 'Furniture can be placed outside' },
       { key: 'model', type: 'enum', options: FURNITURE_MODELS, help: 'Furniture model (default: same as id)' },
-      { key: 'wear', type: 'enum', options: ['hat'] },
+      { key: 'wear', type: 'enum', options: WEAR_SLOTS, help: 'Clothing slot' },
+      { key: 'garment', type: 'enum', options: ALL_GARMENTS, help: 'Clothing cut (default: same as id)' },
       { key: 'color', type: 'color', help: 'Hat colour' },
       { key: 'tool', type: 'json', help: '{"kind":"axe|shovel|rod|net","power":1}' },
     ],
@@ -276,6 +278,8 @@ export function validateGameData(d: GameData): string[] {
     if (i.model !== undefined && !(FURNITURE_MODELS as readonly string[]).includes(i.model)) err(`items: "${i.id}" uses an unknown model`);
     if (i.tool && (!['axe', 'shovel', 'rod', 'net'].includes(i.tool.kind) || !isNum(i.tool.power, 1))) err(`items: "${i.id}" has a bad tool definition`);
     if (i.color !== undefined && !COLOR_RE.test(i.color)) err(`items: "${i.id}" colour must be #rrggbb`);
+    if (i.wear !== undefined && !(WEAR_SLOTS as readonly string[]).includes(i.wear)) err(`items: "${i.id}" has an unknown clothing slot`);
+    if (i.garment !== undefined && (!i.wear || !GARMENTS[i.wear].includes(i.garment))) err(`items: "${i.id}" garment must be a ${i.wear ?? 'clothing'} cut`);
   }
   const hoursOk = (h: unknown) => h === undefined || (isArr(h) && (h as unknown[]).length === 2 && (h as unknown[]).every((x) => isNum(x) && (x as number) <= 24));
   for (const f of d.fish) {

@@ -1,4 +1,4 @@
-import type { Access, Album, BiomeId, Building, Gender, Look, WorldObject, GeoInfo } from '@hearthwood/shared';
+import type { Access, Album, BiomeId, Building, Gender, Look, Outfit, WorldObject, GeoInfo } from '@hearthwood/shared';
 
 export interface MailRecord {
   id: string;
@@ -28,7 +28,10 @@ export interface PlayerRecord {
   created: boolean; // character creation finished
   gender: Gender;
   look: Look;
+  /** Mirrors outfit.hat (older code and saves only know the hat). */
   hat: string | null;
+  /** Clothes worn per slot (missing in old saves). */
+  outfit?: Outfit;
   geo: GeoInfo;
   homeIslandId: string | null;
   coins: number;

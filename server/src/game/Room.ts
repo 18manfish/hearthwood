@@ -5,6 +5,7 @@
 import {
   TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, applyTerrainAndWater, classifyWater, type TerrainChange, Rng, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
   isTransient, type FishShadow,
+  outfitOf,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
@@ -233,7 +234,7 @@ export class Room {
 
   playerView(s: Session) {
     const p = s.player!;
-    return { id: p.id, name: p.name, gender: p.gender, look: p.look, hat: p.hat, x: s.x, z: s.z, r: s.r };
+    return { id: p.id, name: p.name, gender: p.gender, look: p.look, hat: p.hat, outfit: outfitOf(p), x: s.x, z: s.z, r: s.r };
   }
 
   villagerView(v: VillagerRuntime): VillagerView {

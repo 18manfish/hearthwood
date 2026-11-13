@@ -85,7 +85,7 @@ export function handle(self: World, m: ServerMessage) {
     case 'pLook': {
       const p = self.players.get(m.id);
       if (!p) break;
-      const view = { ...self.room.players.find((x) => x.id === m.id), id: m.id, look: m.look, hat: m.hat } as PlayerView;
+      const view = { ...self.room.players.find((x) => x.id === m.id), id: m.id, look: m.look, hat: m.hat, outfit: m.outfit } as PlayerView;
       const prevName = p.label.element.textContent ?? '';
       const gender = state.self?.id === m.id ? state.self.gender : (self.room.players.find((x) => x.id === m.id)?.gender ?? 'boy');
       const fresh = addPlayer(self, { ...view, name: prevName, gender, x: p.x, z: p.z, r: p.r });

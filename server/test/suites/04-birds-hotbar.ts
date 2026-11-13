@@ -6,6 +6,30 @@ import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type 
 
 export async function run(ctx: Ctx) {
   const { A } = ctx;
+  console.log('Clothes');
+  {
+    check(A.you?.outfit.top === 'dress_sunny' && A.you?.outfit.shoes === 'sandals_tan' && A.you?.outfit.hat === 'straw_hat' && A.you?.hat === 'straw_hat', 'the starter set is worn from the start');
+    check(A.you?.look.eyeShape === 'happy' && A.you?.look.mouth === 'grin', 'the chosen face is saved');
+    const look = async (a: Parameters<typeof A.act>[0]) => {
+      A.inbox = A.inbox.filter((m) => m.t !== 'pLook');
+      const r = await A.act(a);
+      const m = r.ok ? await A.wait('pLook', () => true, 2000).catch(() => null) : null;
+      return { r, outfit: m?.outfit ?? null };
+    };
+    check(!(await A.act({ k: 'wear', item: 'coat_wool' })).ok, 'you can only wear clothes you own');
+    A.send({ t: 'dev', cmd: 'give', args: ['skirt_pleated', '1'] });
+    A.send({ t: 'dev', cmd: 'give', args: ['coat_wool', '1'] });
+    await sleep(300);
+    const skirt = await look({ k: 'wear', item: 'skirt_pleated' });
+    check(skirt.outfit?.bottom === 'skirt_pleated' && !skirt.outfit?.top, 'a skirt takes the place of a dress');
+    const dress = await look({ k: 'wear', item: 'dress_sunny' });
+    check(dress.outfit?.top === 'dress_sunny' && !dress.outfit?.bottom, 'a dress takes the place of a skirt');
+    const coat = await look({ k: 'wear', item: 'coat_wool' });
+    check(coat.outfit?.outer === 'coat_wool' && coat.outfit?.top === 'dress_sunny', 'a coat goes over the dress');
+    const off = await look({ k: 'wear', item: null, slot: 'outer' });
+    check(!!off.outfit && !off.outfit.outer, 'clothes come off one slot at a time');
+    check(!(await A.act({ k: 'wear', item: 'wood' })).ok, 'wood is not clothing');
+  }
   console.log('Birds & album');
   {
     const birdsSeen = () => [...A.objects.values()].filter((o) => o.kind === 'bird');

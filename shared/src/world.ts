@@ -405,7 +405,9 @@ export class Grid {
   /** Is this tile part of the smoothly sloping coast (beach at sea level, or the sea)? */
   isCoastal(x: number, z: number): boolean {
     const t = this.tile(x, z);
-    return t === Tile.Sea || t === Tile.Dock || (t === Tile.Shore && this.level(x, z) === 0 && this.ramp(x, z) < 0);
+    if (t === Tile.Sea || t === Tile.Dock) return true;
+    // Beaches and rivers at sea level: rivers get soft sandy banks and run out into the sea floor.
+    return (t === Tile.Shore || t === Tile.River) && this.level(x, z) === 0 && this.ramp(x, z) < 0;
   }
 
   /**
@@ -416,7 +418,7 @@ export class Grid {
    */
   coastY(px: number, pz: number, t: Tile): number {
     const [dl, ds, dn] = this.coastDist(px, pz);
-    if (t === Tile.Sea || t === Tile.Dock) return BEACH_EDGE + (SEA_DEEP - BEACH_EDGE) * smoothstep(dn / SEA_SHELF);
+    if (t === Tile.Sea || t === Tile.Dock || t === Tile.River) return BEACH_EDGE + (SEA_DEEP - BEACH_EDGE) * smoothstep(dn / SEA_SHELF);
     if (dl <= 0) return BEACH_TOP;
     return BEACH_TOP + (BEACH_EDGE - BEACH_TOP) * smoothstep(dl / (dl + ds));
   }
@@ -449,7 +451,8 @@ export class Grid {
     for (let z = 0; z < tw; z++)
       for (let x = 0; x < tw; x++) {
         const k = this.tile(x - o, z - o);
-        const c = k === Tile.Sea || k === Tile.Dock ? 0 : (k === Tile.Shore && this.level(x - o, z - o) === 0) || k === Tile.Pond || k === Tile.River ? 1 : 2;
+        const lv0 = this.level(x - o, z - o) === 0;
+        const c = k === Tile.Sea || k === Tile.Dock || (k === Tile.River && lv0) ? 0 : (k === Tile.Shore && lv0) || k === Tile.Pond || k === Tile.River ? 1 : 2;
         cls[z * tw + x] = c;
         const j = (z + 1) * (tw + 1) + x + 1;
         s0[j] = s0[j - 1] + s0[j - tw - 1] - s0[j - tw - 2] + (c === 0 ? 1 : 0);
@@ -491,16 +494,81 @@ export class Grid {
     return { w, d };
   }
 
+  /**
+   * Piers reach dry land: where a pier's land end meets the beach, a gangway runs
+   * from the deck down onto the sand (one to three tiles, until the sand is dry).
+   * Returns the gangway's height at a point and which way the pier lies, or null.
+   */
+  dockRamp(px: number, pz: number): { y: number; dx: number; dz: number; s: number; len: number; from: number; to: number } | null {
+    const x = Math.floor(px), z = Math.floor(pz);
+    const t = this.tile(x, z);
+    if (t !== Tile.Shore && t !== Tile.Ground) return null;
+    for (const [dx, dz] of DIRS)
+      for (let k = 1; k <= 3; k++) {
+        const ex = x + dx * k, ez = z + dz * k; // the pier's land-end tile
+        if (this.tile(ex, ez) !== Tile.Dock || this.tile(ex + dx, ez + dz) !== Tile.Dock || this.tile(ex + 2 * dx, ez + 2 * dz) !== Tile.Dock) continue;
+        let between = true;
+        for (let j = 1; j < k; j++) if (this.tile(x + dx * j, z + dz * j) !== Tile.Shore) between = false;
+        if (!between) continue;
+        // The whole width of the pier shares one gangway: same length, same landing height.
+        const cols: [number, number][] = [];
+        for (const sgn of [1, -1])
+          for (let w = sgn > 0 ? 0 : 1; w < 6; w++) {
+            const cx = ex + dz * w * sgn, cz = ez + dx * w * sgn;
+            if (this.tile(cx, cz) !== Tile.Dock || this.tile(cx + dx, cz + dz) !== Tile.Dock || this.tile(cx - dx, cz - dz) === Tile.Dock) break;
+            cols.push([cx, cz]);
+          }
+        let len = 1;
+        for (const [cx, cz] of cols) len = Math.max(len, this.dockRampLen(cx, cz, dx, dz));
+        if (k > len) continue;
+        // Distance from the pier's edge back towards land, along the pier's axis.
+        const edge = dx ? (dx > 0 ? ex : ex + 1) : dz > 0 ? ez : ez + 1;
+        const s = dx ? Math.abs(edge - px) : Math.abs(edge - pz);
+        let to = -Infinity;
+        for (const [cx, cz] of cols) {
+          const endX = dx ? edge - dx * len - dx * 0.01 : cx + 0.5, endZ = dz ? edge - dz * len - dz * 0.01 : cz + 0.5;
+          to = Math.max(to, this.groundAt(endX, endZ));
+        }
+        return { y: DOCK_Y + (to - DOCK_Y) * Math.min(1, s / len), dx, dz, s, len, from: DOCK_Y, to };
+      }
+    return null;
+  }
+
+  /** Gangway length (tiles, 1–3) from the pier end at (ex, ez), pier pointing (dx, dz) away from land: until the sand is dry. */
+  dockRampLen(ex: number, ez: number, dx: number, dz: number): number {
+    const edge = dx ? (dx > 0 ? ex : ex + 1) : dz > 0 ? ez : ez + 1;
+    for (let len = 1; len <= 3; len++) {
+      const tx = ex - dx * len, tz = ez - dz * len;
+      const t = this.tile(tx, tz);
+      if (t !== Tile.Shore && t !== Tile.Ground) return Math.max(1, len - 1);
+      const cx = dx ? edge - dx * (len + 0.01) : ex + 0.5, cz = dz ? edge - dz * (len + 0.01) : ez + 0.5;
+      if (this.groundAt(cx, cz) >= SEA_LEVEL + 0.08) return len;
+    }
+    return 3;
+  }
+
+  /** Ground height without bridges or gangways (sand, grass, ramps). */
+  private groundAt(px: number, pz: number): number {
+    const x = Math.floor(px), z = Math.floor(pz);
+    const t = this.tile(x, z);
+    if (this.isCoastal(x, z) && t !== Tile.River) return this.coastY(px, pz, t);
+    return baseHeight(t) + this.level(x, z) * CLIFF;
+  }
+
   /** Height of the walkable surface at a continuous position. */
   surfaceY(px: number, pz: number): number {
     const x = Math.floor(px), z = Math.floor(pz);
     const t = this.tile(x, z);
     const bridge = this.inBounds(x, z) ? this.bridges[this.idx(x, z)] : 0;
     if (bridge) return (bridge - 1) * CLIFF + BRIDGE_DECK;
+    if (t === Tile.Shore || (t === Tile.Ground && this.level(x, z) === 0)) {
+      const r = this.dockRamp(px, pz);
+      if (r) return Math.max(r.y, this.groundAt(px, pz));
+    }
     if ((t === Tile.Shore || t === Tile.Sea) && this.isCoastal(x, z)) return this.coastY(px, pz, t);
     const base = baseHeight(t) + this.level(x, z) * CLIFF;
     const d = this.ramp(x, z);
-    if (d < 0) return t === Tile.Dock ? 0.16 : isWaterTile(t) ? WATER_SURFACE + this.level(x, z) * CLIFF : base;
+    if (d < 0) return t === Tile.Dock ? DOCK_Y : isWaterTile(t) ? WATER_SURFACE + this.level(x, z) * CLIFF : base;
     const fx = px - x, fz = pz - z;
     const f = d === 0 ? 1 - fz : d === 1 ? fx : d === 2 ? fz : 1 - fx;
     return base + f * CLIFF;
@@ -527,6 +595,8 @@ export const BEACH_EDGE = -0.18;
 /** Tiles from the coast until the sea floor reaches full depth, and that depth. */
 export const SEA_SHELF = 4.5;
 export const SEA_DEEP = -1.6;
+/** Deck height of docks and piers. */
+export const DOCK_Y = 0.16;
 /** Visual sea level, and the deepest sea floor you can wade on (water up to the chest). */
 export const SEA_LEVEL = -0.12;
 export const WADE_FLOOR = SEA_LEVEL - 0.6;
@@ -768,23 +838,34 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
       tiles[i] = Tile.Shore;
       beachBand[i] = 1;
     }
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (let z = 2; z < size - 2; z++)
-      for (let x = 2; x < size - 2; x++) {
-        const i = z * size + x;
-        if (beachBand[i] !== 1) continue;
-        const v = vAt(x, z);
-        for (const [dx, dz] of DIRS) {
-          const j = (z + dz) * size + x + dx;
-          if (tiles[j] === Tile.River && levels[j] === 0 && vAt(x + dx, z + dz) < v) {
-            tiles[i] = Tile.River;
-            beachBand[i] = 2;
-            changed = true;
-            break;
-          }
-        }
+  // Each river mouth runs straight on across the new sand: shortest path to the sea.
+  const mouths: number[] = [];
+  for (let i = 0; i < size * size; i++) {
+    if (tiles[i] !== Tile.River || levels[i] !== 0) continue;
+    const x = i % size, z = Math.floor(i / size);
+    if (DIRS.some(([dx, dz]) => beachBand[(z + dz) * size + x + dx] === 1)) mouths.push(i);
+  }
+  for (const start of mouths) {
+    const prev = new Map<number, number>([[start, -1]]);
+    const q = [start];
+    let end = -1;
+    for (let k = 0; k < q.length && end < 0; k++) {
+      const i = q[k], x = i % size, z = Math.floor(i / size);
+      for (const [dx, dz] of DIRS) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 1 || nz < 1 || nx >= size - 1 || nz >= size - 1) continue;
+        const j = nz * size + nx;
+        if (prev.has(j)) continue;
+        if (tiles[j] === Tile.Sea) { end = i; break; }
+        if (!beachBand[j]) continue;
+        prev.set(j, i);
+        q.push(j);
       }
+    }
+    for (let i = end; i >= 0 && i !== start; i = prev.get(i) ?? -1) {
+      tiles[i] = Tile.River;
+      beachBand[i] = 2;
+    }
   }
 
   classifyWater(size, tiles);

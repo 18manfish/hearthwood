@@ -424,15 +424,86 @@ def build_stairs():
     return out
 
 
+
+# ---------------------------------------------------------------- docks
+# Dock pieces, each an empty `dock_<part>` with one mesh per material:
+#   deck     one tile of walkway (x, z in [-0.5, 0.5]); planks run across x, top at y = 0
+#   post     a pile from just above the deck down into the sea floor
+#   ramp     gangway onto the beach: top from y = 0 at z = -0.5 (dock side) down to
+#            y = -1 at z = +0.5; the game stretches it to the real drop
+#   bollard  a mooring post with a coil of rope, standing on the deck
+
+def build_docks():
+    out = []
+    rng = random.Random(11)
+    plank = material('dock_plank', '#a57d50')
+    beam = material('dock_beam', '#6e4f33')
+    postm = material('dock_post', '#5a3e2b')
+    rope = material('dock_rope', '#d8c39a')
+
+    r = stairs_root('dock_deck')
+    bm = bmesh.new()
+    for k in range(4):
+        zc = -0.375 + k * 0.25
+        y = rng.uniform(-0.006, 0.004)
+        box(bm, -0.5, 0.5, y - 0.055, y, zc - 0.112, zc + 0.112, 0.004, rng)
+    mesh_obj('dock_deck_planks', bm, plank, r)
+    bm = bmesh.new()
+    for x in (-0.33, 0.33):
+        box(bm, x - 0.05, x + 0.05, -0.17, -0.055, -0.5, 0.5)
+    mesh_obj('dock_deck_beams', bm, beam, r)
+    out.append(r)
+
+    r = stairs_root('dock_post')
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=7, radius1=0.08, radius2=0.075, depth=2.3, matrix=Matrix.Translation((0, -0.93, 0)) @ Euler((math.pi / 2, 0, 0)).to_matrix().to_4x4())
+    mesh_obj('dock_post_pile', bm, postm, r)
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=7, radius1=0.088, radius2=0.088, depth=0.05, matrix=Matrix.Translation((0, 0.08, 0)) @ Euler((math.pi / 2, 0, 0)).to_matrix().to_4x4())
+    mesh_obj('dock_post_band', bm, rope, r)
+    out.append(r)
+
+    r = stairs_root('dock_ramp')
+    bm = bmesh.new()
+    for k in range(4):
+        z0, z1 = -0.5 + k * 0.25 + 0.012, -0.5 + (k + 1) * 0.25 - 0.012
+        t0, t1 = -(z0 + 0.5), -(z1 + 0.5)
+        prism(bm, [(z0, t0), (z1, t1), (z1, t1 - 0.055), (z0, t0 - 0.055)], -0.46, 0.46)
+    mesh_obj('dock_ramp_planks', bm, plank, r)
+    bm = bmesh.new()
+    for x in (-0.33, 0.33):
+        prism(bm, [(-0.5, -0.055), (0.5, -1.055), (0.5, -1.16), (-0.5, -0.16)], x - 0.05, x + 0.05)
+    mesh_obj('dock_ramp_beams', bm, beam, r)
+    out.append(r)
+
+    r = stairs_root('dock_bollard')
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=8, radius1=0.085, radius2=0.075, depth=0.26, matrix=Matrix.Translation((0, 0.13, 0)) @ Euler((math.pi / 2, 0, 0)).to_matrix().to_4x4())
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=8, radius1=0.11, radius2=0.1, depth=0.05, matrix=Matrix.Translation((0, 0.285, 0)) @ Euler((math.pi / 2, 0, 0)).to_matrix().to_4x4())
+    mesh_obj('dock_bollard_post', bm, postm, r)
+    bm = bmesh.new()
+    for k in range(3):
+        rr = 0.1 + k * 0.004
+        segs = 10
+        ring = []
+        for j in range(segs):
+            a = j * 2 * math.pi / segs
+            ring.append((math.cos(a) * rr, 0.07 + k * 0.035, math.sin(a) * rr))
+        g = bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=rr + 0.022, radius2=rr + 0.022, depth=0.03, matrix=Matrix.Translation((0, 0.08 + k * 0.035, 0)) @ Euler((math.pi / 2, 0, 0)).to_matrix().to_4x4())
+    mesh_obj('dock_bollard_rope', bm, rope, r)
+    out.append(r)
+    return out
+
+
 if __name__ == '__main__':
     # Run from Blender's Text Editor: rebuilds the pieces and exports tileset.glb next to the .blend.
     import os
     for o in [o for o in bpy.data.objects if o.name.startswith('tile_')]:
         bpy.data.objects.remove(o, do_unlink=True)
-    for o in [o for o in bpy.data.objects if o.name.startswith('stairs_')]:
+    for o in [o for o in bpy.data.objects if o.name.startswith(('stairs_', 'dock_'))]:
         bpy.data.objects.remove(o, do_unlink=True)
     pieces = build_tileset()
-    stairs = build_stairs()
+    stairs = build_stairs() + build_docks()
     keep = set(pieces) | set(stairs) | {c for s in stairs for c in s.children}
     for o in bpy.data.objects:
         o.select_set(o in keep)

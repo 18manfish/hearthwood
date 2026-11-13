@@ -891,6 +891,10 @@ async function main() {
           }
         }
         check(!g.walkable(0.5, 0.5) && !g.wadeableTile(0, 0), 'the deep sea is still off limits');
+        // The pier reaches dry sand: a gangway from the deck down onto the beach.
+        let gang: ReturnType<typeof g.dockRamp> = null;
+        for (let z = 0; z < g.size && !gang; z++) for (let x = 0; x < g.size && !gang; x++) gang = g.dockRamp(x + 0.5, z + 0.5);
+        check(!!gang && gang.to >= SEA_LEVEL, `the dock's gangway lands on dry sand (${gang?.to.toFixed(2)})`);
       }
       // A bridge across the river.
       A.send({ t: 'dev', cmd: 'kit', args: [] });

@@ -72,7 +72,7 @@ export interface Respawn {
 }
 
 export interface IslandRecord {
-  /** 2 = beaches widened (saved terrain migrated). */
+  /** Wide-beach migration version applied to saved terrain (3 = current). */
   beach?: number;
   /** Generator version: 1 = flat (legacy), 2 = cliffs & ramps. */
   gen?: number;

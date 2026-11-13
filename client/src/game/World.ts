@@ -10,7 +10,7 @@ import {
   type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season, SEA_LEVEL } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
 import { buildDocks, buildTerrainMesh, buildWater, fallTexture, waterColor } from './terrain.ts';
-import { buildStairs } from './tileAssets.ts';
+import { buildDockModels, buildStairs } from './tileAssets.ts';
 import { buildPaths, disposePaths, setPathSnow } from './paths.ts';
 import { buildFoliage, disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
@@ -540,7 +540,7 @@ export class World {
       this.terrain.geometry.dispose();
     }
     const m = buildTerrainMesh(this.grid, { biome: this.room.biome, ...this.visual(), interior: this.room.interior, theme: this.room.theme });
-    m.add(buildDocks(this.grid)); // boardwalks & piers ride along with the terrain mesh
+    m.add(buildDockModels(this.grid) ?? buildDocks(this.grid)); // boardwalks & piers ride along with the terrain mesh
     m.add(buildStairs(this.grid));
     if (this.room.kind !== 'interior') m.add(buildWater(this.grid, waterColor(this.room.biome))); // raised rivers, waterfalls
     this.terrain = m;

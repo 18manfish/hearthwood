@@ -46,6 +46,9 @@ export interface RoomOptions {
   design?: 'harbor' | 'aurora';
 }
 
+/** Version of the wide-beach migration for saved (terraformed) terrain. */
+const BEACH_VERSION = 3;
+
 export class Room {
   readonly id: string;
   readonly kind: RoomKind;
@@ -149,13 +152,19 @@ export class Room {
    */
   private widenBeaches(rec: IslandRecord, band: Uint8Array) {
     const L = this.layout;
-    if (rec.terrain && rec.beach !== 2) {
-      for (let i = 0; i < band.length; i++)
-        if (band[i] && L.tiles[i] === Tile.Sea) L.tiles[i] = band[i] === 2 ? Tile.River : Tile.Shore;
+    const v = rec.beach ?? 0;
+    if (rec.terrain && v < BEACH_VERSION) {
+      for (let i = 0; i < band.length; i++) {
+        const t = L.tiles[i];
+        if (band[i] && t === Tile.Sea) L.tiles[i] = band[i] === 2 ? Tile.River : Tile.Shore;
+        // Version 2 fanned river mouths out along the beach; now they run straight to the sea.
+        else if (v === 2 && band[i] === 1 && t === Tile.River) L.tiles[i] = Tile.Shore;
+        else if (v === 2 && band[i] === 2 && t === Tile.Shore) L.tiles[i] = Tile.River;
+      }
       classifyWater(L.size, L.tiles);
     }
-    if (rec.beach !== 2) {
-      rec.beach = 2;
+    if (v !== BEACH_VERSION) {
+      rec.beach = BEACH_VERSION;
       this.dirty = true;
     }
   }

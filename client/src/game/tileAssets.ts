@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { CLIFF, RAMP_STYLES, Tile, baseHeight, type Grid } from '@hearthwood/shared';
+import { CLIFF, DIRS, DOCK_Y, RAMP_STYLES, Tile, baseHeight, type Grid } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 
 export const TILESET_URL = '/models/tileset.glb';
@@ -24,6 +24,9 @@ const pieces = new Map<string, Float32Array>();
 /** Stairs models by ramp style name (`stairs_stone` → 'stone_stairs' …). */
 const stairs = new Map<string, THREE.Object3D>();
 const STAIRS_NODE: Record<string, string> = { stone_stairs: 'stairs_stone', wood_stairs: 'stairs_wood', log_steps: 'stairs_log' };
+/** Dock pieces: deck tile, pile, gangway onto the beach, mooring bollard. */
+const DOCK_PARTS = ['deck', 'post', 'ramp', 'bollard'] as const;
+const dock = new Map<string, THREE.Object3D>();
 let loading: Promise<void> | null = null;
 
 export function loadTileset(url = TILESET_URL): Promise<void> {
@@ -43,6 +46,10 @@ export function loadTileset(url = TILESET_URL): Promise<void> {
           for (const [style, node] of Object.entries(STAIRS_NODE)) {
             const o = gltf.scene.getObjectByName(node);
             if (o) stairs.set(style, prepareStairs(o));
+          }
+          for (const part of DOCK_PARTS) {
+            const o = gltf.scene.getObjectByName(`dock_${part}`);
+            if (o) dock.set(part, prepareStairs(o));
           }
         } catch (e) {
           console.warn('tileset: could not read', e);
@@ -110,5 +117,61 @@ export function buildStairs(g: Grid): THREE.Group {
       o.position.set(x + 0.5, baseHeight(Tile.Ramp) + g.level(x, z) * CLIFF, z + 0.5);
       group.add(o);
     }
+  return group;
+}
+
+/**
+ * Docks from the Blender pieces: a deck per dock tile, piles where it stands in
+ * the water, bollards at the sea end, and a gangway from the land end down onto
+ * dry sand. Null when the pieces aren't loaded (terrain.ts draws simple planks).
+ */
+export function buildDockModels(g: Grid): THREE.Group | null {
+  if (DOCK_PARTS.some((p) => !dock.has(p))) return null;
+  const group = new THREE.Group();
+  group.name = 'docks';
+  const isDock = (x: number, z: number) => g.tile(x, z) === Tile.Dock;
+  const isSea = (x: number, z: number) => g.tile(x, z) === Tile.Sea;
+  const put = (part: string, x: number, y: number, z: number, rot = 0, sy = 1) => {
+    const o = dock.get(part)!.clone(true);
+    o.position.set(x, y, z);
+    o.rotation.y = rot;
+    o.scale.y = sy;
+    group.add(o);
+  };
+  const posts = new Set<string>();
+  for (let z = 0; z < g.size; z++)
+    for (let x = 0; x < g.size; x++) {
+      if (!isDock(x, z)) continue;
+      // Planks run across the walkway.
+      const ns = isDock(x, z - 1) || isDock(x, z + 1);
+      const ew = isDock(x - 1, z) || isDock(x + 1, z);
+      put('deck', x + 0.5, DOCK_Y, z + 0.5, ns || !ew ? 0 : Math.PI / 2);
+      // Piles on corners that stand in the water.
+      for (const [dx, dz] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const cx = x + dx, cz = z + dz;
+        const wet = [[cx - 1, cz - 1], [cx, cz - 1], [cx - 1, cz], [cx, cz]].some(([tx, tz]) => !isDock(tx, tz) && isSea(tx, tz));
+        if (wet && (cx + cz) % 2 === 0) posts.add(`${cx},${cz}`);
+      }
+      for (const [dx, dz] of DIRS) {
+        // Sea end of a pier: a bollard on the outer corner.
+        if (isDock(x - dx, z - dz) && isSea(x + dx, z + dz)) {
+          for (const [sx, sz] of [[dz, dx], [-dz, -dx]])
+            if (isSea(x + sx, z + sz)) put('bollard', x + 0.5 + dx * 0.32 + sx * 0.3, DOCK_Y, z + 0.5 + dz * 0.32 + sz * 0.3);
+        }
+        // Land end of a pier: a gangway down onto the beach.
+        if (isDock(x + dx, z + dz) && isDock(x + 2 * dx, z + 2 * dz) && !isDock(x - dx, z - dz) && [Tile.Shore, Tile.Ground].includes(g.tile(x - dx, z - dz))) {
+          const r = g.dockRamp(x - dx + 0.5, z - dz + 0.5);
+          if (!r) continue;
+          for (let k = 1; k <= r.len; k++) {
+            const y0 = r.from + (r.to - r.from) * ((k - 1) / r.len), y1 = r.from + (r.to - r.from) * (k / r.len);
+            put('ramp', x - dx * k + 0.5, y0, z - dz * k + 0.5, Math.atan2(-dx, -dz), Math.max(0.01, y0 - y1));
+          }
+        }
+      }
+    }
+  for (const k of posts) {
+    const [cx, cz] = k.split(',').map(Number);
+    put('post', cx, DOCK_Y, cz);
+  }
   return group;
 }

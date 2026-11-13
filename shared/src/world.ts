@@ -384,12 +384,47 @@ export class Grid {
     return this.canPlace(x, z) && this.path(x, z) === 0;
   }
 
+  /** Is this tile part of the smoothly sloping coast (beach at sea level, or the sea)? */
+  isCoastal(x: number, z: number): boolean {
+    const t = this.tile(x, z);
+    return t === Tile.Sea || t === Tile.Dock || (t === Tile.Shore && this.level(x, z) === 0 && this.ramp(x, z) < 0);
+  }
+
+  /**
+   * Ground height of the coast: beaches slope gently from the grass (BEACH_TOP)
+   * down to just under the waterline at the sea (BEACH_EDGE), and the sea floor
+   * keeps sloping down to its depth over SEA_SHELF tiles. `t` is the tile type
+   * being drawn (a point on a tile border belongs to both tiles).
+   */
+  coastY(px: number, pz: number, t: Tile): number {
+    const R = 3;
+    let dl = R + 1, ds = R + 1, dn = R + 1;
+    const x0 = Math.floor(px) - R, z0 = Math.floor(pz) - R;
+    for (let z = z0; z <= z0 + 2 * R + 1; z++)
+      for (let x = x0; x <= x0 + 2 * R + 1; x++) {
+        const dx = Math.max(x - px, 0, px - (x + 1)), dz = Math.max(z - pz, 0, pz - (z + 1));
+        const d = Math.hypot(dx, dz);
+        const k = this.tile(x, z);
+        const sea = k === Tile.Sea || k === Tile.Dock;
+        if (sea) ds = Math.min(ds, d);
+        else {
+          dn = Math.min(dn, d);
+          // Land the beach rises to (not shore, and not ponds or river mouths: those cut in).
+          if ((k !== Tile.Shore || this.level(x, z) !== 0) && k !== Tile.Pond && k !== Tile.River) dl = Math.min(dl, d);
+        }
+      }
+    if (t === Tile.Sea || t === Tile.Dock) return BEACH_EDGE + (baseHeight(Tile.Sea) - BEACH_EDGE) * smoothstep(dn / SEA_SHELF);
+    if (dl <= 0) return BEACH_TOP;
+    return BEACH_TOP + (BEACH_EDGE - BEACH_TOP) * smoothstep(dl / (dl + ds));
+  }
+
   /** Height of the walkable surface at a continuous position. */
   surfaceY(px: number, pz: number): number {
     const x = Math.floor(px), z = Math.floor(pz);
     const t = this.tile(x, z);
     const bridge = this.inBounds(x, z) ? this.bridges[this.idx(x, z)] : 0;
     if (bridge) return (bridge - 1) * CLIFF + BRIDGE_DECK;
+    if (t === Tile.Shore && this.isCoastal(x, z)) return this.coastY(px, pz, t);
     const base = baseHeight(t) + this.level(x, z) * CLIFF;
     const d = this.ramp(x, z);
     if (d < 0) return t === Tile.Dock ? 0.16 : isWaterTile(t) ? WATER_SURFACE + this.level(x, z) * CLIFF : base;
@@ -401,6 +436,7 @@ export class Grid {
   /** Corner heights of a tile (for terrain meshes): [x0z0, x1z0, x1z1, x0z1]. */
   cornerHeights(x: number, z: number): [number, number, number, number] {
     const t = this.tile(x, z);
+    if (this.isCoastal(x, z)) return [this.coastY(x, z, t), this.coastY(x + 1, z, t), this.coastY(x + 1, z + 1, t), this.coastY(x, z + 1, t)];
     const b = baseHeight(t) + this.level(x, z) * CLIFF;
     const d = this.ramp(x, z);
     if (d < 0) return [b, b, b, b];
@@ -410,6 +446,17 @@ export class Grid {
     if (d === 2) return [b, b, H, H];
     return [H, b, b, H];
   }
+}
+
+/** Beaches: height where the sand meets the grass, and at the water's edge (just under the sea surface). */
+export const BEACH_TOP = 0.12;
+export const BEACH_EDGE = -0.18;
+/** Tiles from the coast until the sea floor reaches full depth. */
+export const SEA_SHELF = 1.6;
+
+function smoothstep(t: number) {
+  const u = Math.min(1, Math.max(0, t));
+  return u * u * (3 - 2 * u);
 }
 
 export function baseHeight(t: Tile): number {

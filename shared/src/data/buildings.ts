@@ -242,6 +242,10 @@ export const SHOP_STOCK: Partial<Record<BuildingType, string[]>> = {
     'boho_peacock_chair', 'boho_egg_chair', 'boho_floor_cushions', 'boho_pouf', 'boho_sofa', 'boho_canopy_bed', 'boho_coffee_table',
     'boho_trunk', 'boho_ladder_shelf', 'boho_room_divider', 'boho_kilim_rug', 'boho_jute_rug', 'boho_macrame', 'boho_tapestry',
     'boho_dreamcatcher', 'boho_lantern', 'boho_floor_lamp', 'boho_monstera', 'boho_plant_stand', 'boho_pampas_vase',
+    // Cottage pack
+    'cottage_armchair', 'cottage_rocking_chair', 'cottage_loveseat', 'cottage_footstool', 'cottage_ladderback_chair', 'cottage_farmhouse_table', 'cottage_welsh_dresser',
+    'cottage_blanket_chest', 'cottage_side_table', 'cottage_range_stove', 'cottage_fireplace', 'cottage_iron_bed', 'cottage_standard_lamp', 'cottage_rag_rug',
+    'cottage_cuckoo_clock', 'cottage_sampler', 'cottage_wall_shelf', 'cottage_geranium_pot',
   ],
   clothing_shop: ['straw_hat', 'beanie', 'cap', 'flower_crown'],
 };

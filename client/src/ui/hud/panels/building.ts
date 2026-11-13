@@ -92,16 +92,28 @@ export function openBuilding(hud: Hud, bld: Building) {
   }
 }
 
+/** Furniture collections in the Furniture Store, by item id prefix. */
+const FURNITURE_PACKS: [string, string][] = [['boho_', '🪺 Bohemian collection'], ['cottage_', '🫖 Cottage collection']];
+
 export function shopPanel(hud: Hud, b: HTMLElement, type: BuildingType) {
   const stock = SHOP_STOCK[type] ?? [];
   b.append(h('p', { class: 'muted' }, `You have 🪙 ${state.coins.toLocaleString()}`));
-  const grid = h('div', { class: 'grid' });
+  // Furniture comes in collections (by id prefix); other shops are one plain grid.
+  const groups = new Map<string, string[]>();
   for (const id of stock) {
-    const it = ITEMS[id];
-    grid.append(h('div', { class: 'tile' }, h('span', { class: 'ico' }, it.icon), h('div', { class: 'nm' }, it.name), h('div', { class: 'muted' }, `🪙 ${it.buy}${have(id) ? ` · own ${have(id)}` : ''}`),
-      h('button', { class: 'btn small', disabled: state.coins < (it.buy ?? 0), onclick: () => hud.act({ k: 'buy', shop: type, item: id, n: 1 }) }, 'Buy')));
+    const pack = type === 'furniture_store' ? (FURNITURE_PACKS.find(([p]) => id.startsWith(p))?.[1] ?? '🪑 Basics') : '';
+    groups.set(pack, [...(groups.get(pack) ?? []), id]);
   }
-  b.append(grid);
+  for (const [pack, ids] of groups) {
+    if (pack) b.append(h('h3', { style: 'margin:12px 0 6px' }, pack));
+    const grid = h('div', { class: 'grid' });
+    for (const id of ids) {
+      const it = ITEMS[id];
+      grid.append(h('div', { class: 'tile' }, h('span', { class: 'ico' }, it.icon), h('div', { class: 'nm' }, it.name), h('div', { class: 'muted' }, `🪙 ${it.buy}${have(id) ? ` · own ${have(id)}` : ''}`),
+        h('button', { class: 'btn small', disabled: state.coins < (it.buy ?? 0), onclick: () => hud.act({ k: 'buy', shop: type, item: id, n: 1 }) }, 'Buy')));
+    }
+    b.append(grid);
+  }
   if (type === 'clothing_shop' && state.self) {
     const self = state.self;
     const look: Look = { ...self.look };

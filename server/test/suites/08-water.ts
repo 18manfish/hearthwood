@@ -94,6 +94,18 @@ export async function run(ctx: Ctx) {
       let gang: ReturnType<typeof g.dockRamp> = null;
       for (let z = 0; z < g.size && !gang; z++) for (let x = 0; x < g.size && !gang; x++) gang = g.dockRamp(x + 0.5, z + 0.5);
       check(!!gang && gang.to >= SEA_LEVEL, `the dock's gangway lands on dry sand (${gang?.to.toFixed(2)})`);
+      // No stepping off the pier (deck or gangway) into the sea, nor climbing onto it from the water.
+      let edges = 0, leaks = 0;
+      for (let z = 0; z < g.size; z++)
+        for (let x = 0; x < g.size; x++) {
+          if (!g.isPier(x, z)) continue;
+          for (const [dx, dz] of DIRS) {
+            if (g.tile(x + dx, z + dz) !== Tile.Sea) continue;
+            edges++;
+            if (g.stepOk(x, z, x + dx, z + dz) || g.stepOk(x + dx, z + dz, x, z) || g.canMove(x + 0.5, z + 0.5, x + 0.5 + dx * 0.6, z + 0.5 + dz * 0.6)) leaks++;
+          }
+        }
+      check(edges > 0 && leaks === 0, `the pier's edges are closed to the sea (${edges} edges, ${leaks} open)`);
     }
     // A bridge across the river.
     A.send({ t: 'dev', cmd: 'kit', args: [] });

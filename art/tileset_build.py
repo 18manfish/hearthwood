@@ -429,7 +429,8 @@ def build_stairs():
 # Dock pieces, each an empty `dock_<part>` with one mesh per material:
 #   deck     one tile of walkway (x, z in [-0.5, 0.5]); planks run across x, top at y = 0
 #   post     a pile from just above the deck down into the sea floor
-#   ramp     gangway onto the beach: top from y = 0 at z = -0.5 (dock side) down to
+#   ramp     (no longer used by the game: client/src/game/terrain/gangway.ts builds the
+#            gangway in the deck's wide planks) gangway onto the beach: top from y = 0 at z = -0.5 (dock side) down to
 #            y = -1 at z = +0.5; the game stretches it to the real drop
 #   bollard  a mooring post with a coil of rope, standing on the deck
 

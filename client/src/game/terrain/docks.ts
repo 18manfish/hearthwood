@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { Tile, type Grid } from '@hearthwood/shared';
 import { bend, bentDepth } from '../bend.ts';
+import { buildGangways } from './gangway.ts';
 
 /**
  * Wooden decking for boardwalks and piers (Dock tiles): planks with a little
@@ -61,5 +62,6 @@ export function buildDocks(g0: Grid): THREE.Group {
   posts.customDepthMaterial = bentDepth;
   posts.frustumCulled = false;
   group.add(posts);
+  group.add(buildGangways(g0));
   return group;
 }

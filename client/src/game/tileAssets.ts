@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { loadGlb } from './assets/glb.ts';
 import { CLIFF, DIRS, DOCK_Y, RAMP_STYLES, Tile, baseHeight, type Grid } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
+import { buildGangways } from './terrain/gangway.ts';
 
 export const TILESET_URL = '/models/tileset.glb';
 export type Family = 'cliff' | 'bank';
@@ -24,8 +25,8 @@ const pieces = new Map<string, Float32Array>();
 /** Stairs models by ramp style name (`stairs_stone` → 'stone_stairs' …). */
 const stairs = new Map<string, THREE.Object3D>();
 const STAIRS_NODE: Record<string, string> = { stone_stairs: 'stairs_stone', wood_stairs: 'stairs_wood', log_steps: 'stairs_log' };
-/** Dock pieces: deck tile, pile, gangway onto the beach, mooring bollard. */
-const DOCK_PARTS = ['deck', 'post', 'ramp', 'bollard'] as const;
+/** Dock pieces: deck tile, pile, mooring bollard (the gangway is built in code, terrain/gangway.ts). */
+const DOCK_PARTS = ['deck', 'post', 'bollard'] as const;
 const dock = new Map<string, THREE.Object3D>();
 let loading: Promise<void> | null = null;
 
@@ -106,8 +107,8 @@ export function buildStairs(g: Grid): THREE.Group {
 
 /**
  * Docks from the Blender pieces: a deck per dock tile, piles where it stands in
- * the water, bollards at the sea end, and a gangway from the land end down onto
- * dry sand. Null when the pieces aren't loaded (terrain.ts draws simple planks).
+ * the water, bollards at the sea end, and a wide-plank gangway from the land end
+ * down onto dry sand. Null when the pieces aren't loaded (terrain.ts draws simple planks).
  */
 export function buildDockModels(g: Grid): THREE.Group | null {
   if (DOCK_PARTS.some((p) => !dock.has(p))) return null;
@@ -142,20 +143,12 @@ export function buildDockModels(g: Grid): THREE.Group | null {
           for (const [sx, sz] of [[dz, dx], [-dz, -dx]])
             if (isSea(x + sx, z + sz)) put('bollard', x + 0.5 + dx * 0.32 + sx * 0.3, DOCK_Y, z + 0.5 + dz * 0.32 + sz * 0.3);
         }
-        // Land end of a pier: a gangway down onto the beach.
-        if (isDock(x + dx, z + dz) && isDock(x + 2 * dx, z + 2 * dz) && !isDock(x - dx, z - dz) && [Tile.Shore, Tile.Ground].includes(g.tile(x - dx, z - dz))) {
-          const r = g.dockRamp(x - dx + 0.5, z - dz + 0.5);
-          if (!r) continue;
-          for (let k = 1; k <= r.len; k++) {
-            const y0 = r.from + (r.to - r.from) * ((k - 1) / r.len), y1 = r.from + (r.to - r.from) * (k / r.len);
-            put('ramp', x - dx * k + 0.5, y0, z - dz * k + 0.5, Math.atan2(-dx, -dz), Math.max(0.01, y0 - y1));
-          }
-        }
       }
     }
   for (const k of posts) {
     const [cx, cz] = k.split(',').map(Number);
     put('post', cx, DOCK_Y, cz);
   }
+  group.add(buildGangways(g));
   return group;
 }

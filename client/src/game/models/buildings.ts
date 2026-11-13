@@ -5,6 +5,7 @@ import { type Building, buildingLevel, BUILDINGS, hashString, houseLevel, tiersO
 import { kitModel } from '../assets/kit.ts';
 import { gltfHouse } from '../houseAssets.ts';
 import { bend } from '../bend.ts';
+import { dockProps } from './dockProps.ts';
 import { emojiSprite } from './furniture.ts';
 import { mat, part } from './primitives.ts';
 
@@ -241,8 +242,8 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       g.add(part('cyl', '#7a5230', 0.03, 0.3, 0.03, -0.2, 0.62, 0.05));
       break;
     case 'dock': {
-      // The deck itself is part of the boardwalk mesh; add mooring posts.
-      for (const x of [-b.w / 2 + 0.1, b.w / 2 - 0.1]) g.add(part('cyl', '#5d4037', 0.08, 0.6, 0.08, x, 0.35, b.h / 2 - 0.15));
+      // The deck itself is part of the boardwalk mesh (piles and bollards too); add the fishing clutter.
+      g.add(dockProps());
       break;
     }
     case 'cabin': {

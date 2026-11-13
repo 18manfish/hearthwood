@@ -4,18 +4,27 @@
   "version": "0.1.0",
   "description": "A cozy multiplayer island-life game inspired by Animal Crossing. Authoritative Node server + Three.js browser client.",
   "type": "module",
-  "workspaces": ["shared", "server", "client"],
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev": "concurrently -n server,client -c green,cyan \"npm:dev -w server\" \"npm:dev -w client\"",
     "dev:fast": "concurrently -n server,client -c green,cyan \"npm:dev:fast -w server\" \"npm:dev -w client\"",
     "build": "npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "tsc -p shared && tsc -p server && tsc -p client",
-    "test": "npm run test -w server"
+    "test": "npm run test -w server",
+    "typecheck:stub": "tsc -p tools/tsconfig.client.stub.json && tsc -p tools/tsconfig.server.stub.json",
+    "test:golden": "node --import tsx --import ./tools/golden/register.mjs tools/golden/run.ts",
+    "test:golden:update": "node --import tsx --import ./tools/golden/register.mjs tools/golden/run.ts --update"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
     "typescript": "^5.6.3"
   },
-  "engines": { "node": ">=22.13" }
+  "engines": {
+    "node": ">=22.13"
+  }
 }

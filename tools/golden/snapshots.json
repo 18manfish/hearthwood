@@ -1,0 +1,592 @@
+{
+ "client/docks/grassland/42": {
+  "hash": "83e8d2d1ae01a466d06a4e47"
+ },
+ "client/docks/grassland/7": {
+  "hash": "cc1be263396e09f05cd1a578"
+ },
+ "client/docks/nordic/42": {
+  "hash": "83e8d2d1ae01a466d06a4e47"
+ },
+ "client/docks/nordic/7": {
+  "hash": "cc1be263396e09f05cd1a578"
+ },
+ "client/docks/tropical/42": {
+  "hash": "83e8d2d1ae01a466d06a4e47"
+ },
+ "client/docks/tropical/7": {
+  "hash": "cc1be263396e09f05cd1a578"
+ },
+ "client/falls/grassland/42": {
+  "hash": "4f53cda18c2baa0c0354bb5f"
+ },
+ "client/falls/grassland/7": {
+  "hash": "d325895537aa00fa6014e4da"
+ },
+ "client/falls/nordic/42": {
+  "hash": "4f53cda18c2baa0c0354bb5f"
+ },
+ "client/falls/nordic/7": {
+  "hash": "d325895537aa00fa6014e4da"
+ },
+ "client/falls/tropical/42": {
+  "hash": "4f53cda18c2baa0c0354bb5f"
+ },
+ "client/falls/tropical/7": {
+  "hash": "213cf86717f9eac3afff709f"
+ },
+ "client/models/birds": {
+  "hash": "75a50af1754a9dba8f527ff5"
+ },
+ "client/models/buildings": {
+  "hash": "85efd314eec01dbee60459fa"
+ },
+ "client/models/furniture": {
+  "hash": "3b13123c51bbfa68ef5cbe1c",
+  "info": "10 items"
+ },
+ "client/models/objects/autumn": {
+  "hash": "5c97663857ff2e271c79060f",
+  "info": "392 objects"
+ },
+ "client/models/objects/summer": {
+  "hash": "273f27dfb61130f46b0e3d39",
+  "info": "392 objects"
+ },
+ "client/models/objects/winter": {
+  "hash": "b905691eb4656d8b59d1233b",
+  "info": "392 objects"
+ },
+ "client/paths/grassland/42": {
+  "hash": "ec0cff612cc059c97db9f904"
+ },
+ "client/paths/grassland/7": {
+  "hash": "ec0cff612cc059c97db9f904"
+ },
+ "client/paths/nordic/42": {
+  "hash": "ec0cff612cc059c97db9f904"
+ },
+ "client/paths/nordic/7": {
+  "hash": "ec0cff612cc059c97db9f904"
+ },
+ "client/paths/tropical/42": {
+  "hash": "ec0cff612cc059c97db9f904"
+ },
+ "client/paths/tropical/7": {
+  "hash": "ec0cff612cc059c97db9f904"
+ },
+ "client/stairs/grassland/42": {
+  "hash": "85867f72f961698090012746"
+ },
+ "client/stairs/grassland/7": {
+  "hash": "ad67a18ed701e1f00e55c904"
+ },
+ "client/stairs/nordic/42": {
+  "hash": "3067f91cbc90661de6a31c4e"
+ },
+ "client/stairs/nordic/7": {
+  "hash": "15cdb5204b5d5dba2b7ae5e0"
+ },
+ "client/stairs/tropical/42": {
+  "hash": "bbee65d49f3794246105fcbe"
+ },
+ "client/stairs/tropical/7": {
+  "hash": "140407eab39eb34d9bf4bbe0"
+ },
+ "client/terrain/grassland/42/summer": {
+  "hash": "4c2a1ffd6d8e794ff9bd6f83",
+  "info": "tris 177924"
+ },
+ "client/terrain/grassland/42/winter": {
+  "hash": "92ed3b4ddb5e6dd647f6108f",
+  "info": "tris 177924"
+ },
+ "client/terrain/grassland/7/summer": {
+  "hash": "2e0624bdb62e0f4ac9933bcf",
+  "info": "tris 198448"
+ },
+ "client/terrain/grassland/7/winter": {
+  "hash": "62090ca1d1b69a1e1a854b5a",
+  "info": "tris 198448"
+ },
+ "client/terrain/nordic/42/summer": {
+  "hash": "0798aa57345d3e80e9d78338",
+  "info": "tris 182904"
+ },
+ "client/terrain/nordic/42/winter": {
+  "hash": "23a0cf08ccfe103e2d43380b",
+  "info": "tris 182904"
+ },
+ "client/terrain/nordic/7/summer": {
+  "hash": "395915d6a29b1d9783a144a1",
+  "info": "tris 199160"
+ },
+ "client/terrain/nordic/7/winter": {
+  "hash": "706309c6e3723c0b018cfda9",
+  "info": "tris 199160"
+ },
+ "client/terrain/tropical/42/summer": {
+  "hash": "a5082650bd971241b500486c",
+  "info": "tris 167688"
+ },
+ "client/terrain/tropical/42/winter": {
+  "hash": "ac1da450a20da969e83458fd",
+  "info": "tris 167688"
+ },
+ "client/terrain/tropical/7/summer": {
+  "hash": "d58d799e9c936041b9cce2f5",
+  "info": "tris 190440"
+ },
+ "client/terrain/tropical/7/winter": {
+  "hash": "d9521e6445624332ce40ab6a",
+  "info": "tris 190440"
+ },
+ "client/water/grassland/42": {
+  "hash": "0db726f37d7f00e64df778f1",
+  "info": "seaTint:55818 riverFlow:354 surf:124800"
+ },
+ "client/water/grassland/7": {
+  "hash": "b7a19ecc5cd5fc6e6a8d7f00",
+  "info": "-:390 seaTint:54456 riverFlow:390 riverFlow:126 surf:117216 -:576 -:24 spray:104"
+ },
+ "client/water/nordic/42": {
+  "hash": "bec836dfe100efdcc2182787",
+  "info": "seaTint:55590 riverFlow:354 surf:124800"
+ },
+ "client/water/nordic/7": {
+  "hash": "aaf87c3580bfe95bdffdf695",
+  "info": "-:390 seaTint:54228 riverFlow:390 riverFlow:126 surf:117216 -:576 -:24 spray:104"
+ },
+ "client/water/tropical/42": {
+  "hash": "91628f9e11c045c09564ae44",
+  "info": "seaTint:55050 riverFlow:342 surf:128544"
+ },
+ "client/water/tropical/7": {
+  "hash": "397cedaabbbc77df9ebb2bf6",
+  "info": "-:354 seaTint:54060 riverFlow:354 riverFlow:216 surf:119328 -:528 -:24 spray:104"
+ },
+ "data/friendship": {
+  "hash": "2827f601e868f24765271378"
+ },
+ "data/tables": {
+  "hash": "dc2437a7becc676d51c6a0e1"
+ },
+ "env": {
+  "hash": "395739a506212ed51e8f1d94"
+ },
+ "generate/desert/1": {
+  "hash": "33d0c6cbc5e0f59b9f3db8c1",
+  "info": "sea 1717 shore 1238 river 0 objs 176"
+ },
+ "generate/desert/12345": {
+  "hash": "f49006aebc5c87e49970bb28",
+  "info": "sea 1730 shore 1286 river 0 objs 169"
+ },
+ "generate/desert/42": {
+  "hash": "57c91b5d8c979a07472170a3",
+  "info": "sea 1875 shore 1257 river 0 objs 158"
+ },
+ "generate/desert/7": {
+  "hash": "b9176765f27f3a163ac1ea94",
+  "info": "sea 1851 shore 1137 river 0 objs 163"
+ },
+ "generate/desert/99": {
+  "hash": "0dddb87d1066af41964aa5cc",
+  "info": "sea 1727 shore 1181 river 0 objs 172"
+ },
+ "generate/forest_edge/1": {
+  "hash": "a0558296e32821c2451ac9cf",
+  "info": "sea 1717 shore 1224 river 83 objs 230"
+ },
+ "generate/forest_edge/12345": {
+  "hash": "ffcd6d85e2e496dff9a7ff2e",
+  "info": "sea 1730 shore 1273 river 82 objs 219"
+ },
+ "generate/forest_edge/42": {
+  "hash": "a7289aba20d7656ce33c1a79",
+  "info": "sea 1875 shore 1243 river 53 objs 212"
+ },
+ "generate/forest_edge/7": {
+  "hash": "e04035bd65ea39abaaee3bf5",
+  "info": "sea 1851 shore 1127 river 83 objs 214"
+ },
+ "generate/forest_edge/99": {
+  "hash": "f9d85b9228d06c5e1159eda5",
+  "info": "sea 1727 shore 1166 river 76 objs 233"
+ },
+ "generate/grassland/1": {
+  "hash": "7a657b13297e8b291139676b",
+  "info": "sea 1717 shore 1223 river 87 objs 195"
+ },
+ "generate/grassland/12345": {
+  "hash": "ae95aa79be55ee9176fc9fdf",
+  "info": "sea 1730 shore 1273 river 82 objs 177"
+ },
+ "generate/grassland/42": {
+  "hash": "1f0c54d9162278ec2fc1e74c",
+  "info": "sea 1875 shore 1243 river 53 objs 174"
+ },
+ "generate/grassland/7": {
+  "hash": "27e057f14078b3204ac3ddfb",
+  "info": "sea 1851 shore 1127 river 83 objs 188"
+ },
+ "generate/grassland/99": {
+  "hash": "cededa9e53aea129ffe60ef5",
+  "info": "sea 1727 shore 1166 river 81 objs 196"
+ },
+ "generate/harbor": {
+  "hash": "f2aa92ea76d34939f8896881"
+ },
+ "generate/interior/cabin/-": {
+  "hash": "13f1dc75782ab587dc5afd4e"
+ },
+ "generate/interior/cabin/v": {
+  "hash": "13f1dc75782ab587dc5afd4e"
+ },
+ "generate/interior/clothing_shop/-": {
+  "hash": "6726cc19b724c3fcd7f58df5"
+ },
+ "generate/interior/clothing_shop/v": {
+  "hash": "6726cc19b724c3fcd7f58df5"
+ },
+ "generate/interior/furniture_store/-": {
+  "hash": "df22f0dab2cfa29119ac52a6"
+ },
+ "generate/interior/furniture_store/v": {
+  "hash": "df22f0dab2cfa29119ac52a6"
+ },
+ "generate/interior/lighthouse/-": {
+  "hash": "fad7db8b11b14548d83df2b8"
+ },
+ "generate/interior/lighthouse/v": {
+  "hash": "fad7db8b11b14548d83df2b8"
+ },
+ "generate/interior/restaurant/-": {
+  "hash": "fe83ae856b9b9d2967c9cd4e"
+ },
+ "generate/interior/restaurant/v": {
+  "hash": "fe83ae856b9b9d2967c9cd4e"
+ },
+ "generate/interior/shack/-": {
+  "hash": "e24d4d63cd5ea6e76f5b5cba"
+ },
+ "generate/interior/shack/v": {
+  "hash": "e24d4d63cd5ea6e76f5b5cba"
+ },
+ "generate/interior/tent/-": {
+  "hash": "9e15ab110642d23d4301fcf0"
+ },
+ "generate/interior/tent/v": {
+  "hash": "9e15ab110642d23d4301fcf0"
+ },
+ "generate/interior/tool_store/-": {
+  "hash": "f9a1ca1d909c299dbb8df536"
+ },
+ "generate/interior/tool_store/v": {
+  "hash": "f9a1ca1d909c299dbb8df536"
+ },
+ "generate/interior/town_hall/-": {
+  "hash": "ec6c6241040c6b7cb9d04c26"
+ },
+ "generate/interior/town_hall/v": {
+  "hash": "ec6c6241040c6b7cb9d04c26"
+ },
+ "generate/interior/travel_agent/-": {
+  "hash": "298cf52bfb2a9b20df642595"
+ },
+ "generate/interior/travel_agent/v": {
+  "hash": "298cf52bfb2a9b20df642595"
+ },
+ "generate/interior/villager_house/-": {
+  "hash": "94ca9bea90a2ab1b4e4ebbd4"
+ },
+ "generate/interior/villager_house/v": {
+  "hash": "4d72e17b194f06515f334dbc"
+ },
+ "generate/jungle/1": {
+  "hash": "a1d1461af3076f484e06a9f0",
+  "info": "sea 1717 shore 1224 river 83 objs 250"
+ },
+ "generate/jungle/12345": {
+  "hash": "2661d0ada1de2085d09448aa",
+  "info": "sea 1730 shore 1273 river 82 objs 242"
+ },
+ "generate/jungle/42": {
+  "hash": "38a8ac8e61533c115bf0258d",
+  "info": "sea 1875 shore 1243 river 53 objs 221"
+ },
+ "generate/jungle/7": {
+  "hash": "d84529df5db10542ca3c8a25",
+  "info": "sea 1851 shore 1127 river 83 objs 251"
+ },
+ "generate/jungle/99": {
+  "hash": "c3f5b2efb88786df9da087ab",
+  "info": "sea 1727 shore 1166 river 76 objs 249"
+ },
+ "generate/legacy48/42": {
+  "hash": "e244306e78693747200e1ea6"
+ },
+ "generate/legacy48/7": {
+  "hash": "5df46f3f6373fb2974c1eba8"
+ },
+ "generate/nordic/1": {
+  "hash": "b03faa582741024746f05d6f",
+  "info": "sea 1717 shore 1224 river 83 objs 242"
+ },
+ "generate/nordic/12345": {
+  "hash": "e72984bcc79034f4dfcd1768",
+  "info": "sea 1730 shore 1273 river 82 objs 244"
+ },
+ "generate/nordic/42": {
+  "hash": "fc6b8a81a63b991ad188c168",
+  "info": "sea 1875 shore 1243 river 53 objs 224"
+ },
+ "generate/nordic/7": {
+  "hash": "7c4e61606a8cc34dcbf6da76",
+  "info": "sea 1851 shore 1127 river 83 objs 237"
+ },
+ "generate/nordic/99": {
+  "hash": "8dccbec5cd7541bb8086be26",
+  "info": "sea 1727 shore 1166 river 76 objs 244"
+ },
+ "generate/oasis/1": {
+  "hash": "973d759bef8f3be100e22a42",
+  "info": "sea 1717 shore 1238 river 0 objs 196"
+ },
+ "generate/oasis/12345": {
+  "hash": "4681707302bfb7631cc50c56",
+  "info": "sea 1730 shore 1286 river 0 objs 188"
+ },
+ "generate/oasis/42": {
+  "hash": "1ed47d07b9f981f0bfc6c3aa",
+  "info": "sea 1875 shore 1257 river 0 objs 167"
+ },
+ "generate/oasis/7": {
+  "hash": "12b4f280004a5c53103a62f8",
+  "info": "sea 1851 shore 1137 river 0 objs 187"
+ },
+ "generate/oasis/99": {
+  "hash": "438e0e4882eb9a298da627cb",
+  "info": "sea 1727 shore 1181 river 0 objs 192"
+ },
+ "generate/shared/42": {
+  "hash": "a5a08eb46fabe60b158fc0d1"
+ },
+ "generate/shared/7": {
+  "hash": "d75d97838ca3a26f42ed13e0"
+ },
+ "generate/tour/42": {
+  "hash": "b07a013c8ecaad2131642cd0"
+ },
+ "generate/tour/7": {
+  "hash": "ad78b4d333ba958e92b74e07"
+ },
+ "generate/tropical/1": {
+  "hash": "7587e80d64c96dac5813cdac",
+  "info": "sea 1717 shore 1528 river 85 objs 165"
+ },
+ "generate/tropical/12345": {
+  "hash": "c0726f6e9ae090da163b71a0",
+  "info": "sea 1730 shore 1600 river 78 objs 160"
+ },
+ "generate/tropical/42": {
+  "hash": "00f3e6c878e93699c359a64c",
+  "info": "sea 1875 shore 1531 river 51 objs 135"
+ },
+ "generate/tropical/7": {
+  "hash": "a845eb25a3830178f868593a",
+  "info": "sea 1851 shore 1401 river 89 objs 155"
+ },
+ "generate/tropical/99": {
+  "hash": "35b21adb4e4d689db3102e62",
+  "info": "sea 1727 shore 1455 river 75 objs 173"
+ },
+ "grid/desert/42/coast": {
+  "hash": "8a52ca0b973667781dbc3b18"
+ },
+ "grid/desert/42/dock": {
+  "hash": "05f7b450b3cbb863f07b1d88"
+ },
+ "grid/desert/42/surface": {
+  "hash": "92ff985cb0dbc5172f7564a8"
+ },
+ "grid/desert/42/tiles": {
+  "hash": "d925ef0ad7110ed29a87bde4"
+ },
+ "grid/desert/7/coast": {
+  "hash": "2f7e95ebc0edcbc8c4e8f083"
+ },
+ "grid/desert/7/dock": {
+  "hash": "6747e16dd9fbdfbb4e02b9a2"
+ },
+ "grid/desert/7/surface": {
+  "hash": "2814c331edba550b5fbbbfb4"
+ },
+ "grid/desert/7/tiles": {
+  "hash": "7f3e914de8706c1d3141795f"
+ },
+ "grid/forest_edge/42/coast": {
+  "hash": "9339127721bdbc4d6c014521"
+ },
+ "grid/forest_edge/42/dock": {
+  "hash": "05f7b450b3cbb863f07b1d88"
+ },
+ "grid/forest_edge/42/surface": {
+  "hash": "64691225dd2fb583d149e4ba"
+ },
+ "grid/forest_edge/42/tiles": {
+  "hash": "da3ff9a9a8154034ed834e5a"
+ },
+ "grid/forest_edge/7/coast": {
+  "hash": "894f95e95512a912054da8ae"
+ },
+ "grid/forest_edge/7/dock": {
+  "hash": "6747e16dd9fbdfbb4e02b9a2"
+ },
+ "grid/forest_edge/7/surface": {
+  "hash": "f08c0568a6ed856ca0ccc594"
+ },
+ "grid/forest_edge/7/tiles": {
+  "hash": "f747ea8a9b365ff6587948d0"
+ },
+ "grid/grassland/42/coast": {
+  "hash": "9339127721bdbc4d6c014521"
+ },
+ "grid/grassland/42/dock": {
+  "hash": "05f7b450b3cbb863f07b1d88"
+ },
+ "grid/grassland/42/surface": {
+  "hash": "ad27c2558a59a67b19639a62"
+ },
+ "grid/grassland/42/tiles": {
+  "hash": "6289ed0b687cc3a1de41f007"
+ },
+ "grid/grassland/7/coast": {
+  "hash": "894f95e95512a912054da8ae"
+ },
+ "grid/grassland/7/dock": {
+  "hash": "6747e16dd9fbdfbb4e02b9a2"
+ },
+ "grid/grassland/7/surface": {
+  "hash": "b306735eedac49a6bff3a7e3"
+ },
+ "grid/grassland/7/tiles": {
+  "hash": "b14a0ab5d69aa5b0ff4ed376"
+ },
+ "grid/jungle/42/coast": {
+  "hash": "9339127721bdbc4d6c014521"
+ },
+ "grid/jungle/42/dock": {
+  "hash": "05f7b450b3cbb863f07b1d88"
+ },
+ "grid/jungle/42/surface": {
+  "hash": "64691225dd2fb583d149e4ba"
+ },
+ "grid/jungle/42/tiles": {
+  "hash": "95e315d4709099b179d3822c"
+ },
+ "grid/jungle/7/coast": {
+  "hash": "894f95e95512a912054da8ae"
+ },
+ "grid/jungle/7/dock": {
+  "hash": "6747e16dd9fbdfbb4e02b9a2"
+ },
+ "grid/jungle/7/surface": {
+  "hash": "f08c0568a6ed856ca0ccc594"
+ },
+ "grid/jungle/7/tiles": {
+  "hash": "83670aa18d84b7c8f71b5e93"
+ },
+ "grid/nordic/42/coast": {
+  "hash": "9339127721bdbc4d6c014521"
+ },
+ "grid/nordic/42/dock": {
+  "hash": "05f7b450b3cbb863f07b1d88"
+ },
+ "grid/nordic/42/surface": {
+  "hash": "64691225dd2fb583d149e4ba"
+ },
+ "grid/nordic/42/tiles": {
+  "hash": "e7679e4e922c5bd9bbb0e439"
+ },
+ "grid/nordic/7/coast": {
+  "hash": "894f95e95512a912054da8ae"
+ },
+ "grid/nordic/7/dock": {
+  "hash": "6747e16dd9fbdfbb4e02b9a2"
+ },
+ "grid/nordic/7/surface": {
+  "hash": "f08c0568a6ed856ca0ccc594"
+ },
+ "grid/nordic/7/tiles": {
+  "hash": "86c029f84a314214cb62e567"
+ },
+ "grid/oasis/42/coast": {
+  "hash": "8a52ca0b973667781dbc3b18"
+ },
+ "grid/oasis/42/dock": {
+  "hash": "05f7b450b3cbb863f07b1d88"
+ },
+ "grid/oasis/42/surface": {
+  "hash": "3f6fdcdd6ebd5e957a631a00"
+ },
+ "grid/oasis/42/tiles": {
+  "hash": "52222e9de782dfd36cd8fc2a"
+ },
+ "grid/oasis/7/coast": {
+  "hash": "2f7e95ebc0edcbc8c4e8f083"
+ },
+ "grid/oasis/7/dock": {
+  "hash": "6747e16dd9fbdfbb4e02b9a2"
+ },
+ "grid/oasis/7/surface": {
+  "hash": "d4d807863214b0fba663b896"
+ },
+ "grid/oasis/7/tiles": {
+  "hash": "44005c86420469079799530b"
+ },
+ "grid/tropical/42/coast": {
+  "hash": "4029d3aa080b0995e98bb6b1"
+ },
+ "grid/tropical/42/dock": {
+  "hash": "05f7b450b3cbb863f07b1d88"
+ },
+ "grid/tropical/42/surface": {
+  "hash": "66bbefda344b42e354e896fa"
+ },
+ "grid/tropical/42/tiles": {
+  "hash": "50a725fa2a5ae6f98b8d83e2"
+ },
+ "grid/tropical/7/coast": {
+  "hash": "6174c0924b989ee4a0294214"
+ },
+ "grid/tropical/7/dock": {
+  "hash": "6747e16dd9fbdfbb4e02b9a2"
+ },
+ "grid/tropical/7/surface": {
+  "hash": "44f47b1c3e983c1f07241a86"
+ },
+ "grid/tropical/7/tiles": {
+  "hash": "92d2f46549e3ecbbf0c0a00d"
+ },
+ "movement/42": {
+  "hash": "d3eb7e672776790a43159701"
+ },
+ "movement/42/placement": {
+  "hash": "c580c23eb4ef754e80c1d06d"
+ },
+ "movement/7": {
+  "hash": "7e202f3db13327e89029bde1"
+ },
+ "movement/7/placement": {
+  "hash": "0adb053aeabf4c48bfd46758"
+ },
+ "terraform/42": {
+  "hash": "baa6357cf46c5d6595dbdf8d",
+  "info": "ok 185"
+ },
+ "terraform/7": {
+  "hash": "93d5bd39bce68d6605e2df21",
+  "info": "ok 210"
+ }
+}

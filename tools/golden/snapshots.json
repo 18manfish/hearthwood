@@ -102,12 +102,12 @@
   "info": "tris 181344"
  },
  "client/terrain/grassland/7/summer": {
-  "hash": "b5576306b52d007f78e1d062",
-  "info": "tris 202018"
+  "hash": "bf713b5a2f394c52924d7d27",
+  "info": "tris 202128"
  },
  "client/terrain/grassland/7/winter": {
-  "hash": "c852e0df0bc09edd8c5ed27c",
-  "info": "tris 202018"
+  "hash": "462a6fd75a68c1c2e48cf7cc",
+  "info": "tris 202128"
  },
  "client/terrain/nordic/42/summer": {
   "hash": "5d0ac459df28a8471cf01905",
@@ -118,12 +118,12 @@
   "info": "tris 186324"
  },
  "client/terrain/nordic/7/summer": {
-  "hash": "8275f18c296c0170f1c4443e",
-  "info": "tris 202730"
+  "hash": "6573b1de6421bb779a5f121e",
+  "info": "tris 202946"
  },
  "client/terrain/nordic/7/winter": {
-  "hash": "39d342bad768bab509e54f94",
-  "info": "tris 202730"
+  "hash": "6fe2a04107b60a6f21331a13",
+  "info": "tris 202946"
  },
  "client/terrain/tropical/42/summer": {
   "hash": "e7078ff082a7738d86389907",
@@ -134,19 +134,19 @@
   "info": "tris 171108"
  },
  "client/terrain/tropical/7/summer": {
-  "hash": "3d28439d9f6b49993559d75e",
-  "info": "tris 194010"
+  "hash": "7820f3af1ab326be8dd72e42",
+  "info": "tris 195826"
  },
  "client/terrain/tropical/7/winter": {
-  "hash": "1098bde614f400440b25d37e",
-  "info": "tris 194010"
+  "hash": "115327b9d384dab4dc5eba5b",
+  "info": "tris 195826"
  },
  "client/water/grassland/42": {
   "hash": "6e89924113c790e9511806e9",
   "info": "seaTint:55866 riverFlow:7272 surf:110208"
  },
  "client/water/grassland/7": {
-  "hash": "a537172d6d87df3aafbc91e5",
+  "hash": "da851166bc7544fdff21f134",
   "info": "-:390 seaTint:54978 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
  },
  "client/water/nordic/42": {
@@ -154,7 +154,7 @@
   "info": "seaTint:55638 riverFlow:7272 surf:110208"
  },
  "client/water/nordic/7": {
-  "hash": "d72d3f3d77361dcc17e8e94f",
+  "hash": "99a6bdc3458dc3caf39f9edd",
   "info": "-:390 seaTint:54750 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
  },
  "client/water/tropical/42": {
@@ -162,7 +162,7 @@
   "info": "seaTint:55146 riverFlow:7188 surf:111840"
  },
  "client/water/tropical/7": {
-  "hash": "10ec5bab32b924ea2e639bde",
+  "hash": "9fc6561397e60c431d2fc45f",
   "info": "-:354 seaTint:54270 riverFlow:5454 riverFlow:2406 riverFlow:2478 surf:105024 -:528 -:24 spray:104"
  },
  "data/friendship": {

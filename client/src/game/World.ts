@@ -57,6 +57,8 @@ export class World {
   rain: THREE.Points;
   rainVel: Float32Array;
   flash = 0;
+  /** The latest lightning strike: how far away it hit (km). A new object for every strike. */
+  strike: { km: number } | null = null;
 
   room: RoomView | null = null;
   grid: Grid | null = null;

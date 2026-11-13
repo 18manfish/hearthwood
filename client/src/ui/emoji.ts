@@ -1,4 +1,4 @@
-// Pixel icons instead of emoji. Every emoji the game uses has a 16×16 icon
+// Pixel icons instead of emoji. Every emoji the game uses has a 64×64 icon
 // (art/icons/ui_icon_gen.py → client/public/icons/ui/<name>.png, painted in
 // Aseprite). Text in the page is watched: any emoji that appears in it is swapped
 // for its icon, so toasts, chat, panels and labels need no changes. Canvas
@@ -139,7 +139,7 @@ export function emojiImage(emoji: string, onLoad?: () => void): HTMLImageElement
 }
 
 /**
- * Draw an emoji's icon centred at (x, y), `size` pixels wide (crisp pixels).
+ * Draw an emoji's icon centred at (x, y), `size` pixels wide.
  * Falls back to the emoji as text until the icon has loaded; `onLoad` lets the
  * caller redraw then.
  */
@@ -147,7 +147,8 @@ export function drawEmoji(ctx: CanvasRenderingContext2D, emoji: string, x: numbe
   const img = emojiImage(emoji, onLoad);
   if (img && img.complete && img.naturalWidth) {
     const smooth = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
+    // Crisp pixels when drawn at full size or bigger, smooth when scaled down.
+    ctx.imageSmoothingEnabled = size < img.naturalWidth;
     ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
     ctx.imageSmoothingEnabled = smooth;
     return;

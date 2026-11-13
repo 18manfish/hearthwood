@@ -132,9 +132,10 @@ h1, h2, h3 { margin: 0; }
 .tile .ico { font-size: 28px; }
 /* Pixel-art icons (fish & birds): 16 px art shown at 2× with crisp pixels. */
 /* Pixel icons that replace emoji in text (ui/emoji.ts). */
-/* Whole-pixel sizes only (16 px = 1×, 32 px = 2×), so the pixels stay square. */
-img.emo { width: 16px; height: 16px; image-rendering: pixelated; image-rendering: crisp-edges; vertical-align: -3px; display: inline-block; }
-.ico img.emo, .slot img.emo, .title img.emo, h1 img.emo, h2 img.emo, .vface img.emo, .thumb-name img.emo { width: 32px; height: 32px; vertical-align: middle; }
+/* The icons are 64×64; shown smaller they are scaled smoothly. */
+img.emo { width: 20px; height: 20px; vertical-align: -4px; display: inline-block; }
+.ico img.emo, .slot img.emo, .vface img.emo, .thumb-name img.emo, h2 img.emo { width: 32px; height: 32px; vertical-align: middle; }
+.title img.emo, h1 img.emo { width: 40px; height: 40px; vertical-align: middle; }
 .ico.pix { display: inline-flex; width: 1.25em; height: 1.25em; align-items: center; justify-content: center; line-height: 1; }
 .ico.pix img { width: 32px; height: 32px; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 .tile .nm { font-weight: 800; }

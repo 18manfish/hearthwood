@@ -1,4 +1,4 @@
-"""Pixel-art UI icons (16×16) for every emoji the game shows.
+"""Pixel-art UI icons (64×64) for every emoji the game shows.
 
 The shapes start from Noto Color Emoji (Apache 2.0, by Google) rendered large
 and reduced to a 14-px pixel grid: hard alpha, at most 9 colours per icon and a
@@ -9,8 +9,8 @@ ui_icons.json) and exported per icon to client/public/icons/ui/<name>.png.
     python3 art/icons/ui_icon_gen.py art/icons/ui_emojis.json     (the emoji list)
 
 writes ui_icons.json and client/src/ui/emojiIcons.ts (emoji → name), the per-icon PNGs, ui_icons.png (sheet),
-ui_icons_preview.png (4× sheet), ui_grids/<name>.lua (grids for the Aseprite MCP's
-paint_grid) and ui_icons_paint.lua (paints the whole sheet in Aseprite).
+ui_icons_preview.png (4× sheet), ui_grids/<name>.lua (with --grids: grids for the
+Aseprite MCP's paint_grid) and ui_icons_paint.lua (paints the whole sheet in Aseprite).
 """
 import json
 import os
@@ -19,12 +19,14 @@ import unicodedata
 
 from PIL import Image, ImageDraw, ImageFont
 
-N = 16
+N = 64
 COLS = 16
-#: colours per icon (outline shades included)
-COLOURS = 10
+#: colours per icon (before the outline shades)
+COLOURS = 16
 #: shades closer than this (RGB distance) become one
-MERGE = 26
+MERGE = 12
+#: outline width in pixels
+OUTLINE = 2
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, '..', '..', 'client', 'public', 'icons', 'ui')
 FONT = '/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf'
@@ -44,49 +46,49 @@ def name_of(e):
 
 
 def raster(e, font):
-    txt = e if ord(e[0]) >= 0x1F000 or '‍' in e else e + '️'
+    txt = e if ord(e[0]) >= 0x1F000 or '\u200d' in e else e + '\ufe0f'
     im = Image.new('RGBA', (300, 140), (0, 0, 0, 0))
     ImageDraw.Draw(im).text((0, 0), txt, font=font, embedded_color=True)
-    bb = im.getbbox()
-    im = im.crop(bb)
+    im = im.crop(im.getbbox())
     w, h = im.size
     s = max(w, h)
     sq = Image.new('RGBA', (s, s), (0, 0, 0, 0))
     sq.paste(im, ((s - w) // 2, (s - h) // 2))
-    m = N - 2
+    m = N - 2 * OUTLINE
     small = sq.resize((m, m), Image.LANCZOS)
     out = Image.new('RGBA', (N, N), (0, 0, 0, 0))
-    out.paste(small, (1, 1))
+    out.paste(small, (OUTLINE, OUTLINE))
     px = out.load()
-    solid = [[px[x, y][3] > 105 for x in range(N)] for y in range(N)]
-    # Colours: quantise the opaque pixels (alpha-premultiplied onto their own colour).
+    solid = [[px[x, y][3] > 110 for x in range(N)] for y in range(N)]
+    # Colours: quantise the opaque pixels.
     rgb = Image.new('RGB', (N, N))
     rp = rgb.load()
     for y in range(N):
         for x in range(N):
             r, g, b, a = px[x, y]
             rp[x, y] = (r, g, b) if solid[y][x] else (0, 0, 0)
-    q = rgb.quantize(colors=9, method=Image.MEDIANCUT).convert('RGB').load()
+    q = rgb.quantize(colors=COLOURS, method=Image.MEDIANCUT).convert('RGB').load()
     grid = [[(q[x, y] if solid[y][x] else None) for x in range(N)] for y in range(N)]
-    # Selective outline: a dark shade of the neighbouring colour.
-    base = [row[:] for row in grid]
-    for y in range(N):
-        for x in range(N):
-            if base[y][x]:
-                continue
-            nb = [base[y + dy][x + dx] for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if 0 <= x + dx < N and 0 <= y + dy < N and base[y + dy][x + dx]]
-            if nb:
-                r, g, b = nb[0]
-                grid[y][x] = (int(r * 0.32 + 12), int(g * 0.3 + 10), int(b * 0.32 + 14))
-    # One small palette for the whole icon (fill and outline shades together).
+    # Selective outline, OUTLINE pixels wide: a dark shade of the neighbouring colour.
+    for _ in range(OUTLINE):
+        base = [row[:] for row in grid]
+        for y in range(N):
+            for x in range(N):
+                if base[y][x]:
+                    continue
+                nb = [base[y + dy][x + dx] for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if 0 <= x + dx < N and 0 <= y + dy < N and base[y + dy][x + dx]]
+                if nb:
+                    r, g, b = nb[0]
+                    grid[y][x] = (int(r * 0.32 + 12), int(g * 0.3 + 10), int(b * 0.32 + 14)) if max(nb[0]) > 70 else nb[0]
+    # One palette for the whole icon (fill and outline shades together).
     im = Image.new('RGB', (N, N))
     ip = im.load()
     for y in range(N):
         for x in range(N):
             ip[x, y] = grid[y][x] or (255, 0, 255)
-    qq = im.quantize(colors=COLOURS + 1, method=Image.MEDIANCUT).convert('RGB').load()
+    qq = im.quantize(colors=COLOURS + 2, method=Image.MEDIANCUT).convert('RGB').load()
     out = [[(qq[x, y] if grid[y][x] else None) for x in range(N)] for y in range(N)]
-    # Merge shades too close to tell apart at this size (most common one wins).
+    # Merge shades too close to tell apart (most common one wins).
     count = {}
     for row in out:
         for c in row:
@@ -95,11 +97,9 @@ def raster(e, font):
     reps, to = [], {}
     for c in sorted(count, key=lambda k: -count[k]):
         near = next((r for r in reps if sum((a - b) ** 2 for a, b in zip(c, r)) < MERGE ** 2), None)
-        if near:
-            to[c] = near
-        else:
+        to[c] = near or c
+        if not near:
             reps.append(c)
-            to[c] = c
     return [[(to[c] if c else None) for c in row] for row in out]
 
 
@@ -152,7 +152,6 @@ def main():
         sheet.paste(to_image(g), (ox, oy))
         grid_runs.append({'name': name, 'x': ox, 'y': oy, 'runs': runs(g, ox, oy)})
     sheet.save(os.path.join(HERE, 'ui_icons.png'))
-    sheet.resize((sheet.width * 4, sheet.height * 4), Image.NEAREST).save(os.path.join(HERE, 'ui_icons_preview.png'))
     json.dump(index, open(os.path.join(HERE, 'ui_icons.json'), 'w', encoding='utf8'), ensure_ascii=False, indent=0)
     ts = os.path.join(HERE, '..', '..', 'client', 'src', 'ui', 'emojiIcons.ts')
     with open(ts, 'w', encoding='utf8') as fh:
@@ -165,7 +164,9 @@ def main():
     # Grids for Aseprite: one Lua grid per icon (palette + rows, for the MCP's paint_grid)
     # and one script that paints the whole sheet (Aseprite: File › Scripts › Open Scripts Folder).
     gdir = os.path.join(HERE, 'ui_grids')
-    os.makedirs(gdir, exist_ok=True)
+    grids = '--grids' in sys.argv
+    if grids:
+        os.makedirs(gdir, exist_ok=True)
     chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     lua_cells = []
     for i, (name, g) in enumerate(cells):
@@ -185,8 +186,9 @@ def main():
         pal_s = ', '.join(f'["{ch}"] = "{col}"' for col, ch in pal.items())
         rows_s = ',\n    '.join(f'"{r}"' for r in rows)
         body = f'{{\n  name = "{name}", x = {(i % COLS) * N}, y = {(i // COLS) * N},\n  palette = {{ {pal_s} }},\n  rows = {{\n    {rows_s}\n  }}\n}}'
-        with open(os.path.join(gdir, f'{name}.lua'), 'w') as fh:
-            fh.write('return ' + body + '\n')
+        if grids:
+            with open(os.path.join(gdir, f'{name}.lua'), 'w') as fh:
+                fh.write('return ' + body + '\n')
         lua_cells.append(body)
     with open(os.path.join(HERE, 'ui_icons_paint.lua'), 'w', encoding='utf8') as fh:
         fh.write('-- Paints every UI icon into one sheet (ui_icons.ase): run it in Aseprite.\n')

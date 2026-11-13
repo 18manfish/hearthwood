@@ -86,7 +86,10 @@ export function devCommand(game: Game, s: Session, cmd: DevCommand, args: string
     }
     case 'finish':
       if (!room) return;
-      for (const b of room.buildings.values()) if (b.completeAt > Date.now()) b.completeAt = Date.now() - 1;
+      for (const b of room.buildings.values()) {
+        if (b.completeAt > Date.now()) b.completeAt = Date.now() - 1;
+        if (b.upgrade && b.upgrade.at > Date.now()) b.upgrade.at = Date.now() - 1;
+      }
       for (const o of room.objects.values()) if (o.growAt) o.growAt = Date.now() - 1;
       room.slowTick(Date.now());
       reply('Construction and growth finished.');

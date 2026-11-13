@@ -107,6 +107,29 @@ export async function run(ctx: Ctx) {
       check(bought.ok, `bought a sapling at the counter ${bought.err ?? ''}`);
     }
     await exitTo(A);
+
+    // Buildings grow with the island: order the tool store's next tier at the Town Hall.
+    check(/Town Hall/.test((await A.act({ k: 'upgrade', id: store.id })).err ?? ''), 'upgrades are ordered at the Town Hall counter');
+    await A.chat('/kit');
+    A.send({ t: 'dev', cmd: 'coins', args: ['100000'] });
+    await sleep(300);
+    const hallIn = await enterAndBack(A, hall);
+    const c = hallIn?.buildings.find((x) => x.type === 'counter');
+    if (c) {
+      await A.walkTo(c.x, c.z + 1, false);
+      const r = await A.act({ k: 'upgrade', id: store.id });
+      check(r.ok, `tool store upgrade ordered ${r.err ?? ''}`);
+      const q = await A.wait('quest', (m) => !!m.q.upgrades?.some((u) => u.id === store.id && u.upgrade?.level === 2)).catch(() => null);
+      check(!!q, 'the Town Hall lists the island’s buildings and the upgrade under way');
+      const again = await A.act({ k: 'upgrade', id: store.id });
+      check(!again.ok && /already/.test(again.err ?? ''), 'one upgrade at a time');
+    } else check(false, 'found the Town Hall counter');
+    await exitTo(A);
+    await A.chat('/finish');
+    const up = await A.wait('bAdd', (m) => m.b.some((b) => b.id === store.id && b.level === 2)).catch(() => null);
+    check(!!up, 'the tool store is now tier 2');
+    const tentB = A.room.buildings.find((b) => b.type === 'tent');
+    if (tentB) check(!(await A.act({ k: 'upgrade', id: tentB.id })).ok, 'a tent has no tiers');
   }
   Object.assign(ctx, { vAdd, vid });
 }

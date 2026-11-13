@@ -14,6 +14,7 @@ sys.path.insert(0, HERE)
 
 import ambient_fish  # noqa: E402
 import birds  # noqa: E402
+import buildings  # noqa: E402
 import boho  # noqa: E402
 import cottage  # noqa: E402
 import fish  # noqa: E402
@@ -102,6 +103,7 @@ def main():
         'placeables': placeables.build(),
         'ambient_fish': build_ambient(),
         'furniture_boho': boho.build(),
+        'buildings': buildings.build(),
         'furniture_cottage': cottage.build(),
     }
     for name, models in jobs.items():

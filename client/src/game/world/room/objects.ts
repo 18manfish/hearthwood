@@ -2,7 +2,7 @@
 // (swaying lamps, flags, smoke…).
 
 import * as THREE from 'three';
-import { baseHeight, BIOMES, BIRD_BY_ID, type Building, CLIFF, houseLevel, ITEMS, Tile, TREES, type WorldObject } from '@hearthwood/shared';
+import { baseHeight, BIOMES, BIRD_BY_ID, type Building, CLIFF, buildingLevel, ITEMS, tiersOf, Tile, TREES, type WorldObject } from '@hearthwood/shared';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { animateRig, makeVillager, type Rig } from '../../characters.ts';
@@ -39,7 +39,7 @@ function shadowY(self: World, o: WorldObject) {
 
 /** Changes whenever a house looks different (new tier, scaffolding up or down). */
 function houseKey(b: Building, now: number) {
-  return `${houseLevel(b, now)}${b.upgrade && b.upgrade.at > now ? '+' : ''}`;
+  return `${buildingLevel(b, now)}${b.upgrade && b.upgrade.at > now ? '+' : ''}`;
 }
 
 export function upsertBuildingMesh(self: World, b: Building) {
@@ -51,7 +51,7 @@ export function upsertBuildingMesh(self: World, b: Building) {
   const y = b.type === 'dock' ? 0 : self.room?.kind === 'interior' ? baseHeight(Tile.Floor) : baseHeight(Tile.Ground) + (self.grid?.level(b.x, b.z) ?? 0) * CLIFF;
   mesh.position.set(b.x + b.w / 2, y, b.z + b.h / 2);
   mesh.userData.done = b.completeAt <= net.serverNow();
-  if (b.type === 'cabin') mesh.userData.house = houseKey(b, net.serverNow());
+  if (tiersOf(b.type).length) mesh.userData.house = houseKey(b, net.serverNow());
   // Someone to serve you behind every counter.
   if (b.type === 'counter') {
     const keeper = makeVillager(shopkeeper(b.role));
@@ -133,6 +133,6 @@ export function animateProps(self: World, t: number) {
   for (const [id, mesh] of self.bldMeshes) {
     const b = self.buildings.get(id);
     if (b && !mesh.userData.done && b.completeAt <= now) upsertBuildingMesh(self, b);
-    else if (b?.type === 'cabin' && mesh.userData.house !== houseKey(b, now)) upsertBuildingMesh(self, b);
+    else if (b && mesh.userData.house !== undefined && mesh.userData.house !== houseKey(b, now)) upsertBuildingMesh(self, b);
   }
 }

@@ -1,7 +1,7 @@
 // Progress: quests and chapters, buildings finishing, villager friendship levels.
 
 import {
-  type Building, BUILDINGS, chapterDone, HOUSE_TIERS, houseLevel, CHAPTERS, friendshipLevel, goalDone, hashString, ITEMS, type ProgressInput, type QuestView, Rng, villagerDef, VILLAGERS,
+  type Building, BUILDINGS, chapterDone, tiersOf, buildingTier, CHAPTERS, friendshipLevel, goalDone, hashString, ITEMS, type ProgressInput, type QuestView, Rng, villagerDef, VILLAGERS,
 } from '@hearthwood/shared';
 import { logger } from '../../log.ts';
 import { Room } from '../Room.ts';
@@ -25,15 +25,17 @@ export function afterAction(game: Game, s: Session, kind: string) {
 
 /** A finished house upgrade: tell the owner, refresh their upgrade panel. */
 export function houseUpgraded(game: Game, room: Room, b: Building) {
-  const ownerId = b.ownerId ?? room.ownerId;
-  const tier = HOUSE_TIERS[houseLevel(b, Date.now()) - 1];
-  log.info('house upgraded', { island: room.id, building: b.id, level: b.level });
+  const ownerId = b.type === 'cabin' ? b.ownerId ?? room.ownerId : room.ownerId;
+  const tier = buildingTier(b, Date.now());
+  log.info('building upgraded', { island: room.id, building: b.id, type: b.type, level: b.level });
   game.store.markIsland(room.id);
   const s = ownerId ? game.online.get(ownerId) : undefined;
-  if (s) {
-    s.send({ t: 'toast', text: `${tier.icon} Your ${tier.name} is finished!`, kind: 'good' });
+  if (s && tier) {
+    const whose = b.type === 'villager_house' && b.villagerId ? `${villagerDef(b.villagerId)?.name ?? 'Your villager'}’s` : 'Your';
+    s.send({ t: 'toast', text: `${tier.icon} ${whose} ${tier.name} is finished!`, kind: 'good' });
     sendQuest(game, s);
   }
+  if (b.type !== 'cabin') room.broadcast({ t: 'chat', from: '', name: '', text: `🏗️ The builders are done: there's a new ${tier?.name ?? BUILDINGS[b.type].name} on the island!`, sys: true });
 }
 
 /** A player's own Starter House on an island room. */
@@ -114,5 +116,10 @@ export function sendQuest(game: Game, s: Session) {
   const isl = s.room?.kind === 'island' ? s.room : s.room?.interior ? game.rooms.get(s.room.interior.parentId) : undefined;
   const house = isl && isl.ownsHere(p.id) ? ownHouse(isl, p.id) : undefined;
   if (house && house.completeAt <= Date.now()) q.house = { level: house.level ?? 1, upgrade: house.upgrade };
+  if (isl && isl.isOwner(p.id)) {
+    q.upgrades = [...isl.buildings.values()]
+      .filter((b) => b.type !== 'cabin' && tiersOf(b.type).length && b.completeAt <= Date.now())
+      .map((b) => ({ id: b.id, type: b.type, level: b.level ?? 1, upgrade: b.upgrade, villagerId: b.villagerId }));
+  }
   s.send({ t: 'quest', q });
 }

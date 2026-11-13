@@ -12,7 +12,7 @@ import { bentDepth } from '../bend.ts';
 import { mat } from '../models/primitives.ts';
 import { loadGlb } from './glb.ts';
 
-export const KIT_FILES = ['birds', 'fish', 'plants', 'placeables', 'ambient_fish', 'furniture_boho', 'furniture_cottage', 'fish_school'] as const;
+export const KIT_FILES = ['birds', 'fish', 'plants', 'placeables', 'ambient_fish', 'furniture_boho', 'furniture_cottage', 'fish_school', 'buildings'] as const;
 
 /** Roles that glow (emissive) instead of just being coloured. */
 const GLOW = new Set(['glow', 'glow_spot', 'glass', 'candle']);
@@ -43,6 +43,8 @@ export function loadKitAssets(base = '/models/'): Promise<void> {
 
 /** The material a kit part is drawn with: the game's shared, bent material for its colour. */
 export function kitMaterial(role: string, color: string): THREE.Material {
+  // Window glass shares the game's window material, which lights up at night (environment.ts).
+  if (role === 'glass') return mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 });
   return GLOW.has(role) ? mat(color, { emissive: color, ei: role === 'glass' ? 0.35 : 0.9, rough: 0.3 }) : mat(color);
 }
 

@@ -163,20 +163,7 @@ function fixture(type: BuildingType, name: string, icon: string, w: number, h: n
 // and a bigger interior at every tier. Upgrades are ordered at the Town Hall
 // and the house stays usable while the builders work.
 
-export interface HouseTier {
-  level: number;
-  name: string;
-  icon: string;
-  description: string;
-  /** Upgrade price to reach this tier (tier 1 is the normal build cost). */
-  cost: Record<string, number>;
-  coins: number;
-  requires: BuildingType[];
-  minDay: number;
-  buildMinutes: number;
-  /** Interior side length in tiles. */
-  interior: number;
-}
+export type HouseTier = BuildingTier;
 
 export const HOUSE_TIERS: HouseTier[] = [
   {
@@ -202,6 +189,101 @@ export function houseLevel(b: { level?: number; upgrade?: { level: number; at: n
 
 export function houseTier(b: { level?: number; upgrade?: { level: number; at: number } }, now: number): HouseTier {
   return HOUSE_TIERS[houseLevel(b, now) - 1];
+}
+
+// ── Tiers for the other buildings ──────────────────────────────────────────
+// The Town Hall and the shops grow with the island in three tiers, villager
+// houses in two (models: art/kit/buildings.py → buildings.glb, `bld_<type>_<tier>`).
+// Like the Starter House they are upgraded in place from the Town Hall counter,
+// and stay open while the builders work. Bigger tiers need an older island and
+// more villagers.
+
+export interface BuildingTier {
+  level: number;
+  name: string;
+  icon: string;
+  description: string;
+  /** Upgrade price to reach this tier (tier 1 is the normal build cost). */
+  cost: Record<string, number>;
+  coins: number;
+  requires: BuildingType[];
+  minDay: number;
+  /** Villagers living on the island. */
+  minVillagers?: number;
+  buildMinutes: number;
+  /** Interior side length (Starter House only). */
+  interior?: number;
+}
+
+const shopTiers = (name: string, icon: string, t1: string, t2: string, t3: string): BuildingTier[] => [
+  { level: 1, name: `${name} Booth`, icon, description: t1, cost: {}, coins: 0, requires: [], minDay: 31, buildMinutes: 240 },
+  {
+    level: 2, name: name, icon, description: t2,
+    cost: { wood: 60, stone: 50, clay: 20, iron_ore: 6 }, coins: 12000, requires: ['town_hall'], minDay: 40, minVillagers: 4, buildMinutes: 300,
+  },
+  {
+    level: 3, name: `Grand ${name}`, icon, description: t3,
+    cost: { wood: 80, stone: 140, clay: 40, iron_ore: 20, sea_glass: 6 }, coins: 45000, requires: ['town_hall'], minDay: 60, minVillagers: 6, buildMinutes: 480,
+  },
+];
+
+export const BUILDING_TIERS: Partial<Record<BuildingType, BuildingTier[]>> = {
+  cabin: HOUSE_TIERS,
+  town_hall: [
+    { level: 1, name: 'Village Hall', icon: '🏛️', description: 'A long timber hall with a bell turret, a notice board and a flag.', cost: {}, coins: 0, requires: [], minDay: 7, buildMinutes: 360 },
+    {
+      level: 2, name: 'Town Hall', icon: '🏛️', description: 'Brick with stone dressings, a clock over the doors, a bell tower and two flags.',
+      cost: { wood: 80, stone: 90, clay: 40, iron_ore: 10 }, coins: 15000, requires: [], minDay: 21, minVillagers: 3, buildMinutes: 360,
+    },
+    {
+      level: 3, name: 'Grand Town Hall', icon: '🏛️', description: 'A columned portico, a copper dome with a gilded clock lantern, banners and a fountain.',
+      cost: { wood: 100, stone: 220, clay: 60, iron_ore: 30, sea_glass: 10, pearl: 3 }, coins: 60000, requires: ['restaurant'], minDay: 60, minVillagers: 7, buildMinutes: 600,
+    },
+  ],
+  villager_house: [
+    { level: 1, name: 'Cottage', icon: '🏡', description: 'A cosy cottage in its villager’s colours.', cost: {}, coins: 0, requires: [], minDay: 7, buildMinutes: 180 },
+    {
+      level: 2, name: 'Two-storey Cottage', icon: '🏡', description: 'A stone ground floor, a timber-framed upper floor, a porch, a dormer and a little garden.',
+      cost: { wood: 50, stone: 40, clay: 15 }, coins: 9000, requires: [], minDay: 21, minVillagers: 3, buildMinutes: 240,
+    },
+  ],
+  travel_agent: shopTiers('Travel Agent', '✈️',
+    'A timber booth with a striped awning, suitcases and a map board out front.',
+    'A proper shop: display windows, a globe-and-plane sign and the next trips on the board.',
+    'A two-storey travel bureau with a golden globe on the roof and a hot-air balloon tethered behind.'),
+  clothing_shop: shopTiers('Clothing Shop', '👕',
+    'A timber booth with a clothes rack and a dressed mannequin.',
+    'A boutique with mannequins in the windows and a T-shirt sign over the door.',
+    'A two-storey fashion house with a big glass front full of mannequins.'),
+  restaurant: shopTiers('Restaurant', '🍽️',
+    'A little kitchen booth with a café table and a menu board.',
+    'A bistro with parasols on the terrace and a chef’s-hat sign.',
+    'A two-storey restaurant with a terrace, a big oven chimney and a golden sign.'),
+  tool_store: shopTiers('Tool Store', '🧰',
+    'A timber shed with a barrel of tools and a pile of logs.',
+    'A workshop with an anvil out front and crossed axe and shovel over the door.',
+    'A two-storey hardware store with the tools in gold on the roof.'),
+  furniture_store: shopTiers('Furniture Store', '🛋️',
+    'A timber booth with an armchair and a side table on show.',
+    'A showroom with furniture in the windows and an armchair sign.',
+    'A two-storey furniture house, its windows furnished like little rooms.'),
+};
+
+/** Tiers a building type has (none: it never changes). */
+export function tiersOf(type: BuildingType): BuildingTier[] {
+  return BUILDING_TIERS[type] ?? [];
+}
+
+/** The tier a building shows right now (finished upgrades count); 1 for buildings without tiers. */
+export function buildingLevel(b: { type: BuildingType; level?: number; upgrade?: { level: number; at: number } }, now: number): number {
+  const max = Math.max(1, tiersOf(b.type).length);
+  const lvl = b.upgrade && b.upgrade.at <= now ? b.upgrade.level : b.level ?? 1;
+  return Math.max(1, Math.min(max, lvl));
+}
+
+/** The tier info a building has right now (undefined: no tiers). */
+export function buildingTier(b: { type: BuildingType; level?: number; upgrade?: { level: number; at: number } }, now: number): BuildingTier | undefined {
+  return tiersOf(b.type)[buildingLevel(b, now) - 1];
 }
 
 /** Buildings you can walk into. */

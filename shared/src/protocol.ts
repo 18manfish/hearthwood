@@ -108,7 +108,8 @@ export const actionParser = s.union('k', {
   bottle: s.obj({ k: s.lit('bottle'), text: s.str(1, BOTTLE_MAX_CHARS) }),
   permit: s.obj({ k: s.lit('permit'), id: s.guard(isPermit, 'permit') }),
   relocate: s.obj({ k: s.lit('relocate'), id, x: tileCoord, z: tileCoord }),
-  upgrade: s.obj({ k: s.lit('upgrade') }),
+  /** Order the next tier of a building (no id: your own Starter House). */
+  upgrade: s.obj({ k: s.lit('upgrade'), id: s.opt(id) }),
   terra: s.obj({ k: s.lit('terra'), op: s.oneOf(TERRA_OPS), x: tileCoord, z: tileCoord, dir: s.opt(s.int(-1, 3)) }),
 });
 export type Action = ReturnType<typeof actionParser>;
@@ -319,6 +320,8 @@ export interface QuestView {
   villagers: number;
   /** Your own Starter House on the island you live on (for the upgrade panel). */
   house?: { level: number; upgrade?: { level: number; at: number } };
+  /** Island owner: the island's buildings that have tiers (for the Town Hall's upgrade list). */
+  upgrades?: { id: string; type: BuildingType; level: number; upgrade?: { level: number; at: number }; villagerId?: string }[];
 }
 
 export interface MapIsland {

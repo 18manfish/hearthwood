@@ -1,7 +1,7 @@
 // Crafting, permits, shopping and selling, clothes and hairstyles.
 
 import {
-  BUILDINGS, equip, HAIR_STYLES, outfitOf, type Outfit, type WearSlot, HOUSE_TIERS, houseLevel, ITEMS, PERMIT_BY_ID, RECIPES, SHOP_STOCK,
+  BUILDINGS, equip, HAIR_STYLES, outfitOf, type Outfit, type WearSlot, buildingLevel, ITEMS, tiersOf, PERMIT_BY_ID, RECIPES, SHOP_STOCK,
 } from '@hearthwood/shared';
 import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
@@ -34,23 +34,31 @@ export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'upgrade' | 'b
     ctx.p.crafted[r.output] = (ctx.p.crafted[r.output] ?? 0) + r.qty * times;
     return { ok: true, gained, msg: `Made ${outDef.name}${times * r.qty > 1 ? ` ×${times * r.qty}` : ''}!` };
   },
-  upgrade(ctx) {
-    if (!nearCompleted(ctx, ['town_hall'])) return fail('House upgrades are ordered at the Town Hall counter.');
+  upgrade(ctx, a) {
+    if (!nearCompleted(ctx, ['town_hall'])) return fail('Upgrades are ordered at the Town Hall counter.');
     const island = ctx.room.interior ? ctx.game.rooms.get(ctx.room.interior.parentId) : ctx.room;
     if (!island || island.kind !== 'island' || !island.ownsHere(ctx.p.id)) return fail('Order upgrades at the Town Hall of the island you live on.');
-    const house = ownHouse(island, ctx.p.id);
-    if (!house || house.completeAt > ctx.now) return fail('Build your Starter House first.');
-    if (house.upgrade && house.upgrade.at > ctx.now) return fail('The builders are already working on your house.');
-    const cur = houseLevel(house, ctx.now);
+    // Your own house (any resident), or any building of the island (the owner).
+    const house = a.id ? island.buildings.get(a.id) : ownHouse(island, ctx.p.id);
+    if (!house) return fail(a.id ? 'That building isn’t there any more.' : 'Build your Starter House first.');
+    const mine = house.type === 'cabin' && (house.ownerId ?? island.ownerId) === ctx.p.id;
+    if (!mine && !island.isOwner(ctx.p.id)) return fail('Only the island’s owner can upgrade that.');
+    const tiers = tiersOf(house.type);
+    if (!tiers.length) return fail('That building can’t be upgraded.');
+    if (house.completeAt > ctx.now) return fail('Let the builders finish it first.');
+    if (house.upgrade && house.upgrade.at > ctx.now) return fail('The builders are already working on it.');
+    const cur = buildingLevel(house, ctx.now);
     if (house.upgrade) {
       house.level = cur;
       delete house.upgrade;
     }
-    const next = HOUSE_TIERS[cur];
-    if (!next) return fail('Your house is as grand as it gets!');
+    const next = tiers[cur];
+    if (!next) return fail('It’s as grand as it gets!');
     for (const req of next.requires) if (island.completedCount(req, ctx.now) < 1) return fail(`Requires a finished ${BUILDINGS[req].name}.`);
     const day = island.islandDay(ctx.now);
     if (!config.ignoreDayGates && day < next.minDay) return fail(`The ${next.name} unlocks on island day ${next.minDay} (today is day ${day}).`);
+    const villagers = island.record?.villagers.length ?? 0;
+    if (!config.ignoreDayGates && villagers < (next.minVillagers ?? 0)) return fail(`The ${next.name} needs ${next.minVillagers} villagers on the island (${villagers} so far).`);
     if (ctx.p.coins < next.coins) return fail(`The ${next.name} costs ${next.coins.toLocaleString()} coins.`);
     if (!inv.removeAll(ctx.p, next.cost)) return fail('Not enough materials.');
     ctx.p.coins -= next.coins;
@@ -60,9 +68,10 @@ export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'upgrade' | 'b
     ctx.game.store.markIsland(island.id);
     ctx.game.sendSelf(ctx.s);
     ctx.game.sendQuest(ctx.s);
-    log.info('house upgrade ordered', { player: ctx.p.id, island: island.id, level: next.level });
+    log.info('upgrade ordered', { player: ctx.p.id, island: island.id, building: house.type, level: next.level });
     const mins = Math.round(next.buildMinutes / config.timeFactor);
-    return { ok: true, msg: `🏗️ Upgrading to the ${next.name}! Ready in about ${mins >= 60 ? `${Math.round(mins / 60)}h` : `${Math.max(1, mins)} min`} – you can keep living in it meanwhile.` };
+    const meanwhile = house.type === 'cabin' ? 'you can keep living in it meanwhile' : 'it stays open meanwhile';
+    return { ok: true, msg: `🏗️ Upgrading to the ${next.name}! Ready in about ${mins >= 60 ? `${Math.round(mins / 60)}h` : `${Math.max(1, mins)} min`} – ${meanwhile}.` };
   },
   permit(ctx, a) {
     const def = PERMIT_BY_ID[a.id];

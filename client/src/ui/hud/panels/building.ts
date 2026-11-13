@@ -1,6 +1,6 @@
 // Counters inside buildings: town hall services, shops and their stock.
 
-import { type Building, BUILDINGS, type BuildingType, ENTERABLE, equip, outfitOf, type Outfit, HOUSE_TIERS, houseLevel, ITEMS, type Look, MAX_HOUSE_LEVEL, MYSTERY_TOUR_COST, PERMITS, SHOP_STOCK } from '@hearthwood/shared';
+import { type Building, BUILDINGS, type BuildingType, ENTERABLE, buildingLevel, equip, outfitOf, type Outfit, ITEMS, type Look, tiersOf, villagerDef, MYSTERY_TOUR_COST, PERMITS, SHOP_STOCK } from '@hearthwood/shared';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { lookEditor, Preview } from '../../creator.ts';
@@ -54,6 +54,7 @@ export function openBuilding(hud: Hud, bld: Building) {
           const vs = state.quest?.villagers ?? 0;
           b.append(h('p', {}, `Welcome, mayor! ${vs}/7 villagers live here.`));
           houseUpgrade(hud, b);
+          islandUpgrades(hud, b);
           b.append(h('h3', {}, '📜 Permits'));
           const pg = h('div', { class: 'grid' });
           for (const pm of PERMITS) {
@@ -146,33 +147,60 @@ function houseUpgrade(hud: Hud, b: HTMLElement) {
     b.append(h('p', { class: 'muted' }, 'Build your Starter House first – then the builders here can make it grander.'));
     return;
   }
-  const now = net.serverNow();
-  const level = houseLevel(house, now);
-  const cur = HOUSE_TIERS[level - 1];
-  const box = h('div', { class: 'tile', style: 'text-align:left' },
-    h('div', { class: 'row' }, h('span', { class: 'ico' }, cur.icon), h('div', {}, h('div', { class: 'nm' }, `${cur.name} · tier ${level} of ${MAX_HOUSE_LEVEL}`), h('div', { class: 'muted' }, cur.description))));
-  b.append(box);
-  if (house.upgrade && house.upgrade.at > now) {
-    const next = HOUSE_TIERS[house.upgrade.level - 1];
-    const mins = Math.ceil((house.upgrade.at - now) / 60000);
-    box.append(h('p', {}, `🏗️ Becoming the ${next.name} – ready in ${mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`}.`));
-    return;
+  b.append(tierCard(hud, 'cabin', house, undefined, 'you can keep living there meanwhile'));
+}
+
+/** Town Hall (owner): every building that can grow with the island, and its next tier. */
+function islandUpgrades(hud: Hud, b: HTMLElement) {
+  const list = state.quest?.upgrades ?? [];
+  if (!list.length) return;
+  b.append(h('h3', {}, '🏗️ Island buildings'), h('p', { class: 'muted', style: 'margin-top:0' }, 'As the island grows, the builders can make its buildings grander. They stay open while the work goes on.'));
+  const order = (t: BuildingType) => ['town_hall', 'travel_agent', 'clothing_shop', 'restaurant', 'tool_store', 'furniture_store', 'villager_house'].indexOf(t);
+  const grid = h('div', { class: 'grid', style: 'grid-template-columns:repeat(auto-fill,minmax(300px,1fr))' });
+  for (const u of [...list].sort((p, q) => order(p.type) - order(q.type))) {
+    const who = u.type === 'villager_house' && u.villagerId ? `${villagerDef(u.villagerId)?.name ?? 'A villager'}’s house` : undefined;
+    grid.append(tierCard(hud, u.type, u, u.id, 'it stays open meanwhile', who));
   }
-  const next = HOUSE_TIERS[level];
+  b.append(grid);
+}
+
+/** One building's tier and what the next one needs, with the upgrade button. */
+function tierCard(hud: Hud, type: BuildingType, cur: { level: number; upgrade?: { level: number; at: number } }, id: string | undefined, meanwhile: string, label?: string) {
+  const tiers = tiersOf(type);
+  const now = net.serverNow();
+  const level = buildingLevel({ type, ...cur }, now);
+  const tier = tiers[level - 1];
+  const box = h('div', { class: 'tile', style: 'text-align:left' },
+    h('div', { class: 'row' }, h('span', { class: 'ico' }, tier.icon),
+      h('div', {}, h('div', { class: 'nm' }, `${label ? `${label} · ` : ''}${tier.name} · tier ${level} of ${tiers.length}`), h('div', { class: 'muted' }, tier.description))));
+  if (cur.upgrade && cur.upgrade.at > now) {
+    const next = tiers[cur.upgrade.level - 1];
+    const mins = Math.ceil((cur.upgrade.at - now) / 60000);
+    box.append(h('p', {}, `🏗️ Becoming the ${next.name} – ready in ${mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins} min`}.`));
+    return box;
+  }
+  const next = tiers[level];
   if (!next) {
-    box.append(h('p', {}, '✨ The grandest house on the island!'));
-    return;
+    box.append(h('p', {}, '✨ As grand as it gets!'));
+    return box;
   }
   const day = state.quest?.islandDay ?? 1;
+  const villagers = state.quest?.villagers ?? 0;
   // Upgrades are ordered here, so the Town Hall requirement is met; the server checks the rest.
-  const missing = day < next.minDay ? [`island day ${next.minDay}`] : [];
-  const enough = Object.entries(next.cost).every(([id, n]) => have(id) >= n) && state.coins >= next.coins;
+  const missing = [
+    ...(day < next.minDay ? [`island day ${next.minDay}`] : []),
+    ...(villagers < (next.minVillagers ?? 0) ? [`${next.minVillagers} villagers`] : []),
+    ...next.requires.filter((r) => r !== 'town_hall').map((r) => `a ${BUILDINGS[r].name}`),
+  ];
+  const enough = Object.entries(next.cost).every(([i, n]) => have(i) >= n) && state.coins >= next.coins;
+  const size = next.interior ? ` · bigger interior (${next.interior}×${next.interior})` : '';
   box.append(
     h('p', { style: 'margin:10px 0 4px' }, h('b', {}, `Next: ${next.icon} ${next.name}`), h('br'), h('span', { class: 'muted' }, next.description)),
-    h('div', { class: 'row', style: 'gap:6px;margin:6px 0' },
+    h('div', { class: 'row', style: 'gap:6px;margin:6px 0;flex-wrap:wrap' },
       h('span', { class: `pill${state.coins >= next.coins ? ' ok' : ' no'}` }, `🪙 ${next.coins.toLocaleString()}`),
-      Object.entries(next.cost).map(([id, n]) => h('span', { class: `pill${have(id) >= n ? ' ok' : ' no'}`, title: ITEMS[id]?.name ?? id }, `${ITEMS[id]?.icon ?? ''} ${have(id)}/${n}`))),
-    h('div', { class: 'muted' }, `Takes about ${next.buildMinutes >= 60 ? `${Math.round(next.buildMinutes / 60)}h` : `${next.buildMinutes} min`} · bigger interior (${next.interior}×${next.interior}) · you can keep living there meanwhile.`),
+      Object.entries(next.cost).map(([i, n]) => h('span', { class: `pill${have(i) >= n ? ' ok' : ' no'}`, title: ITEMS[i]?.name ?? i }, `${ITEMS[i]?.icon ?? ''} ${have(i)}/${n}`))),
+    h('div', { class: 'muted' }, `Takes about ${next.buildMinutes >= 60 ? `${Math.round(next.buildMinutes / 60)}h` : `${next.buildMinutes} min`}${size} · ${meanwhile}.`),
     missing.length ? h('p', { class: 'muted' }, `Unlocks with ${missing.join(' and ')}.`) : '',
-    h('button', { class: 'btn', style: 'margin-top:8px', disabled: !enough || missing.length > 0, onclick: () => { if (confirm(`Upgrade to the ${next.name}?`)) hud.act({ k: 'upgrade' }); } }, `⬆️ Upgrade to ${next.name}`));
+    h('button', { class: 'btn', style: 'margin-top:8px', disabled: !enough || missing.length > 0, onclick: () => { if (confirm(`Upgrade to the ${next.name}?`)) hud.act(id ? { k: 'upgrade', id } : { k: 'upgrade' }); } }, `⬆️ Upgrade to ${next.name}`));
+  return box;
 }

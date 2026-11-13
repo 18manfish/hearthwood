@@ -1,7 +1,8 @@
 // Buildings: tents, cabins, shops, the town hall, bridges, docks… built from primitives.
 
 import * as THREE from 'three';
-import { type Building, BUILDINGS, hashString, houseLevel } from '@hearthwood/shared';
+import { type Building, buildingLevel, BUILDINGS, hashString, houseLevel, tiersOf } from '@hearthwood/shared';
+import { kitModel } from '../assets/kit.ts';
 import { gltfHouse } from '../houseAssets.ts';
 import { bend } from '../bend.ts';
 import { emojiSprite } from './furniture.ts';
@@ -36,6 +37,16 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
     g.add(part('box', mat('#ffffff', { opacity: 0.25 }), ww * 0.9, 1.2, dd * 0.9, 0, 0.7, 0, false));
     g.add(part('box', '#a0703f', 0.5, 0.25, 0.3, ww / 3, 0.15, dd / 3));
     return g;
+  }
+  // Town Hall, shops and villager houses: the kit model of their current tier.
+  if (b.type !== 'cabin' && tiersOf(b.type).length) {
+    const level = buildingLevel(b, now);
+    const model = kitBuilding(b, level);
+    if (model) {
+      g.add(model);
+      if (b.upgrade && b.upgrade.at > now) scaffolding(g, b.w, b.h, level);
+      return g;
+    }
   }
   switch (b.type) {
     case 'bridge_ns':
@@ -282,6 +293,25 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
     }
   }
   return g;
+}
+
+const ROOFS = ['#6aa84f', '#e67e22', '#3d6fb6', '#c2185b', '#8e5a3c', '#16a085', '#f1c40f'];
+const WALLS = ['#f3d9b1', '#f6e7c8', '#e9d5c0', '#f2dfd6', '#e3ead2', '#dfe8ef', '#f4e4b8'];
+
+/** Kit model `bld_<type>_<tier>`; villager houses get their own roof and wall colours. */
+function kitBuilding(b: Building, level: number): THREE.Object3D | null {
+  const h = hashString(b.id);
+  const roof = ROOFS[h % ROOFS.length];
+  const wall = WALLS[Math.floor(h / 7) % WALLS.length];
+  const recolor = b.type === 'villager_house'
+    ? (role: string) => (role === 'vroof' ? mat(roof) : role === 'vroof_dark' ? mat(shade(roof, 0.8)) : role === 'vwall' ? mat(wall) : null)
+    : undefined;
+  return kitModel(`bld_${b.type}_${level}`, recolor);
+}
+
+function shade(hex: string, f: number) {
+  const c = new THREE.Color(hex).multiplyScalar(f);
+  return `#${c.getHexString()}`;
 }
 
 /** Fallback Starter House tiers when house.glb isn't available. */

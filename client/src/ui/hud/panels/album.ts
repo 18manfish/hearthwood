@@ -4,7 +4,7 @@ import { BIRDS, FISH } from '@hearthwood/shared';
 import { state } from '../../../state.ts';
 import { h } from '../../dom.ts';
 import { BIOME_ICON } from '../../map.ts';
-import { SEASON_ICON } from '../common.ts';
+import { itemIcon, SEASON_ICON } from '../common.ts';
 import type { Hud } from '../../hud.ts';
 
 export function albumPanel(hud: Hud, b: HTMLElement) {
@@ -23,7 +23,7 @@ export function albumPanel(hud: Hud, b: HTMLElement) {
   for (const en of entries) {
     const got = !!en.e;
     grid.append(h('div', { class: `tile${got ? '' : ' unknown'}` },
-      h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'ico' }, got ? en.icon : '❔'), got ? h('b', {}, `×${en.e!.n}`) : null),
+      h('div', { class: 'row', style: 'justify-content:space-between' }, got ? itemIcon(en.id) : h('span', { class: 'ico' }, '❔'), got ? h('b', {}, `×${en.e!.n}`) : null),
       h('div', { class: 'nm' }, got ? en.name : '???'),
       h('div', { class: 'muted' }, got ? `First caught ${new Date(en.e!.first).toLocaleDateString()} ${BIOME_ICON[en.e!.biome as keyof typeof BIOME_ICON] ?? ''} · sells for ${en.sell}` : en.hint)));
   }

@@ -43,6 +43,16 @@ go here instead of being fixed inline (plan §3 rule 8, §10 decision 4).
 - **`store.ts` was not split** (plan step 2.6 said only if natural; at 440 lines it is one
   cohesive SQLite wrapper).
 
+- **Client geometry still uses `THREE.Color` / `THREE.Vector3`** (plan step 3.1 asked for no
+  three.js import in `terrain/`). They are plain maths classes with no renderer behind them;
+  porting colour maths (`offsetHSL`) by hand risked tiny colour shifts the goldens could not
+  vouch for against real three.js. The mesh/material code is out of the geometry modules, and
+  `buildTerrainGeometry` returns plain arrays.
+- **`World` parts are functions taking the World (`self`)**, like the server services. World's
+  fields lost their `private` modifiers so the parts can reach them. `World.ts` is 377 lines
+  (plan target ≤ 300): the remaining bulk is field declarations, `load`/`clearRoom`, the frame
+  loop and one-line delegates for main.ts and the HUD.
+
 ## Open questions / bugs found
 
 - **Flaky server test (pre-existing):** islands get a random seed, and on crowded ones the test

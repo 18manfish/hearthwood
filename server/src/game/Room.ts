@@ -3,28 +3,17 @@
 // receive each other's updates (interest management).
 
 import {
-  BIOMES, TREES, Grid, generateHarbor, villagerAtHome, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, findFreeSpot, applyTerrainAndWater, classifyWater, type TerrainChange, DIRS, BIRDS, BIRD_BY_ID, birdsFor, washupsFor,
-  Rng, hashMany, Tile, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView,
-  type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
+  TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, applyTerrainAndWater, classifyWater, type TerrainChange, Rng, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
 import { config } from '../config.ts';
+import { beachTick, washUp, widenBeaches } from './room/beach.ts';
+import { birdTick, landBirdsNear } from './room/birds.ts';
+import { dailyRefresh, processRespawns, scheduleRespawn } from './room/growth.ts';
+import { round2, spawnVillager, villagerTick, type VillagerRuntime } from './room/villagers.ts';
 
 export type RoomKind = 'island' | 'shared' | 'tour' | 'interior';
-
-interface VillagerRuntime {
-  id: string;
-  houseId: string;
-  x: number;
-  z: number;
-  r: number;
-  tx: number;
-  tz: number;
-  idleUntil: number;
-  home: boolean;
-  dirty: boolean;
-}
 
 export interface RoomOptions {
   id: string;
@@ -45,9 +34,6 @@ export interface RoomOptions {
   /** Hand-designed shared locations. */
   design?: 'harbor' | 'aurora';
 }
-
-/** Version of the wide-beach migration for saved (terraformed) terrain. */
-const BEACH_VERSION = 4;
 
 export class Room {
   readonly id: string;
@@ -82,7 +68,7 @@ export class Room {
   emptySince = Date.now();
   dirty = false;
   /** Terrain was reshaped since load (so it gets saved). */
-  private terraformed = false;
+  terraformed = false;
   dayKey = '';
   /** Callbacks the game layer hooks into. */
   onBuildingComplete?: (room: Room, b: Building) => void;
@@ -119,7 +105,7 @@ export class Room {
       }
     }
     const paths = !o.interior && o.record?.paths && o.record.paths.length === this.layout.size * this.layout.size ? decodeTiles(o.record.paths) : this.layout.paths;
-    if (!o.interior && o.record && this.layout.beachBand) this.widenBeaches(o.record, this.layout.beachBand);
+    if (!o.interior && o.record && this.layout.beachBand) widenBeaches(this, o.record, this.layout.beachBand);
     this.grid = new Grid(this.layout.size, this.layout.tiles, this.layout.levels, this.layout.ramps, paths);
 
     let objs: WorldObject[];
@@ -144,29 +130,6 @@ export class Room {
     this.respawns = o.interior ? [] : o.record ? (o.record.respawns ??= []) : [];
 
     if (!o.interior) for (const v of o.record?.villagers ?? []) this.spawnVillager(v.defId, v.houseId);
-  }
-
-  /**
-   * Beaches got twice as wide (out into the old shallows). Generated terrain
-   * already has them; reshaped, saved terrain gets them once.
-   */
-  private widenBeaches(rec: IslandRecord, band: Uint8Array) {
-    const L = this.layout;
-    const v = rec.beach ?? 0;
-    if (rec.terrain && v < BEACH_VERSION) {
-      for (let i = 0; i < band.length; i++) {
-        const t = L.tiles[i];
-        if (band[i] && t === Tile.Sea) L.tiles[i] = band[i] === 2 ? Tile.River : Tile.Shore;
-        // Version 2 fanned river mouths out along the beach; now they run straight to the sea.
-        else if (v === 2 && band[i] === 1 && t === Tile.River) L.tiles[i] = Tile.Shore;
-        else if (v === 2 && band[i] === 2 && t === Tile.Shore) L.tiles[i] = Tile.River;
-      }
-      classifyWater(L.size, L.tiles);
-    }
-    if (v !== BEACH_VERSION) {
-      rec.beach = BEACH_VERSION;
-      this.dirty = true;
-    }
   }
 
   // ── Identity helpers ────────────────────────────────────────────────────
@@ -430,77 +393,6 @@ export class Room {
     this.envCache = null;
   }
 
-  // ── Villagers ───────────────────────────────────────────────────────────
-  spawnVillager(defId: string, houseId: string) {
-    const house = this.buildings.get(houseId);
-    const door = house ? { x: house.x + house.w / 2, z: house.z + house.h + 0.6 } : this.layout.spawn;
-    const v: VillagerRuntime = { id: defId, houseId, x: door.x, z: door.z, r: 0, tx: door.x, tz: door.z, idleUntil: 0, home: false, dirty: true };
-    this.villagers.set(defId, v);
-    return v;
-  }
-
-  removeVillager(defId: string) {
-    this.villagers.delete(defId);
-  }
-
-  villagerTick(dt: number, now: number) {
-    if (this.sessions.size === 0 || this.villagers.size === 0) return;
-    const env = this.env(now);
-    const night = villagerAtHome(env.hour);
-    const updates: [string, number, number, number, 0 | 1][] = [];
-    const rng = Math.random;
-    for (const v of this.villagers.values()) {
-      const house = this.buildings.get(v.houseId);
-      if (!house) continue;
-      const doorX = house.x + house.w / 2;
-      const doorZ = house.z + house.h + 0.6;
-      if (night !== v.home) {
-        v.home = night;
-        if (night) {
-          v.x = doorX;
-          v.z = doorZ;
-        }
-        v.dirty = true;
-      }
-      if (!v.home && now >= v.idleUntil) {
-        const dx = v.tx - v.x;
-        const dz = v.tz - v.z;
-        const d = Math.hypot(dx, dz);
-        if (d < 0.1) {
-          v.idleUntil = now + 2000 + rng() * 6000;
-          for (let i = 0; i < 8; i++) {
-            const tx = doorX + (rng() - 0.5) * 14;
-            const tz = doorZ + (rng() - 0.5) * 14;
-            // Stay on the same cliff level as the house.
-            if (this.grid.walkable(tx, tz, 0.3, false) && this.grid.level(Math.floor(tx), Math.floor(tz)) === this.grid.level(house.x, house.z)) {
-              v.tx = tx;
-              v.tz = tz;
-              break;
-            }
-          }
-        } else {
-          const step = Math.min(d, 1.3 * dt);
-          const nx = v.x + (dx / d) * step;
-          const nz = v.z + (dz / d) * step;
-          if (this.grid.canMove(v.x, v.z, nx, nz, 0.25, false) || !this.grid.walkable(v.x, v.z, 0.25, false)) {
-            v.x = nx;
-            v.z = nz;
-            v.r = Math.atan2(dx, dz);
-          } else {
-            v.tx = v.x;
-            v.tz = v.z;
-          }
-          v.dirty = true;
-        }
-      }
-      if (v.dirty) {
-        v.dirty = false;
-        updates.push([v.id, round2(v.x), round2(v.z), round2(v.r), v.home ? 1 : 0]);
-      }
-    }
-    if (updates.length) this.broadcast({ t: 'vs', l: updates });
-  }
-
   // ── Movement broadcast ─────────────────────────────────────────────────
   positionTick() {
     const l: [string, number, number, number][] = [];
@@ -521,9 +413,9 @@ export class Room {
     }
     if (this.interior) return;
     if (env.dayKey !== this.dayKey) this.dailyRefresh(env.dayKey, now);
-    this.birdTick(now, env);
+    birdTick(this, now, env);
     if (this.kind === 'shared') return;
-    this.beachTick(now);
+    beachTick(this, now);
 
     for (const o of [...this.objects.values()]) {
       // Tree growth.
@@ -550,206 +442,43 @@ export class Room {
     }
   }
 
-  // ── Beachcombing ───────────────────────────────────────────────────────
-  /** Shells, driftwood… wash up on the beach now and then; bottles addressed to this island land first. */
-  private beachTick(now: number) {
-    const washed = [...this.objects.values()].filter((o) => o.kind === 'washed');
-    // Messages in bottles waiting for this island.
-    for (const b of this.record?.bottles ?? []) {
-      if (washed.some((o) => o.bottle === b.id)) continue;
-      const spot = this.beachSpot();
-      if (!spot) break;
-      this.addObject({ id: this.newId('w'), kind: 'washed', item: 'message_bottle', bottle: b.id, ...spot });
-      washed.push({ id: '', kind: 'washed', x: spot.x, z: spot.z, bottle: b.id });
-    }
-    const max = Math.max(4, Math.round(this.layout.size / 8));
-    if (washed.length >= max || !this.birdRng.chance(this.sessions.size ? 0.03 : 0.002)) return;
-    const pick = this.birdRng.weighted(washupsFor(this.biome), (w) => w.weight);
-    const spot = this.beachSpot();
-    if (pick && spot) this.addObject({ id: this.newId('w'), kind: 'washed', item: pick.item, ...spot, rot: this.birdRng.int(0, 3) });
+  // ── Villagers (room/villagers.ts) ───────────────────────────────────────
+  spawnVillager(defId: string, houseId: string) {
+    return spawnVillager(this, defId, houseId);
   }
+
+  removeVillager(defId: string) {
+    this.villagers.delete(defId);
+  }
+
+  villagerTick(dt: number, now: number) {
+    villagerTick(this, dt, now);
+  }
+
+  // ── Beach & birds (room/beach.ts, room/birds.ts) ────────────────────────
+  /** Randomness for birds and beachcombing (not seeded: they're never saved). */
+  readonly birdRng = new Rng(Math.floor(Math.random() * 2 ** 31));
 
   /** Dev helper: wash things up right now. */
   washUp(count: number) {
-    let n = 0;
-    for (let i = 0; i < count; i++) {
-      const pick = this.birdRng.weighted(washupsFor(this.biome), (w) => w.weight);
-      const spot = this.beachSpot();
-      if (!pick || !spot) break;
-      this.addObject({ id: this.newId('w'), kind: 'washed', item: pick.item, ...spot, rot: 0 });
-      n++;
-    }
-    return n;
+    return washUp(this, count);
   }
 
-  /** A free beach tile right next to the sea. */
-  private beachSpot(): { x: number; z: number } | null {
-    const g = this.grid;
-    const spots: number[] = [];
-    for (let z = 1; z < g.size - 1; z++)
-      for (let x = 1; x < g.size - 1; x++) {
-        if (g.tile(x, z) !== Tile.Shore || g.occupied[z * g.size + x]) continue;
-        if (DIRS.some(([dx, dz]) => g.tile(x + dx, z + dz) === Tile.Sea)) spots.push(z * g.size + x);
-      }
-    if (!spots.length) return null;
-    const i = spots[this.birdRng.int(0, spots.length - 1)];
-    return { x: i % g.size, z: Math.floor(i / g.size) };
-  }
-
-  // ── Birds ──────────────────────────────────────────────────────────────
-  private birdRng = new Rng(Math.floor(Math.random() * 2 ** 31));
-
-  /** Birds land, hop around for a few minutes and fly off. They are never saved. */
-  private birdTick(now: number, env: EnvView) {
-    const birds = [...this.objects.values()].filter((o) => o.kind === 'bird');
-    const here = birdsFor(this.biome, env.hour, env.season);
-    for (const b of birds) {
-      const def = BIRD_BY_ID[b.bird ?? ''];
-      if (!def || (b.leaveAt ?? 0) <= now || (!here.includes(def) && this.birdRng.chance(0.04))) this.removeObject(b.id, 'fly');
-      else if (this.birdRng.chance(0.12)) {
-        // Hop to a neighbouring free tile.
-        const [dx, dz] = DIRS[this.birdRng.int(0, 3)];
-        if (this.birdSpot(b.x + dx, b.z + dz, def.perch ?? 'ground')) this.replaceObject(b, (t) => { t.x += dx; t.z += dz; t.rot = this.birdRng.int(0, 3); });
-      }
-    }
-    // Only bother landing new birds while someone is around to see them.
-    if (!this.sessions.size || !here.length) return;
-    const max = Math.max(2, Math.round((this.layout.size * this.layout.size) / 700));
-    if (birds.length >= max || !this.birdRng.chance(0.15)) return;
-    const def = this.birdRng.weighted(here, (b) => b.rarity)!;
-    for (let tries = 0; tries < 30; tries++) {
-      const x = this.birdRng.int(1, this.layout.size - 2);
-      const z = this.birdRng.int(1, this.layout.size - 2);
-      if (!this.birdSpot(x, z, def.perch ?? 'ground')) continue;
-      if ([...this.sessions].some((s) => Math.hypot(s.x - x - 0.5, s.z - z - 0.5) < 5)) continue;
-      this.addObject({ id: this.newId('w'), kind: 'bird', bird: def.id, x, z, rot: this.birdRng.int(0, 3), leaveAt: now + this.birdRng.range(3, 7) * 60000 });
-      return;
-    }
-  }
-
-  /** Dev helper: land birds within a few tiles of a point (any species of the biome). */
+  /** Dev helper: land birds within a few tiles of a point. */
   landBirdsNear(px: number, pz: number, count: number) {
-    const env = this.env();
-    const now = birdsFor(this.biome, env.hour, env.season);
-    const pool = now.length ? now : BIRDS.filter((b) => b.biomes.includes(this.biome));
-    let n = 0;
-    for (let tries = 0; tries < 200 && n < count; tries++) {
-      const def = pool[this.birdRng.int(0, pool.length - 1)];
-      if (!def) break;
-      const x = Math.floor(px) + this.birdRng.int(-5, 5), z = Math.floor(pz) + this.birdRng.int(-5, 5);
-      if (Math.hypot(x + 0.5 - px, z + 0.5 - pz) < 1.2) continue;
-      // Dev only: if the spot suits another perch, let the bird land anyway.
-      if (!this.birdSpot(x, z, 'ground') && !this.birdSpot(x, z, 'shore')) continue;
-      this.addObject({ id: this.newId('w'), kind: 'bird', bird: def.id, x, z, rot: 0, leaveAt: Date.now() + 10 * 60000 });
-      n++;
-    }
-    return n;
+    return landBirdsNear(this, px, pz, count);
   }
 
-  private birdSpot(x: number, z: number, perch: 'ground' | 'shore') {
-    const g = this.grid;
-    if (!g.inBounds(x, z) || g.ramp(x, z) >= 0) return false;
-    const t = g.tile(x, z);
-    if (perch === 'shore' ? t !== Tile.Shore : t !== Tile.Ground) return false;
-    if (g.occupied[z * g.size + x]) return false;
-    for (const o of this.objects.values()) if (o.kind === 'bird' && o.x === x && o.z === z) return false;
-    return true;
-  }
-
-  // ── Depletion & respawning ─────────────────────────────────────────────
+  // ── Depletion & respawning (room/growth.ts) ─────────────────────────────
   scheduleRespawn(kind: Respawn['kind'], x: number, z: number, now = Date.now()) {
-    const minutes = config.respawnMinutes[kind];
-    this.respawns.push({ kind, x, z, at: now + (minutes * 60000) / config.timeFactor });
-    this.dirty = true;
+    scheduleRespawn(this, kind, x, z, now);
   }
 
-  /** Bring back due resources at their old spot, or the nearest free one on the lot. */
   processRespawns(now: number) {
-    if (!this.respawns.length) return;
-    const due = this.respawns.filter((r) => r.at <= now);
-    if (!due.length) return;
-    this.respawns = this.respawns.filter((r) => r.at > now);
-    const rng = new Rng(hashMany(this.id, now));
-    const def = BIOMES[this.biome];
-    for (const r of due) {
-      const ok = (x: number, z: number) => {
-        if (this.grid.tile(x, z) !== Tile.Ground || !this.grid.canSpawn(x, z)) return false;
-        for (const s of this.sessions) if (Math.floor(s.x) === x && Math.floor(s.z) === z) return false;
-        if (r.kind === 'tree' || r.kind === 'rock') {
-          // Keep breathing room around trees and rocks.
-          for (const o of this.objects.values()) if ((o.kind === 'tree' || o.kind === 'stump' || o.kind === 'rock') && Math.abs(o.x - x) <= 1 && Math.abs(o.z - z) <= 1) return false;
-        }
-        return true;
-      };
-      const spot = findFreeSpot(this.grid, r.x, r.z, ok, () => rng.float());
-      if (!spot) {
-        this.respawns.push({ ...r, at: now + 3600_000 / config.timeFactor }); // try again later
-        continue;
-      }
-      if (r.kind === 'rock') this.addObject({ id: this.newId('r'), kind: 'rock', x: spot.x, z: spot.z, hits: 0 });
-      else if (r.kind === 'bush') this.addObject({ id: this.newId('k'), kind: 'bush', x: spot.x, z: spot.z, ripe: true });
-      else {
-        const species = rng.weighted(def.trees, (t) => t.weight)!.species;
-        this.addObject({ id: this.newId('t'), kind: 'tree', x: spot.x, z: spot.z, species, stage: 0, hits: 0, fruit: 0, growAt: now + (config.treeStageMinutes * 60000) / config.timeFactor });
-      }
-    }
-    this.dirty = true;
+    processRespawns(this, now);
   }
 
-  /** New day: fruit regrows, loose stones refill, mushrooms & flowers spawn. */
-  dailyRefresh(dayKey: string, _now: number) {
-    const first = this.dayKey === '';
-    this.dayKey = dayKey;
-    this.dirty = true;
-    if (first && this.kind !== 'island') return;
-    const def = BIOMES[this.biome];
-    const rng = new Rng(hashMany(this.id, dayKey));
-    let mushrooms = 0;
-    let flowers = 0;
-    for (const o of this.objects.values()) {
-      if (o.kind === 'mushroom') mushrooms++;
-      if (o.kind === 'flower') flowers++;
-    }
-    const trees: WorldObject[] = [];
-    for (const o of [...this.objects.values()]) {
-      if (o.kind === 'rock' && o.hits && o.hits <= 2) {
-        // Hand-gathered stones come back; shovel damage stays until it crumbles.
-        o.hits = 0;
-        this.updateObject(o);
-      } else if (o.kind === 'tree' && o.stage === 2) {
-        trees.push(o);
-        const fruit = TREES[o.species!].fruit ? 3 : 0;
-        if ((o.fruit ?? 0) < fruit || o.shook) {
-          o.fruit = fruit;
-          delete o.shook;
-          this.updateObject(o);
-        }
-      }
-    }
-    const freeNear = (x: number, z: number) => {
-      const dirs = rng.shuffle([[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]);
-      for (const [dx, dz] of dirs) if (this.grid.canSpawn(x + dx, z + dz)) return { x: x + dx, z: z + dz };
-      return null;
-    };
-    for (const t of trees) {
-      if (mushrooms >= 10) break;
-      if (!rng.chance(def.mushroomChance * 2)) continue;
-      const p = freeNear(t.x, t.z);
-      if (!p) continue;
-      this.addObject({ id: this.newId('m'), kind: 'mushroom', x: p.x, z: p.z, rare: rng.chance(def.rareMushroomChance) });
-      mushrooms++;
-    }
-    for (let i = 0; i < 4 && flowers < 12; i++) {
-      const x = rng.int(1, this.layout.size - 2);
-      const z = rng.int(1, this.layout.size - 2);
-      if (this.grid.tile(x, z) === Tile.Ground && this.grid.canSpawn(x, z)) {
-        this.addObject({ id: this.newId('f'), kind: 'flower', x, z });
-        flowers++;
-      }
-    }
+  dailyRefresh(dayKey: string, now: number) {
+    dailyRefresh(this, dayKey, now);
   }
-}
-
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
 }

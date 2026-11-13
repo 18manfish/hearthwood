@@ -43,3 +43,10 @@ go here instead of being fixed inline (plan §3 rule 8, §10 decision 4).
   cascaded into the villager suites. Seen on CI before any production code moved. The test
   helper now falls back to spots without a margin. The game itself is unchanged; whether a
   crowded island can always fit a Town Hall for real players is worth a look.
+- **More random-island flakiness in the server test:** about one run in five a section ends with
+  Alice on a tile she can't walk off (`reachable 1` in the build error), and every later build
+  fails; the fishing check also sometimes can't reach a pond ("Too far to cast", skipped
+  silently). Both depend on the random island seed, not on the refactor (three reruns of the
+  same code passed fully). A fixed seed for test islands (e.g. a `TEST_SEED` env var the server
+  honours in dev mode) would make the suite deterministic; that is a behaviour change, so it is
+  left for you to decide.

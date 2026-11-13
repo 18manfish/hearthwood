@@ -102,6 +102,28 @@ export class CoastField {
         d[2][idx] = dn;
         d[3][idx] = dr;
       }
+    // Round off the sea floor's distance (it was measured to tile squares, so its contours
+    // followed the tile staircase): a soft blur over about a tile, keeping the shore line at 0.
+    {
+      // Signed (negative on land, by the distance to the sea or a river) so a straight shore keeps its exact slope.
+      const src = d[2], orig = src.slice(), tmp = new Float32Array(w * w), BR = COAST_RES + 1;
+      for (let k = 0; k < w * w; k++) if (orig[k] === 0) src[k] = -Math.min(d[1][k], d[3][k]);
+      for (let pass = 0; pass < 2; pass++) {
+        for (let j = 0; j < w; j++)
+          for (let i = 0; i < w; i++) {
+            let s = 0, n = 0;
+            for (let k = Math.max(0, i - BR); k <= Math.min(w - 1, i + BR); k++) { s += src[j * w + k]; n++; }
+            tmp[j * w + i] = s / n;
+          }
+        for (let j = 0; j < w; j++)
+          for (let i = 0; i < w; i++) {
+            let s = 0, n = 0;
+            for (let k = Math.max(0, j - BR); k <= Math.min(w - 1, j + BR); k++) { s += tmp[k * w + i]; n++; }
+            src[j * w + i] = orig[j * w + i] === 0 ? -Math.min(d[1][j * w + i], d[3][j * w + i]) : s / n;
+          }
+      }
+      for (let k = 0; k < w * w; k++) src[k] = orig[k] === 0 ? 0 : Math.max(0, src[k]);
+    }
     this.w = w;
     this.d = d;
   }

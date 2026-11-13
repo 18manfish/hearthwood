@@ -94,76 +94,76 @@
   "hash": "140407eab39eb34d9bf4bbe0"
  },
  "client/terrain/grassland/42/summer": {
-  "hash": "4c2a1ffd6d8e794ff9bd6f83",
-  "info": "tris 177924"
+  "hash": "9ea315689ba2cca8a43b451e",
+  "info": "tris 181344"
  },
  "client/terrain/grassland/42/winter": {
-  "hash": "92ed3b4ddb5e6dd647f6108f",
-  "info": "tris 177924"
+  "hash": "9e3cfc28993b7b2d5701b96e",
+  "info": "tris 181344"
  },
  "client/terrain/grassland/7/summer": {
-  "hash": "2e0624bdb62e0f4ac9933bcf",
-  "info": "tris 198448"
+  "hash": "b5576306b52d007f78e1d062",
+  "info": "tris 202018"
  },
  "client/terrain/grassland/7/winter": {
-  "hash": "62090ca1d1b69a1e1a854b5a",
-  "info": "tris 198448"
+  "hash": "c852e0df0bc09edd8c5ed27c",
+  "info": "tris 202018"
  },
  "client/terrain/nordic/42/summer": {
-  "hash": "0798aa57345d3e80e9d78338",
-  "info": "tris 182904"
+  "hash": "5d0ac459df28a8471cf01905",
+  "info": "tris 186324"
  },
  "client/terrain/nordic/42/winter": {
-  "hash": "23a0cf08ccfe103e2d43380b",
-  "info": "tris 182904"
+  "hash": "8d858e6f1b27d31ae58a3287",
+  "info": "tris 186324"
  },
  "client/terrain/nordic/7/summer": {
-  "hash": "395915d6a29b1d9783a144a1",
-  "info": "tris 199160"
+  "hash": "8275f18c296c0170f1c4443e",
+  "info": "tris 202730"
  },
  "client/terrain/nordic/7/winter": {
-  "hash": "706309c6e3723c0b018cfda9",
-  "info": "tris 199160"
+  "hash": "39d342bad768bab509e54f94",
+  "info": "tris 202730"
  },
  "client/terrain/tropical/42/summer": {
-  "hash": "a5082650bd971241b500486c",
-  "info": "tris 167688"
+  "hash": "e7078ff082a7738d86389907",
+  "info": "tris 171108"
  },
  "client/terrain/tropical/42/winter": {
-  "hash": "ac1da450a20da969e83458fd",
-  "info": "tris 167688"
+  "hash": "ab189e8e4102e36c7b733104",
+  "info": "tris 171108"
  },
  "client/terrain/tropical/7/summer": {
-  "hash": "d58d799e9c936041b9cce2f5",
-  "info": "tris 190440"
+  "hash": "3d28439d9f6b49993559d75e",
+  "info": "tris 194010"
  },
  "client/terrain/tropical/7/winter": {
-  "hash": "d9521e6445624332ce40ab6a",
-  "info": "tris 190440"
+  "hash": "1098bde614f400440b25d37e",
+  "info": "tris 194010"
  },
  "client/water/grassland/42": {
-  "hash": "0db726f37d7f00e64df778f1",
-  "info": "seaTint:55818 riverFlow:354 surf:124800"
+  "hash": "c53ca62b8b4a31429a2d677d",
+  "info": "seaTint:55866 riverFlow:7272 surf:110208"
  },
  "client/water/grassland/7": {
-  "hash": "b7a19ecc5cd5fc6e6a8d7f00",
-  "info": "-:390 seaTint:54456 riverFlow:390 riverFlow:126 surf:117216 -:576 -:24 spray:104"
+  "hash": "268da90cb09a980e5d75ff08",
+  "info": "-:390 seaTint:54978 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
  },
  "client/water/nordic/42": {
-  "hash": "bec836dfe100efdcc2182787",
-  "info": "seaTint:55590 riverFlow:354 surf:124800"
+  "hash": "35bd977b21eae2b60deff41d",
+  "info": "seaTint:55638 riverFlow:7272 surf:110208"
  },
  "client/water/nordic/7": {
-  "hash": "aaf87c3580bfe95bdffdf695",
-  "info": "-:390 seaTint:54228 riverFlow:390 riverFlow:126 surf:117216 -:576 -:24 spray:104"
+  "hash": "fb35f905c12a11925dd43115",
+  "info": "-:390 seaTint:54750 riverFlow:4056 riverFlow:2046 riverFlow:3390 surf:103296 -:576 -:24 spray:104"
  },
  "client/water/tropical/42": {
-  "hash": "91628f9e11c045c09564ae44",
-  "info": "seaTint:55050 riverFlow:342 surf:128544"
+  "hash": "19ab491ed2407cef743207a3",
+  "info": "seaTint:55146 riverFlow:7188 surf:111840"
  },
  "client/water/tropical/7": {
-  "hash": "397cedaabbbc77df9ebb2bf6",
-  "info": "-:354 seaTint:54060 riverFlow:354 riverFlow:216 surf:119328 -:528 -:24 spray:104"
+  "hash": "c0ac9bc95245acc72909f63b",
+  "info": "-:354 seaTint:54270 riverFlow:5454 riverFlow:2406 riverFlow:2478 surf:105024 -:528 -:24 spray:104"
  },
  "data/friendship": {
   "hash": "2827f601e868f24765271378"
@@ -402,181 +402,181 @@
   "info": "sea 1727 shore 1455 river 75 objs 173"
  },
  "grid/desert/42/coast": {
-  "hash": "8a52ca0b973667781dbc3b18"
+  "hash": "19247b903eee154c66fc67e6"
  },
  "grid/desert/42/dock": {
   "hash": "05f7b450b3cbb863f07b1d88"
  },
  "grid/desert/42/surface": {
-  "hash": "92ff985cb0dbc5172f7564a8"
+  "hash": "b33459fae6d25cccb926c22a"
  },
  "grid/desert/42/tiles": {
-  "hash": "d925ef0ad7110ed29a87bde4"
+  "hash": "78a845f4478bdd814050e1c1"
  },
  "grid/desert/7/coast": {
-  "hash": "2f7e95ebc0edcbc8c4e8f083"
+  "hash": "f34ae058f355e10800918400"
  },
  "grid/desert/7/dock": {
   "hash": "6747e16dd9fbdfbb4e02b9a2"
  },
  "grid/desert/7/surface": {
-  "hash": "2814c331edba550b5fbbbfb4"
+  "hash": "aa739ec71d099105c3c8010f"
  },
  "grid/desert/7/tiles": {
-  "hash": "7f3e914de8706c1d3141795f"
+  "hash": "f1ed48086ef01cb0ccf434e3"
  },
  "grid/forest_edge/42/coast": {
-  "hash": "9339127721bdbc4d6c014521"
+  "hash": "caea61792ac824cb533c842e"
  },
  "grid/forest_edge/42/dock": {
   "hash": "05f7b450b3cbb863f07b1d88"
  },
  "grid/forest_edge/42/surface": {
-  "hash": "64691225dd2fb583d149e4ba"
+  "hash": "c2b2bab6a4440922ec79cfb5"
  },
  "grid/forest_edge/42/tiles": {
-  "hash": "da3ff9a9a8154034ed834e5a"
+  "hash": "726e185e1ffb64dae9f4096a"
  },
  "grid/forest_edge/7/coast": {
-  "hash": "894f95e95512a912054da8ae"
+  "hash": "ebe4e19e4597f166b28009bb"
  },
  "grid/forest_edge/7/dock": {
   "hash": "6747e16dd9fbdfbb4e02b9a2"
  },
  "grid/forest_edge/7/surface": {
-  "hash": "f08c0568a6ed856ca0ccc594"
+  "hash": "401dc67ff40347dfea847040"
  },
  "grid/forest_edge/7/tiles": {
-  "hash": "f747ea8a9b365ff6587948d0"
+  "hash": "6770973f8b937713d2393e36"
  },
  "grid/grassland/42/coast": {
-  "hash": "9339127721bdbc4d6c014521"
+  "hash": "caea61792ac824cb533c842e"
  },
  "grid/grassland/42/dock": {
   "hash": "05f7b450b3cbb863f07b1d88"
  },
  "grid/grassland/42/surface": {
-  "hash": "ad27c2558a59a67b19639a62"
+  "hash": "ab3928c5dddc58858b8ab6d7"
  },
  "grid/grassland/42/tiles": {
-  "hash": "6289ed0b687cc3a1de41f007"
+  "hash": "60b1308bb0a7430cdd292af0"
  },
  "grid/grassland/7/coast": {
-  "hash": "894f95e95512a912054da8ae"
+  "hash": "ebe4e19e4597f166b28009bb"
  },
  "grid/grassland/7/dock": {
   "hash": "6747e16dd9fbdfbb4e02b9a2"
  },
  "grid/grassland/7/surface": {
-  "hash": "b306735eedac49a6bff3a7e3"
+  "hash": "a94386e69907ca9c92754d4f"
  },
  "grid/grassland/7/tiles": {
-  "hash": "b14a0ab5d69aa5b0ff4ed376"
+  "hash": "7969dc8bbe7451ed93a09491"
  },
  "grid/jungle/42/coast": {
-  "hash": "9339127721bdbc4d6c014521"
+  "hash": "caea61792ac824cb533c842e"
  },
  "grid/jungle/42/dock": {
   "hash": "05f7b450b3cbb863f07b1d88"
  },
  "grid/jungle/42/surface": {
-  "hash": "64691225dd2fb583d149e4ba"
+  "hash": "c2b2bab6a4440922ec79cfb5"
  },
  "grid/jungle/42/tiles": {
-  "hash": "95e315d4709099b179d3822c"
+  "hash": "9fed7ed63fd1c92065e4e99f"
  },
  "grid/jungle/7/coast": {
-  "hash": "894f95e95512a912054da8ae"
+  "hash": "ebe4e19e4597f166b28009bb"
  },
  "grid/jungle/7/dock": {
   "hash": "6747e16dd9fbdfbb4e02b9a2"
  },
  "grid/jungle/7/surface": {
-  "hash": "f08c0568a6ed856ca0ccc594"
+  "hash": "401dc67ff40347dfea847040"
  },
  "grid/jungle/7/tiles": {
-  "hash": "83670aa18d84b7c8f71b5e93"
+  "hash": "e8344a1fb2ddce1abad13674"
  },
  "grid/nordic/42/coast": {
-  "hash": "9339127721bdbc4d6c014521"
+  "hash": "caea61792ac824cb533c842e"
  },
  "grid/nordic/42/dock": {
   "hash": "05f7b450b3cbb863f07b1d88"
  },
  "grid/nordic/42/surface": {
-  "hash": "64691225dd2fb583d149e4ba"
+  "hash": "c2b2bab6a4440922ec79cfb5"
  },
  "grid/nordic/42/tiles": {
-  "hash": "e7679e4e922c5bd9bbb0e439"
+  "hash": "dd69180fa1d7d3e7104639ee"
  },
  "grid/nordic/7/coast": {
-  "hash": "894f95e95512a912054da8ae"
+  "hash": "ebe4e19e4597f166b28009bb"
  },
  "grid/nordic/7/dock": {
   "hash": "6747e16dd9fbdfbb4e02b9a2"
  },
  "grid/nordic/7/surface": {
-  "hash": "f08c0568a6ed856ca0ccc594"
+  "hash": "401dc67ff40347dfea847040"
  },
  "grid/nordic/7/tiles": {
-  "hash": "86c029f84a314214cb62e567"
+  "hash": "ff6bd918b837e5ffa5728c93"
  },
  "grid/oasis/42/coast": {
-  "hash": "8a52ca0b973667781dbc3b18"
+  "hash": "19247b903eee154c66fc67e6"
  },
  "grid/oasis/42/dock": {
   "hash": "05f7b450b3cbb863f07b1d88"
  },
  "grid/oasis/42/surface": {
-  "hash": "3f6fdcdd6ebd5e957a631a00"
+  "hash": "271f51ef8db417961c7903b1"
  },
  "grid/oasis/42/tiles": {
-  "hash": "52222e9de782dfd36cd8fc2a"
+  "hash": "34d23a9087523d5366de2934"
  },
  "grid/oasis/7/coast": {
-  "hash": "2f7e95ebc0edcbc8c4e8f083"
+  "hash": "f34ae058f355e10800918400"
  },
  "grid/oasis/7/dock": {
   "hash": "6747e16dd9fbdfbb4e02b9a2"
  },
  "grid/oasis/7/surface": {
-  "hash": "d4d807863214b0fba663b896"
+  "hash": "3c9077e3f6fb88dfd11d6946"
  },
  "grid/oasis/7/tiles": {
-  "hash": "44005c86420469079799530b"
+  "hash": "5e908cd5fcd8bad391be7f31"
  },
  "grid/tropical/42/coast": {
-  "hash": "4029d3aa080b0995e98bb6b1"
+  "hash": "1a74879a9ef5bd6a1ca5cb30"
  },
  "grid/tropical/42/dock": {
   "hash": "05f7b450b3cbb863f07b1d88"
  },
  "grid/tropical/42/surface": {
-  "hash": "66bbefda344b42e354e896fa"
+  "hash": "c409ea3989cf7e27995d21ed"
  },
  "grid/tropical/42/tiles": {
-  "hash": "50a725fa2a5ae6f98b8d83e2"
+  "hash": "dd47c7cbf7fa3ec865003ff2"
  },
  "grid/tropical/7/coast": {
-  "hash": "6174c0924b989ee4a0294214"
+  "hash": "33a1cb7200275fcfb3d90bc2"
  },
  "grid/tropical/7/dock": {
   "hash": "6747e16dd9fbdfbb4e02b9a2"
  },
  "grid/tropical/7/surface": {
-  "hash": "44f47b1c3e983c1f07241a86"
+  "hash": "1f4629cd0edf43d4f7d1eb38"
  },
  "grid/tropical/7/tiles": {
-  "hash": "92d2f46549e3ecbbf0c0a00d"
+  "hash": "5d7fff31850e718a4d2e37ef"
  },
  "movement/42": {
-  "hash": "d3eb7e672776790a43159701"
+  "hash": "08669a6e62675b9b151b39bc"
  },
  "movement/42/placement": {
   "hash": "c580c23eb4ef754e80c1d06d"
  },
  "movement/7": {
-  "hash": "7e202f3db13327e89029bde1"
+  "hash": "28d2282d8a4815a4825f286a"
  },
  "movement/7/placement": {
   "hash": "0adb053aeabf4c48bfd46758"

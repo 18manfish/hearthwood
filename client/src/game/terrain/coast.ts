@@ -16,9 +16,15 @@ export function makeCoastTile(ctx: TerrainCtx) {
   const coastCol = new THREE.Color();
   const riverBed = colors[Tile.River]!;
   const riverCol = new THREE.Color();
-  /** How much a river tile looks like the sea (0 between grass banks, 1 out on the beach). */
+  /** How much a river looks like the sea at a point: 1 at the sea, fading out over SEA_LOOK tiles upstream. */
+  const SEA_LOOK = 3;
   let seaLook = 0;
-  const coastColor = (y: number, n: number, t: Tile = Tile.Shore) => {
+  const coastColor = (y: number, n: number, t: Tile = Tile.Shore, px?: number, pz?: number) => {
+    if (t === Tile.River && px !== undefined && pz !== undefined) {
+      const ds = g0.coastField().dist(px, pz)[1];
+      const u = Math.min(1, ds / SEA_LOOK);
+      seaLook = 1 - u * u * (3 - 2 * u);
+    }
     if (t === Tile.River && seaLook < 1) {
       // River beds: wet sand at the edges, river-bed green in the deeper middle…
       if (y > -0.22) riverCol.copy(wetC);
@@ -40,19 +46,10 @@ export function makeCoastTile(ctx: TerrainCtx) {
   };
   const SEA_Y = SEA_DEEP;
   return (x: number, z: number, t: Tile, n: number) => {
-    if (t === Tile.River) {
-      let k = 0;
-      for (let dz = -1; dz <= 1; dz++)
-        for (let dx = -1; dx <= 1; dx++) {
-          const nt = g0.tile(x + dx, z + dz);
-          if ((dx || dz) && (nt === Tile.Shore || nt === Tile.Sea || nt === Tile.Dock)) k++;
-        }
-      seaLook = Math.min(1, k / 5);
-    } else seaLook = 0;
     const ch = corners(x, z);
     const mid = coastY(x + 0.5, z + 0.5, t);
     if (t !== Tile.Shore && [...ch, mid].every((v) => v <= SEA_Y + 1e-4)) {
-      out.quad([x, SEA_Y, z], [x, SEA_Y, z + 1], [x + 1, SEA_Y, z + 1], [x + 1, SEA_Y, z], coastColor(SEA_Y, n, t));
+      out.quad([x, SEA_Y, z], [x, SEA_Y, z + 1], [x + 1, SEA_Y, z + 1], [x + 1, SEA_Y, z], coastColor(SEA_Y, n, t, x + 0.5, z + 0.5));
       return;
     }
     const ys: number[][] = [];
@@ -66,11 +63,11 @@ export function makeCoastTile(ctx: TerrainCtx) {
         const a = [x0, ys[j][i], z0], b = [x0, ys[j + 1][i], z1], cc = [x1, ys[j + 1][i + 1], z1], d = [x1, ys[j][i + 1], z0];
         // Split along the flatter diagonal so the slope stays smooth.
         if (Math.abs(a[1] - cc[1]) <= Math.abs(b[1] - d[1])) {
-          out.tri(a, b, cc, coastColor((a[1] + b[1] + cc[1]) / 3, n, t));
-          out.tri(a, cc, d, coastColor((a[1] + cc[1] + d[1]) / 3, n, t));
+          out.tri(a, b, cc, coastColor((a[1] + b[1] + cc[1]) / 3, n, t, (a[0] + b[0] + cc[0]) / 3, (a[2] + b[2] + cc[2]) / 3));
+          out.tri(a, cc, d, coastColor((a[1] + cc[1] + d[1]) / 3, n, t, (a[0] + cc[0] + d[0]) / 3, (a[2] + cc[2] + d[2]) / 3));
         } else {
-          out.tri(a, b, d, coastColor((a[1] + b[1] + d[1]) / 3, n, t));
-          out.tri(b, cc, d, coastColor((b[1] + cc[1] + d[1]) / 3, n, t));
+          out.tri(a, b, d, coastColor((a[1] + b[1] + d[1]) / 3, n, t, (a[0] + b[0] + d[0]) / 3, (a[2] + b[2] + d[2]) / 3));
+          out.tri(b, cc, d, coastColor((b[1] + cc[1] + d[1]) / 3, n, t, (b[0] + cc[0] + d[0]) / 3, (b[2] + cc[2] + d[2]) / 3));
         }
       }
     // Skirts down to any lower neighbour (ponds, river mouths, odd corners), so there are no gaps.
@@ -87,7 +84,7 @@ export function makeCoastTile(ctx: TerrainCtx) {
         const a0 = coastY(px0, pz0, t), a1 = coastY(px1, pz1, t);
         const b0 = Math.min(a0, borderY(nx, nz, px0, pz0)), b1 = Math.min(a1, borderY(nx, nz, px1, pz1));
         if (a0 - b0 < 0.005 && a1 - b1 < 0.005) continue;
-        out.quad([px0, a0, pz0], [px0, b0, pz0], [px1, b1, pz1], [px1, a1, pz1], coastColor(Math.min(b0, b1), n, t).multiplyScalar(0.8));
+        out.quad([px0, a0, pz0], [px0, b0, pz0], [px1, b1, pz1], [px1, a1, pz1], coastColor(Math.min(b0, b1), n, t, (px0 + px1) / 2, (pz0 + pz1) / 2).multiplyScalar(0.8));
       }
     }
   };

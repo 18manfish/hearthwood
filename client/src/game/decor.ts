@@ -3,7 +3,8 @@
 // their tile is the wall tile, so they are built against its inner face.
 
 import * as THREE from 'three';
-import { mat, part, emojiSprite, furnitureModel } from './models.ts';
+import { emojiSprite, furnitureModel } from './models/furniture.ts';
+import { mat, part } from './models/primitives.ts';
 
 const WOOD = '#a0703f';
 const DARK = '#6d4c2f';

@@ -12,7 +12,7 @@
 // procedural tree.
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loadGlb } from './assets/glb.ts';
 import { TREES, type WorldObject } from '@hearthwood/shared';
 import { bentDepth } from './bend.ts';
 
@@ -34,26 +34,11 @@ let loading: Promise<void> | null = null;
 /** Starts loading the tree models once; resolves even if they can't be loaded. */
 export function loadTreeAssets(url = TREE_MODEL_URL): Promise<void> {
   if (loading) return loading;
-  loading = new Promise<void>((resolve) => {
-    new GLTFLoader().load(
-      url,
-      (gltf: { scene: THREE.Object3D }) => {
-        try {
-          for (const species of Object.keys(TREES)) {
-            const node = gltf.scene.getObjectByName(`tree_${species}`);
-            if (node) templates.set(species, prepare(node, species));
-          }
-        } catch (e) {
-          console.warn('tree models: could not read', e);
-        }
-        resolve();
-      },
-      undefined,
-      (e: unknown) => {
-        console.warn('tree models: not loaded, using procedural trees', e);
-        resolve();
-      },
-    );
+  loading = loadGlb(url, 'tree models', 'using procedural trees', (scene) => {
+    for (const species of Object.keys(TREES)) {
+      const node = scene.getObjectByName(`tree_${species}`);
+      if (node) templates.set(species, prepare(node, species));
+    }
   });
   return loading;
 }

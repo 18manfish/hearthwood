@@ -11,7 +11,7 @@
 // Without the file, terrain.ts falls back to straight cliff walls.
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loadGlb } from './assets/glb.ts';
 import { CLIFF, DIRS, DOCK_Y, RAMP_STYLES, Tile, baseHeight, type Grid } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 
@@ -31,39 +31,29 @@ let loading: Promise<void> | null = null;
 
 export function loadTileset(url = TILESET_URL): Promise<void> {
   if (loading) return loading;
-  loading = new Promise<void>((resolve) => {
-    new GLTFLoader().load(
-      url,
-      (gltf: { scene: THREE.Object3D }) => {
-        try {
-          gltf.scene.traverse((o: THREE.Object3D) => {
-            const m = o as THREE.Mesh;
-            if (!m.isMesh || !o.name.startsWith('tile_')) return;
-            const geo = (m.geometry as THREE.BufferGeometry).index ? (m.geometry as THREE.BufferGeometry).toNonIndexed() : (m.geometry as THREE.BufferGeometry);
-            pieces.set(o.name, new Float32Array(geo.getAttribute('position').array as ArrayLike<number>));
-          });
-          if (!hasTileset()) pieces.clear(); // all or nothing
-          for (const [style, node] of Object.entries(STAIRS_NODE)) {
-            const o = gltf.scene.getObjectByName(node);
-            if (o) stairs.set(style, prepareStairs(o));
-          }
-          for (const part of DOCK_PARTS) {
-            const o = gltf.scene.getObjectByName(`dock_${part}`);
-            if (o) dock.set(part, prepareStairs(o));
-          }
-        } catch (e) {
-          console.warn('tileset: could not read', e);
-          pieces.clear();
-        }
-        resolve();
-      },
-      undefined,
-      (e: unknown) => {
-        console.warn('tileset: not loaded, using straight cliffs', e);
-        resolve();
-      },
-    );
-  });
+  loading = loadGlb(
+    url,
+    'tileset',
+    'using straight cliffs',
+    (scene) => {
+      scene.traverse((o: THREE.Object3D) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !o.name.startsWith('tile_')) return;
+        const geo = (m.geometry as THREE.BufferGeometry).index ? (m.geometry as THREE.BufferGeometry).toNonIndexed() : (m.geometry as THREE.BufferGeometry);
+        pieces.set(o.name, new Float32Array(geo.getAttribute('position').array as ArrayLike<number>));
+      });
+      if (!hasTileset()) pieces.clear(); // all or nothing
+      for (const [style, node] of Object.entries(STAIRS_NODE)) {
+        const o = scene.getObjectByName(node);
+        if (o) stairs.set(style, prepareStairs(o));
+      }
+      for (const part of DOCK_PARTS) {
+        const o = scene.getObjectByName(`dock_${part}`);
+        if (o) dock.set(part, prepareStairs(o));
+      }
+    },
+    () => pieces.clear(),
+  );
   return loading;
 }
 

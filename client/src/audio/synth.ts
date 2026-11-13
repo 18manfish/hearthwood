@@ -336,20 +336,58 @@ export const wade: Render = (sr, seed) => {
   return fade(norm(a, 0.45), sr, 0.001);
 };
 
-/** Thunder: maybe a crack, then rolling rumbles. */
-export const thunder: Render = (sr, seed) => {
-  const r = rng(seed), d = 5.5, br = brownGen(r), lp = new Biquad(sr).set('lp', 140 + r() * 120, 0.8);
+/**
+ * Rolling thunder: swells of deep rumble with an audible mid-range body (so it carries on
+ * small speakers too), a fluttering growl and a scatter of crackles while it rolls.
+ * Swells are [start s, attack s, decay s, gain].
+ */
+function rolling(sr: number, r: () => number, d: number, swells: [number, number, number, number][]) {
   const a = buf(sr, d);
-  const swells: [number, number, number, number][] = [];
-  for (let k = 0, n = 3 + Math.floor(r() * 4); k < n; k++) swells.push([r() * 2.2, 0.15 + r() * 0.35, 0.8 + r() * 1.4, 0.4 + r() * 0.6]);
+  const br = brownGen(r), pk = pinkGen(r);
+  const low = new Biquad(sr).set('lp', 120 + r() * 80, 0.8);
+  const body = new Biquad(sr).set('bp', 220 + r() * 100, 0.6);
+  const growl = new Biquad(sr).set('bp', 480 + r() * 220, 0.8);
+  const rate = 6 + r() * 5, ph = r() * 6;
   for (let i = 0; i < a.length; i++) {
     const t = i / sr;
     let e = 0;
     for (const [s0, at, de, g] of swells) if (t >= s0) e += g * Math.min(1, (t - s0) / at) * Math.exp(-Math.max(0, t - s0 - at) / de);
-    a[i] = lp.run(br()) * e * (1 - t / d);
+    const flutter = 0.55 + 0.45 * Math.sin(2 * Math.PI * rate * t + ph + Math.sin(t * 1.7) * 2);
+    a[i] = (low.run(br()) * 0.75 + body.run(pk()) * 2.8 + growl.run(pk()) * 1.8 * flutter) * e * (1 - t / d);
   }
-  if (r() < 0.55) mix(a, burst(sr, 0.35, r, 'hp', 1200, 0.6, dec(14)), sr, 0, 0.25 + r() * 0.2);
-  return fade(norm(a, 0.95), sr, 0.005, 0.3);
+  // Crackles while it rolls: short bright grains, more where the swells are loud.
+  for (const [s0, at, de, g] of swells)
+    for (let k = 0, n = Math.round(4 + g * 8); k < n; k++) {
+      const len = 0.004 + r() * 0.02;
+      const at0 = s0 + at * r() + de * r() * r();
+      if (at0 + len < d) mix(a, burst(sr, len, r, 'bp', 900 + r() * 1400, 1.2, (t) => Math.sin((Math.PI * t) / len)), sr, at0, (0.05 + r() * 0.08) * g);
+    }
+  return a;
+}
+
+/** Thunder from a strike some way off: no crack, just a long roll. */
+export const thunder: Render = (sr, seed) => {
+  const r = rng(seed), d = 6.5;
+  const swells: [number, number, number, number][] = [];
+  for (let k = 0, n = 3 + Math.floor(r() * 4); k < n; k++) swells.push([r() * 2.6, 0.15 + r() * 0.4, 0.7 + r() * 1.4, 0.45 + r() * 0.55]);
+  return fade(norm(rolling(sr, r, d, swells), 0.95), sr, 0.02, 0.4);
+};
+
+/** Thunder from a strike close by: a tearing crack, a heavy boom, then the roll. */
+export const thunderClose: Render = (sr, seed) => {
+  const r = rng(seed), d = 6.5;
+  const swells: [number, number, number, number][] = [[0.02, 0.02, 0.9, 1.2]];
+  for (let k = 0, n = 2 + Math.floor(r() * 3); k < n; k++) swells.push([0.4 + r() * 2.2, 0.2 + r() * 0.4, 0.8 + r() * 1.2, 0.4 + r() * 0.4]);
+  const a = rolling(sr, r, d, swells);
+  // The crack: a bright split second of noise, torn into a few bursts.
+  mix(a, burst(sr, 0.3, r, 'hp', 1600, 0.7, dec(16)), sr, 0, 0.9);
+  for (let k = 0, n = 6 + Math.floor(r() * 5); k < n; k++) {
+    const len = 0.003 + r() * 0.01;
+    mix(a, burst(sr, len, r, 'bp', 2500 + r() * 2500, 1.5, (t) => Math.sin((Math.PI * t) / len)), sr, r() * 0.35, 0.4 + r() * 0.5);
+  }
+  // The boom right behind it.
+  mix(a, burst(sr, 1.6, r, 'lp', 260, 0.8, att(0.008, 2.4)), sr, 0.03, 1.4);
+  return fade(norm(a, 0.95), sr, 0.002, 0.4);
 };
 
 // ── Ambience loops (seamless) ────────────────────────────────────────────
@@ -434,7 +472,7 @@ export const EFFECTS = {
   swish: [swish, 3], chop: [chop, 3], rustle: [rustle, 2], thud: [thud, 2], dig: [dig, 3], clink: [clink, 3],
   pop: [pop, 2], pat: [pat, 2], plop: [plop, 3], bite: [bite, 2], splash: [splash, 2], reel: [reel, 1],
   jingle: [jingle, 1], bonk: [bonk, 1], scrape: [scrape, 2], rumble: [rumble, 2], gurgle: [gurgle, 2],
-  knock: [knock, 3], hammer: [hammer, 2], wade: [wade, 4], thunder: [thunder, 3],
+  knock: [knock, 3], hammer: [hammer, 2], wade: [wade, 4], thunder: [thunder, 3], thunderClose: [thunderClose, 3],
 } satisfies Record<string, [Render, number]>;
 export type Effect = keyof typeof EFFECTS;
 

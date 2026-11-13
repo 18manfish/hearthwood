@@ -105,7 +105,8 @@ let falls: Waterfall[] = [];
 let nextSurge = 0;
 let nextGust = 0;
 let gust = 1;
-let lastFlash = 0;
+/** The last lightning strike we already scheduled thunder for. */
+let heard: { km: number } | null = null;
 let wadeDist = 0;
 let lastPos: [number, number] | null = null;
 
@@ -137,12 +138,22 @@ export function updateAmbience(w: World, dt: number) {
   const hot = weather === 'heatwave' && (env?.hour ?? 12) >= 7 && (env?.hour ?? 12) < 20;
   level('cicada', hot ? (inside ? 0.08 : 0.3) : 0, () => layer('cicada', 'cicada', 'highpass', 2500));
 
-  // Thunder a moment after each lightning flash (sound travels slower than light).
-  if (w.flash > 0.9 && lastFlash < 0.5) {
-    const dist = Math.random();
-    play('thunder', { delay: 0.3 + dist * 2.2, gain: (1 - dist * 0.5) * (inside ? 0.6 : 1), vary: 0.12, lowpass: inside ? 500 : 2500 - dist * 1600, pan: (Math.random() - 0.5) * 0.8, bus: 'ambience' });
+  // Thunder after each lightning strike. Sound travels about 343 m/s, so it arrives
+  // roughly 3 s per kilometre after the flash: count the seconds to know how far it hit.
+  // Close strikes crack and boom; far ones only roll, quieter and duller (and muffled indoors).
+  if (w.strike && w.strike !== heard) {
+    heard = w.strike;
+    const km = w.strike.km;
+    play(km < 1.2 ? 'thunderClose' : 'thunder', {
+      delay: (km * 1000) / 343,
+      gain: Math.max(0.35, 1.15 - km * 0.2) * (inside ? 0.7 : 1),
+      rate: 1 - Math.min(0.12, km * 0.03),
+      vary: 0.06,
+      lowpass: inside ? 700 : Math.max(900, 7500 - km * 1800),
+      pan: (Math.random() - 0.5) * 0.8,
+      bus: 'ambience',
+    });
   }
-  lastFlash = w.flash;
 
   // ── Water ──
   const g = w.grid, me = w.me;

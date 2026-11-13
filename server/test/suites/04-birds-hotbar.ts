@@ -13,9 +13,12 @@ export async function run(ctx: Ctx) {
     await A.wait('oAdd', (m) => m.o.some((o) => o.kind === 'bird')).catch(() => null);
     await sleep(200);
     check(birdsSeen().length > 0, `birds landed (${birdsSeen().length})`);
-    const first = birdsSeen()[0];
+    // Birds land at random spots; use the nearest one we can actually walk up to.
+    let first: (typeof birdsSeen extends () => (infer O)[] ? O : never) | undefined;
+    for (const b of birdsSeen().sort((p, q) => Math.hypot(p.x - A.x, p.z - A.z) - Math.hypot(q.x - A.x, q.z - A.z))) {
+      if (await A.walkTo(b.x + 1, b.z, false).catch(() => false)) { first = b; break; }
+    }
     if (first) {
-      await A.walkTo(first.x + 1, first.z, false).catch(() => false);
       const noNet = await A.act({ k: 'catch', id: first.id });
       check(!noNet.ok && /net/.test(noNet.err ?? ''), 'catching birds needs a net');
     }

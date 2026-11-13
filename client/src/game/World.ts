@@ -107,6 +107,10 @@ export class World {
     this.labels.domElement.style.position = 'absolute';
     this.labels.domElement.style.inset = '0';
     this.labels.domElement.style.pointerEvents = 'none';
+    // CSS2DRenderer gives every label its own (large) z-index to sort them by
+    // distance; z-index 0 here keeps that sorting inside this layer, so names
+    // never show through the HUD's menus and dialogs.
+    this.labels.domElement.style.zIndex = '0';
     container.appendChild(this.labels.domElement);
 
     this.scene.background = new THREE.Color('#8fd3f4');

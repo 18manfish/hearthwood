@@ -7,11 +7,14 @@ import { state } from '../../../state.ts';
 import { h } from '../../dom.ts';
 import { travelTo } from './map.ts';
 import type { Hud } from '../../hud.ts';
+import { fpsVisible, setFpsVisible } from '../fps.ts';
+import { namesVisible, setNamesVisible } from '../names.ts';
 
 export function islandPanel(hud: Hud, b: HTMLElement) {
   const self = state.self;
   if (!self) return;
   accountBox(hud, b);
+  displayBox(b);
   const opts: [Access, string, string][] = [
     ['private', '🔒 Nobody', 'Only you.'],
     ['friends', '💌 Friends', 'Everyone on your friend list.'],
@@ -34,6 +37,18 @@ export function islandPanel(hud: Hud, b: HTMLElement) {
   rolesBox(hud, b);
   geoBox(hud, b);
   if (state.dev) b.append(h('p', { class: 'muted', style: 'margin-top:12px' }, 'Dev mode: chat /kit, /give <item> [n], /coins [n], /day [n], /finish'));
+}
+
+/** Screen options that only affect this browser. */
+function displayBox(b: HTMLElement) {
+  const toggle = (label: string, desc: string, on: boolean, set: (v: boolean) => void) => {
+    const box = h('input', { type: 'checkbox', checked: on, onchange: () => set(box.checked) }) as HTMLInputElement;
+    return h('label', { class: 'item', style: 'cursor:pointer' }, h('div', {}, h('b', {}, label), h('div', { class: 'muted' }, desc)), box);
+  };
+  b.append(h('h3', { style: 'margin-top:10px' }, '🖥️ Display'),
+    h('div', { class: 'list' },
+      toggle('Show names', 'Player and villager names above their heads.', namesVisible(), (v) => setNamesVisible(v)),
+      toggle('Show FPS counter', 'Frames per second, in the bottom-right corner.', fpsVisible(), (v) => setFpsVisible(v))));
 }
 
 /** Friends who may build on / live on your island, and islands you help on. */

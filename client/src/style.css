@@ -70,7 +70,7 @@ h1, h2, h3 { margin: 0; }
 .panel .map-info { position: static; width: auto; margin-top: 10px; }
 
 /* ── HUD ───────────────────────────────────────────────── */
-.hud { position: absolute; inset: 0; pointer-events: none; }
+.hud { position: absolute; inset: 0; pointer-events: none; z-index: 1; } /* above the 3D view and its name labels */
 .hud > * { pointer-events: auto; }
 .loc { position: absolute; left: 14px; top: 14px; background: rgba(255, 253, 247, 0.92); border-radius: var(--radius); padding: 10px 14px; box-shadow: var(--shadow); min-width: 220px; }
 .loc .name { font-weight: 900; font-size: 18px; }
@@ -96,6 +96,10 @@ h1, h2, h3 { margin: 0; }
 .chat .log div { background: rgba(255, 253, 247, 0.78); padding: 3px 8px; border-radius: 10px; align-self: flex-start; }
 .chat .log .sys { color: #2f6d22; font-weight: 700; }
 .chat input { width: 100%; border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(255, 253, 247, 0.92); box-shadow: var(--shadow); }
+.fps { position: absolute; right: 14px; bottom: 14px; padding: 4px 10px; border-radius: 999px; background: rgba(30, 30, 30, 0.6); color: #fff; font: 700 13px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; pointer-events: none !important; font-variant-numeric: tabular-nums; }
+.fps[data-level='good'] { color: #a8f08a; }
+.fps[data-level='ok'] { color: #ffd66b; }
+.fps[data-level='bad'] { color: #ff8a8a; }
 .toasts { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 .toast { background: var(--paper); border-radius: 999px; padding: 8px 18px; box-shadow: var(--shadow); font-weight: 800; animation: pop 0.25s ease-out; }
 .toast.good { background: #e3f5dc; }
@@ -134,6 +138,8 @@ h1, h2, h3 { margin: 0; }
 .tabs button.sel { background: var(--leaf); color: white; }
 .label3d { font-weight: 900; font-size: 12px; color: white; text-shadow: 0 1px 3px rgba(0,0,0,0.7); white-space: nowrap; pointer-events: none; transform: translateY(-6px); }
 .label3d.vill { color: #fff4c2; }
+/* Names are off unless the player turns them on in ⚙️ Options (speech bubbles stay). */
+.hide-names .label3d { display: none !important; }
 .bubble { background: white; color: var(--ink); text-shadow: none; padding: 3px 9px; border-radius: 12px; font-size: 12px; max-width: 200px; white-space: normal; box-shadow: var(--shadow); }
 
 /* ── Island previews in the location picker ───────────── */
@@ -172,17 +178,18 @@ h1, h2, h3 { margin: 0; }
 .login input:focus { outline: none; border-color: var(--leaf); }
 
 /* ── Start screen & news ───────────────────────────────── */
-.screen.start { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(0, 720px) minmax(360px, 1fr); column-gap: 24px; align-items: start; justify-content: stretch; padding: 5vh 24px 40px; }
+.screen.start { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(0, 720px) minmax(360px, 1fr); column-gap: 24px; align-items: start; justify-content: stretch; padding: 5vh 24px 24px; grid-template-rows: 1fr; }
 .screen.start .start-col { grid-column: 2; justify-self: center; }
-.screen.start .news-list { grid-column: 3; justify-self: end; width: 100%; max-width: 360px; }
+/* News boxes sit at the bottom right of the window (the page scrolls when they don't fit). */
+.screen.start .news-list { grid-column: 3; grid-row: 1; justify-self: end; align-self: end; width: 100%; max-width: 360px; }
 @media (max-width: 1240px) {
   .screen.start { grid-template-columns: minmax(0, 1fr) minmax(0, 360px); }
   .screen.start .start-col { grid-column: 1; }
   .screen.start .news-list { grid-column: 2; }
 }
 @media (max-width: 760px) {
-  .screen.start { grid-template-columns: minmax(0, 1fr); row-gap: 20px; }
-  .screen.start .news-list { grid-column: 1; justify-self: center; }
+  .screen.start { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; row-gap: 20px; }
+  .screen.start .news-list { grid-column: 1; grid-row: auto; justify-self: center; align-self: start; }
 }
 .start-col { width: min(720px, 100%); display: flex; flex-direction: column; gap: 18px; }
 .logo { display: flex; flex-direction: column; align-items: center; gap: 2px; }

@@ -42,7 +42,7 @@ export function debugPanel(hud: Hud) {
   const visWeather = h('select', { onchange: (e: Event) => { const v = (e.target as HTMLSelectElement).value; debug.weather = v ? (v as Weather) : null; } },
     h('option', { value: '' }, '(real weather)'), weathers.map((x) => h('option', { value: x, selected: debug.weather === x }, x))) as HTMLSelectElement;
 
-  // Season: on a dev server hud changes the island for real (fish, weather,
+  // Season: on a dev server this changes the island for real (fish, weather,
   // visuals for everyone); otherwise it is a local visual preview.
   const model = state.room ? BIOMES[state.room.biome].seasonModel : 'temperate';
   const seasonSel = h('select', {

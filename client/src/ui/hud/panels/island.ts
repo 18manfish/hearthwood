@@ -67,7 +67,7 @@ export function geoBox(hud: Hud, b: HTMLElement) {
   const lon = h('input', { type: 'number', step: '0.5', min: -180, max: 180, value: String(self.geo.lon), style: 'width:90px' }) as HTMLInputElement;
   const note = h('span', { class: 'muted' });
   b.append(h('h3', { style: 'margin-top:14px' }, '📍 Location & time zone'),
-    h('p', { class: 'muted' }, 'Your island follows the real sun, seasons and clock of hud place (stored roughly, to the nearest ~50 km).'),
+    h('p', { class: 'muted' }, 'Your island follows the real sun, seasons and clock of this place (stored roughly, to the nearest ~50 km).'),
     h('div', { class: 'col' },
       h('label', { class: 'row' }, 'Time zone', tz),
       h('label', { class: 'row' }, 'Latitude', lat, 'Longitude', lon),
@@ -80,7 +80,7 @@ export function geoBox(hud: Hud, b: HTMLElement) {
             (p) => { lat.value = String(Math.round(p.coords.latitude * 2) / 2); lon.value = String(Math.round(p.coords.longitude * 2) / 2); note.textContent = 'Found you – press Save.'; },
             () => { note.textContent = 'Location not shared – time zone set, enter coordinates by hand.'; },
             { timeout: 8000 });
-        } }, '📡 Use hud device'),
+        } }, '📡 Use this device'),
         h('button', { class: 'btn small', onclick: () => {
           const la = Number(lat.value), lo = Number(lon.value);
           if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) return hud.toast('Latitude −90…90, longitude −180…180.', 'warn');

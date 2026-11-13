@@ -67,3 +67,13 @@ go here instead of being fixed inline (plan §3 rule 8, §10 decision 4).
   same code passed fully). A fixed seed for test islands (e.g. a `TEST_SEED` env var the server
   honours in dev mode) would make the suite deterministic; that is a behaviour change, so it is
   left for you to decide.
+
+## Splitter slip caught in Phase 4
+
+The class splitter rewrote the word `this` inside two HUD strings and one comment
+(“clock of hud place”, “📡 Use hud device”, “on a dev server hud changes…”). Found with
+a TypeScript-scanner diff of every string literal against the pre-refactor commit
+(a8a0f46) and a comment diff; all three restored. The literal diff now shows only the
+expected changes (router keys moved into the routes table; the glb loader builds its
+log messages from parts). The earlier splits (Room, Game, World, terrain, water,
+models) had no such slips.

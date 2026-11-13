@@ -2,7 +2,7 @@
 // tool (dev mode); changes are stored by the server and sent to every client,
 // which applies them on top of the built-in defaults before the game starts.
 
-import { BASE_ITEMS, FISH, FURNITURE_MODELS, ITEM_CATEGORIES, ITEM_TAGS, rebuildItems, type FishDef, type ItemDef } from './data/items.ts';
+import { BASE_ITEMS, FISH, FISH_SHADOWS, FURNITURE_MODELS, ITEM_CATEGORIES, ITEM_TAGS, rebuildItems, type FishDef, type ItemDef } from './data/items.ts';
 import { BIRDS, rebuildBirds, type BirdDef } from './data/birds.ts';
 import { RECIPES, type RecipeDef } from './data/recipes.ts';
 import { BUILDINGS, SHOP_STOCK, rebuildBuildable, type BuildingDef } from './data/buildings.ts';
@@ -131,6 +131,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'sell', type: 'number', required: true },
       { key: 'rarity', type: 'number', required: true, help: 'Weight – higher is more common' },
       { key: 'water', type: 'enum', options: ['sea', 'river', 'pond'], required: true, help: 'Rivers connect to the sea, ponds don’t' },
+      { key: 'shadow', type: 'enum', options: FISH_SHADOWS, help: 'Sea fish: size of the shadow it bites from (default medium). Rivers and ponds only have medium shadows.' },
       { key: 'hours', type: 'hours', help: 'Local hours it can be caught; leave empty for all day. Wraps past midnight (e.g. 16 → 9).' },
       { key: 'seasons', type: 'tags', options: SEASON_NAMES },
       { key: 'biomes', type: 'tags', options: BIOME_IDS, help: 'Extra biomes (on top of each biome’s fish list)' },
@@ -282,6 +283,7 @@ export function validateGameData(d: GameData): string[] {
     if (!isStr(f.name, 60) || !isStr(f.icon, 16) || !isNum(f.sell) || !isNum(f.rarity) || f.rarity <= 0) err(`fish: "${f.id}" needs name, icon, sell ≥ 0 and rarity > 0`);
     if (!['sea', 'river', 'pond'].includes(f.water)) err(`fish: "${f.id}" water must be sea, river or pond`);
     if (!hoursOk(f.hours)) err(`fish: "${f.id}" hours must be [from, to]`);
+    if (f.shadow !== undefined && !FISH_SHADOWS.includes(f.shadow)) err(`fish: "${f.id}" shadow must be small, medium or large`);
     if (f.biomes && f.biomes.some((b) => !(BIOME_IDS as string[]).includes(b))) err(`fish: "${f.id}" has unknown biomes`);
   }
   for (const b of d.birds) {

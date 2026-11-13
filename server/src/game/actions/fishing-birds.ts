@@ -1,10 +1,9 @@
 // Fishing (cast and reel) and catching birds.
 
-import {
-  BIOMES, BIRD_BY_ID, birdCatchChance, distToTile, FISH, isWaterTile, ITEMS, waterKind,
-} from '@hearthwood/shared';
+import { BIRD_BY_ID, birdCatchChance, distToTile, isWaterTile, ITEMS } from '@hearthwood/shared';
 import type { Session } from '../Session.ts';
 import { config } from '../../config.ts';
+import { spotAt, spotPool } from '../room/fish.ts';
 import * as inv from '../inventory.ts';
 import { fail, give, type Handlers, HARVEST_COOLDOWN_MS, log, near, recordCatch, rngFor } from './context.ts';
 
@@ -14,24 +13,11 @@ export const fishingBirdsHandlers: Pick<Handlers, 'cast' | 'reel' | 'catch'> = {
     const t = ctx.room.grid.tile(a.x, a.z);
     if (!isWaterTile(t)) return fail('That’s not water.');
     if (distToTile(ctx.s.x, ctx.s.z, a.x, a.z) > config.castReach) return fail('Too far to cast.');
+    const spot = spotAt(ctx.room, a.x, a.z);
+    if (!spot) return fail('No fish there – cast next to a fish shadow.');
     ctx.s.clearCast();
     const env = ctx.room.env(ctx.now);
-    const def = BIOMES[ctx.room.biome];
-    const water = waterKind(t)!;
-    const ids = new Set(water === 'sea' ? def.seaFish : def.freshFish);
-    for (const f of FISH) if (f.water === water && f.biomes?.includes(ctx.room.biome)) ids.add(f.id);
-    const pool = [...ids]
-      .map((id) => FISH.find((f) => f.id === id))
-      .filter((f): f is (typeof FISH)[number] => !!f && f.water === water)
-      .filter((f) => {
-        if (f.seasons && !f.seasons.includes(env.season)) return false;
-        if (f.hours) {
-          const [a0, b0] = f.hours;
-          const inside = a0 < b0 ? env.hour >= a0 && env.hour < b0 : env.hour >= a0 || env.hour < b0;
-          if (!inside) return false;
-        }
-        return true;
-      });
+    const pool = spotPool(ctx.room, spot, env);
     const rng = rngFor(ctx);
     // Rain makes fish hungrier.
     const fish = rng.weighted(pool, (f) => f.rarity * (env.weather === 'rain' && f.rarity < 3 ? 2 : 1))?.id ?? null;
@@ -41,6 +27,7 @@ export const fishingBirdsHandlers: Pick<Handlers, 'cast' | 'reel' | 'catch'> = {
       biteAt: ctx.now + rng.range(config.biteMinMs, config.biteMaxMs),
       window: config.biteWindowMs + (power - 1) * 400,
       fish,
+      spot: spot.id,
       bitten: false,
     } as NonNullable<Session['cast']>;
     ctx.s.cast = cast;
@@ -68,6 +55,8 @@ export const fishingBirdsHandlers: Pick<Handlers, 'cast' | 'reel' | 'catch'> = {
     if (ctx.now > c.biteAt + c.window + config.netGraceMs) return { ok: true, msg: 'Too slow – it got away.' };
     const gained: Record<string, number> = {};
     if (!give(ctx, gained, c.fish!, 1)) return fail('Your pockets are full of those.');
+    // The fish is out of the water: its shadow is gone.
+    if (c.spot) ctx.room.removeObject(c.spot);
     const first = recordCatch(ctx, 'fish', c.fish!);
     ctx.s.send({ t: 'fish', castId: c.id, ok: true, item: c.fish!, msg: `You caught a ${ITEMS[c.fish!].name}!${first ? ' 📖 New album entry!' : ''}` });
     return { ok: true, gained };

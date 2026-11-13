@@ -36,7 +36,25 @@ export type ItemTag =
 export type ToolKind = 'axe' | 'shovel' | 'rod' | 'net';
 
 /** Furniture models the client knows how to draw. */
-export const FURNITURE_MODELS = ['bench', 'lamp', 'flower_pot', 'fence', 'picnic_table', 'gnome', 'signpost', 'barrel', 'crate', 'rowboat'] as const;
+export const FURNITURE_MODELS = [
+  'bench', 'lamp', 'flower_pot', 'fence', 'picnic_table', 'gnome', 'signpost', 'barrel', 'crate', 'rowboat',
+  // Bohemian pack (art/kit/boho.py)
+  'boho_peacock_chair', 'boho_egg_chair', 'boho_floor_cushions', 'boho_pouf', 'boho_sofa', 'boho_canopy_bed', 'boho_coffee_table',
+  'boho_trunk', 'boho_ladder_shelf', 'boho_room_divider', 'boho_kilim_rug', 'boho_jute_rug', 'boho_macrame', 'boho_tapestry',
+  'boho_dreamcatcher', 'boho_lantern', 'boho_floor_lamp', 'boho_monstera', 'boho_plant_stand', 'boho_pampas_vase',
+] as const;
+
+/**
+ * Furniture models that aren't a plain one-tile block:
+ *   flat – lies on the floor (rugs): can be walked over
+ *   wall – hangs on the wall behind its tile (needs a wall there): can be walked under
+ *   long – two tiles deep (the tile in front of it, along its facing, is taken too)
+ */
+export const FURNITURE_SHAPES: Partial<Record<string, 'flat' | 'wall' | 'long'>> = {
+  boho_kilim_rug: 'flat', boho_jute_rug: 'flat',
+  boho_macrame: 'wall', boho_tapestry: 'wall', boho_dreamcatcher: 'wall',
+  boho_canopy_bed: 'long',
+};
 
 export const ITEM_CATEGORIES: ItemCategory[] = ['material', 'tool', 'food', 'fish', 'meal', 'furniture', 'clothing', 'plant', 'bird'];
 export const ITEM_TAGS: ItemTag[] = ['wood', 'mineral', 'fiber', 'fruit', 'berry', 'herb', 'mushroom', 'rare', 'fish', 'meal', 'sweet', 'furniture', 'cozy', 'clothing', 'plant', 'bird', 'tool'];
@@ -123,6 +141,27 @@ export const BASE_ITEMS: ItemDef[] = [
   { id: 'barrel', name: 'Barrel', icon: '🛢️', category: 'furniture', tags: ['furniture', 'wood'], sell: 40, buy: 220, placeable: true },
   { id: 'crate', name: 'Wooden Crate', icon: '📦', category: 'furniture', tags: ['furniture', 'wood'], sell: 30, buy: 160, placeable: true },
   { id: 'rowboat', name: 'Rowboat', icon: '🛶', category: 'furniture', tags: ['furniture', 'rare'], sell: 500, placeable: false },
+  // Bohemian furniture pack (home decoration).
+  { id: 'boho_peacock_chair', name: 'Peacock Chair', icon: '🪑', category: 'furniture', tags: ['furniture', 'cozy'], sell: 240, buy: 1200, placeable: true },
+  { id: 'boho_egg_chair', name: 'Hanging Egg Chair', icon: '🪺', category: 'furniture', tags: ['furniture', 'cozy'], sell: 320, buy: 1600, placeable: true },
+  { id: 'boho_floor_cushions', name: 'Floor Cushions', icon: '🛋️', category: 'furniture', tags: ['furniture', 'cozy'], sell: 80, buy: 400, placeable: true },
+  { id: 'boho_pouf', name: 'Knitted Pouf', icon: '🧶', category: 'furniture', tags: ['furniture', 'cozy'], sell: 60, buy: 300, placeable: true },
+  { id: 'boho_sofa', name: 'Boho Sofa', icon: '🛋️', category: 'furniture', tags: ['furniture', 'cozy'], sell: 300, buy: 1500, placeable: true },
+  { id: 'boho_canopy_bed', name: 'Canopy Bed', icon: '🛏️', category: 'furniture', tags: ['furniture', 'cozy'], sell: 480, buy: 2400, placeable: true },
+  { id: 'boho_coffee_table', name: 'Carved Coffee Table', icon: '🪵', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 140, buy: 700, placeable: true },
+  { id: 'boho_trunk', name: 'Vintage Trunk', icon: '🧳', category: 'furniture', tags: ['furniture', 'cozy'], sell: 120, buy: 600, placeable: true },
+  { id: 'boho_ladder_shelf', name: 'Ladder Shelf', icon: '🪜', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 130, buy: 650, placeable: true },
+  { id: 'boho_room_divider', name: 'Rattan Room Divider', icon: '🎋', category: 'furniture', tags: ['furniture', 'cozy'], sell: 160, buy: 800, placeable: true },
+  { id: 'boho_kilim_rug', name: 'Kilim Rug', icon: '🟥', category: 'furniture', tags: ['furniture', 'cozy'], sell: 180, buy: 900, placeable: true },
+  { id: 'boho_jute_rug', name: 'Round Jute Rug', icon: '🟤', category: 'furniture', tags: ['furniture', 'cozy', 'fiber'], sell: 100, buy: 500, placeable: true },
+  { id: 'boho_macrame', name: 'Macramé Wall Hanging', icon: '🪢', category: 'furniture', tags: ['furniture', 'cozy', 'fiber'], sell: 70, buy: 350, placeable: true },
+  { id: 'boho_tapestry', name: 'Wall Tapestry', icon: '🖼️', category: 'furniture', tags: ['furniture', 'cozy'], sell: 110, buy: 550, placeable: true },
+  { id: 'boho_dreamcatcher', name: 'Dreamcatcher', icon: '🕸️', category: 'furniture', tags: ['furniture', 'cozy'], sell: 50, buy: 250, placeable: true },
+  { id: 'boho_lantern', name: 'Moroccan Lantern', icon: '🏮', category: 'furniture', tags: ['furniture', 'cozy'], sell: 80, buy: 400, placeable: true },
+  { id: 'boho_floor_lamp', name: 'Rattan Floor Lamp', icon: '💡', category: 'furniture', tags: ['furniture', 'cozy'], sell: 140, buy: 700, placeable: true },
+  { id: 'boho_monstera', name: 'Monstera Basket', icon: '🪴', category: 'furniture', tags: ['furniture', 'cozy', 'plant'], sell: 90, buy: 450, placeable: true },
+  { id: 'boho_plant_stand', name: 'Plant Stand', icon: '🌵', category: 'furniture', tags: ['furniture', 'cozy', 'plant'], sell: 100, buy: 500, placeable: true },
+  { id: 'boho_pampas_vase', name: 'Pampas Vase', icon: '🌾', category: 'furniture', tags: ['furniture', 'cozy', 'plant'], sell: 60, buy: 300, placeable: true },
 
   // ── Clothing ─────────────────────────────────────────────
   { id: 'straw_hat', name: 'Straw Hat', icon: '👒', category: 'clothing', tags: ['clothing'], sell: 50, buy: 250, wear: 'hat', stack: 1, color: '#e8c872' },
@@ -145,6 +184,19 @@ export interface FishDef {
   seasons?: string[];
   /** Extra biomes this fish lives in (on top of each biome's own fish list). */
   biomes?: string[];
+  /**
+   * Size of the shadow it swims as (sea fish only – rivers and ponds only ever show
+   * medium shadows, and any of their fish can bite there). Default: medium.
+   */
+  shadow?: FishShadow;
+}
+
+export type FishShadow = 'small' | 'medium' | 'large';
+export const FISH_SHADOWS: FishShadow[] = ['small', 'medium', 'large'];
+
+/** The shadow size a fish bites from (rivers and ponds: always medium). */
+export function fishShadow(f: FishDef): FishShadow {
+  return f.water === 'sea' ? f.shadow ?? 'medium' : 'medium';
 }
 
 // Fish live in their own table so biomes can reference them; they are
@@ -172,17 +224,17 @@ export const FISH: FishDef[] = [
   { id: 'fish_sturgeon', name: 'Sturgeon', icon: '🐟', sell: 1000, rarity: 0.8, water: 'river', biomes: ['nordic', 'forest_edge', 'grassland', 'jungle'] },
   { id: 'fish_arowana', name: 'Arowana', icon: '🐉', sell: 1200, rarity: 1, water: 'river', hours: [16, 9] },
   // Sea
-  { id: 'fish_sardine', name: 'Sardine', icon: '🐟', sell: 40, rarity: 12, water: 'sea' },
-  { id: 'fish_mackerel', name: 'Mackerel', icon: '🐟', sell: 120, rarity: 8, water: 'sea' },
-  { id: 'fish_seabass', name: 'Sea Bass', icon: '🐟', sell: 160, rarity: 7, water: 'sea' },
-  { id: 'fish_cod', name: 'Cod', icon: '🐟', sell: 180, rarity: 6, water: 'sea', seasons: ['autumn', 'winter', 'spring'] },
-  { id: 'fish_herring', name: 'Herring', icon: '🐟', sell: 70, rarity: 9, water: 'sea' },
-  { id: 'fish_clownfish', name: 'Clownfish', icon: '🐠', sell: 250, rarity: 5, water: 'sea' },
-  { id: 'fish_butterfly', name: 'Butterflyfish', icon: '🐠', sell: 220, rarity: 6, water: 'sea' },
-  { id: 'fish_tuna', name: 'Tuna', icon: '🐟', sell: 700, rarity: 2, water: 'sea' },
-  { id: 'fish_mahi', name: 'Mahi-Mahi', icon: '🐟', sell: 600, rarity: 2, water: 'sea', seasons: ['summer', 'wet'] },
-  { id: 'fish_seabream', name: 'Sea Bream', icon: '🐟', sell: 150, rarity: 7, water: 'sea' },
-  { id: 'fish_oarfish', name: 'Oarfish', icon: '🐉', sell: 1500, rarity: 0.5, water: 'sea', hours: [21, 5] },
+  { id: 'fish_sardine', name: 'Sardine', icon: '🐟', sell: 40, rarity: 12, water: 'sea', shadow: 'small' },
+  { id: 'fish_mackerel', name: 'Mackerel', icon: '🐟', sell: 120, rarity: 8, water: 'sea', shadow: 'medium' },
+  { id: 'fish_seabass', name: 'Sea Bass', icon: '🐟', sell: 160, rarity: 7, water: 'sea', shadow: 'medium' },
+  { id: 'fish_cod', name: 'Cod', icon: '🐟', sell: 180, rarity: 6, water: 'sea', shadow: 'large', seasons: ['autumn', 'winter', 'spring'] },
+  { id: 'fish_herring', name: 'Herring', icon: '🐟', sell: 70, rarity: 9, water: 'sea', shadow: 'small' },
+  { id: 'fish_clownfish', name: 'Clownfish', icon: '🐠', sell: 250, rarity: 5, water: 'sea', shadow: 'small' },
+  { id: 'fish_butterfly', name: 'Butterflyfish', icon: '🐠', sell: 220, rarity: 6, water: 'sea', shadow: 'small' },
+  { id: 'fish_tuna', name: 'Tuna', icon: '🐟', sell: 700, rarity: 2, water: 'sea', shadow: 'large' },
+  { id: 'fish_mahi', name: 'Mahi-Mahi', icon: '🐟', sell: 600, rarity: 2, water: 'sea', shadow: 'large', seasons: ['summer', 'wet'] },
+  { id: 'fish_seabream', name: 'Sea Bream', icon: '🐟', sell: 150, rarity: 7, water: 'sea', shadow: 'medium' },
+  { id: 'fish_oarfish', name: 'Oarfish', icon: '🐉', sell: 1500, rarity: 0.5, water: 'sea', shadow: 'large', hours: [21, 5] },
 ];
 
 export const ITEMS: Record<string, ItemDef> = {};

@@ -177,6 +177,15 @@ export class Bot {
     return best;
   }
 
+  /** A fish shadow next to water tile (x, z): one already there, else one put right on it (dev command); null if none. */
+  async fishShadow(x: number, z: number, size: 'small' | 'medium' | 'large' = 'medium') {
+    const have = [...this.objects.values()].find((o) => o.kind === 'fish' && Math.max(Math.abs(o.x - x), Math.abs(o.z - z)) <= 1);
+    if (have) return have;
+    this.send({ t: 'dev', cmd: 'fish', args: ['1', size, String(x), String(z)] });
+    const m = await this.wait('oAdd', (m) => m.o.some((o) => o.kind === 'fish' && o.x === x && o.z === z), 3000).catch(() => null);
+    return m?.o.find((o) => o.kind === 'fish') ?? null;
+  }
+
   freeSpots(type: BuildingType, margin = 1): [number, number, number][] {
     const { w, h } = BUILDINGS[type];
     const out: [number, number, number][] = [];

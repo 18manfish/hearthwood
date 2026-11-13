@@ -133,10 +133,12 @@ export async function run(ctx: Ctx) {
     let rs: [number, number] | null = null, rc: [number, number] | null = null;
     outerR: for (let z = 1; z < g.size - 1; z++) for (let x = 1; x < g.size - 1; x++) {
       if (!g.walkableTile(x, z) || g.bridges[z * g.size + x]) continue;
-      for (const [dx, dz] of DIRS) if (g.tile(x + dx, z + dz) === Tile.River) { rs = [x, z]; rc = [x + dx, z + dz]; if (await A.walkTo(x, z, false)) break outerR; rs = null; }
+      for (const [dx, dz] of DIRS) if (g.tile(x + dx, z + dz) === Tile.River && !g.bridges[(z + dz) * g.size + x + dx]) { rs = [x, z]; rc = [x + dx, z + dz]; if (await A.walkTo(x, z, false)) break outerR; rs = null; }
     }
     if (rs && rc) {
       A.inbox = A.inbox.filter((m) => m.t !== 'bite' && m.t !== 'fish'); // forget earlier casts
+      const spot = await A.fishShadow(rc[0], rc[1], 'large');
+      check(spot?.size === 'medium', 'rivers only have medium fish shadows');
       const c = await A.act({ k: 'cast', x: rc[0], z: rc[1] });
       if (c.ok && !c.msg) {
         const bite = await A.wait('bite', () => true, 8000);

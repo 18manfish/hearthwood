@@ -2,8 +2,9 @@
 
 import { type TreeSpecies } from '../data/biomes.ts';
 import { type BuildingType } from '../data/buildings.ts';
+import { FURNITURE_SHAPES, ITEMS, type FishShadow } from '../data/items.ts';
 
-export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor' | 'bird' | 'washed';
+export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor' | 'bird' | 'washed' | 'fish';
 
 export interface WorldObject {
   id: string;
@@ -34,6 +35,32 @@ export interface WorldObject {
   /** Birds: species id (see data/birds.ts) and when it flies off on its own. */
   bird?: string;
   leaveAt?: number;
+  /** Fish shadows (fishing spots): how big the fish is. */
+  size?: FishShadow;
+}
+
+/** Birds and fish shadows come and go: never saved, never in anyone's way. */
+export function isTransient(o: WorldObject): boolean {
+  return o.kind === 'bird' || o.kind === 'fish';
+}
+
+/** How a furniture item sits (see FURNITURE_SHAPES); undefined = a plain one-tile block. */
+export function furnitureShape(item: string): 'flat' | 'wall' | 'long' | undefined {
+  return FURNITURE_SHAPES[ITEMS[item]?.model ?? item];
+}
+
+/** The tile step an object's front faces after `rot` quarter turns (rot 0 faces +z). */
+export function frontDir(rot = 0): [number, number] {
+  return ([[0, 1], [1, 0], [0, -1], [-1, 0]] as [number, number][])[((rot % 4) + 4) % 4];
+}
+
+/** Tiles an object takes up (long furniture also takes the tile in front of it). */
+export function objectTiles(o: Pick<WorldObject, 'kind' | 'x' | 'z' | 'item' | 'rot'>): [number, number][] {
+  if (o.kind === 'furniture' && furnitureShape(o.item ?? '') === 'long') {
+    const [dx, dz] = frontDir(o.rot);
+    return [[o.x, o.z], [o.x + dx, o.z + dz]];
+  }
+  return [[o.x, o.z]];
 }
 
 export interface Building {
@@ -71,7 +98,11 @@ export interface IslandLayout {
 export function objectBlocks(o: WorldObject): boolean {
   if (o.kind === 'tree') return (o.stage ?? 2) >= 1;
   if (o.kind === 'decor') return !isFlatDecor(o.item ?? '');
-  return o.kind === 'stump' || o.kind === 'rock' || o.kind === 'bush' || o.kind === 'furniture';
+  if (o.kind === 'furniture') {
+    const shape = furnitureShape(o.item ?? '');
+    return shape !== 'flat' && shape !== 'wall';
+  }
+  return o.kind === 'stump' || o.kind === 'rock' || o.kind === 'bush';
 }
 
 /** Rugs and wall-mounted decor don't block movement. */

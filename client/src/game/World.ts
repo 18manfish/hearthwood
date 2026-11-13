@@ -24,6 +24,7 @@ import { addPlayer, groundY, interp, removeMover, say, swing, updateLocal } from
 import { upsertVillager } from './world/entities/villagers.ts';
 import { handle } from './world/messages.ts';
 import { animateProps, upsertBuildingMesh } from './world/room/objects.ts';
+import { addSealife, animateSealife, clearSealife } from './world/entities/sealife.ts';
 import { rebuildPaths, toggleGridOverlay } from './world/room/terrainLayer.ts';
 import { refreshVisuals, resize, updateEnvironment, currentVisual, zoom } from './world/scene/environment.ts';
 import { computeTarget, facingTile } from './world/targeting.ts';
@@ -178,6 +179,7 @@ export class World {
     }
     this.camDist = room.kind === 'interior' ? Math.max(8, room.size + 1) : Math.max(this.camDist, 11);
     this.water.visible = room.kind !== 'interior';
+    addSealife(this);
     if (debug.grid) toggleGridOverlay(this, true);
     this.cast = null;
     this.bobber.visible = false;
@@ -186,6 +188,7 @@ export class World {
   }
 
   private clearRoom() {
+    clearSealife(this);
     for (const f of this.flying) this.world.remove(f.mesh);
     this.flying = [];
     for (const m of this.objMeshes.values()) this.world.remove(m);
@@ -255,6 +258,7 @@ export class World {
     if (this.paint?.down && this.padAim) paintHere(this); // hold A and walk to paint a trail
     updateEnvironment(this, dt, t);
     animateProps(this, t);
+    animateSealife(this, t, dt);
     // Fishing bobber.
     if (this.cast) {
       const bite = this.cast.bite;

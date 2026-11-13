@@ -41,7 +41,7 @@ export interface Look {
 
 export type Access = 'private' | 'friends' | 'invite' | 'public';
 
-export const DEV_COMMANDS = ['kit', 'give', 'coins', 'day', 'finish', 'respawn', 'weather', 'season', 'tp', 'clearinv', 'permits', 'birds', 'bottles', 'beach'] as const;
+export const DEV_COMMANDS = ['kit', 'give', 'coins', 'day', 'finish', 'respawn', 'weather', 'season', 'tp', 'clearinv', 'permits', 'birds', 'fish', 'bottles', 'beach'] as const;
 export type DevCommand = (typeof DEV_COMMANDS)[number];
 export const ACCESS_LEVELS: Access[] = ['private', 'friends', 'invite', 'public'];
 

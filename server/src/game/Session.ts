@@ -13,6 +13,8 @@ export interface PendingCast {
   biteAt: number;
   window: number;
   fish: string | null;
+  /** The fish shadow the line was cast at. */
+  spot?: string;
   timer?: NodeJS.Timeout;
   bitten: boolean;
 }

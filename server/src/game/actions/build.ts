@@ -1,6 +1,7 @@
 // Building and moving houses, placing furniture, laying and lifting paths.
 
 import {
+  furniturePlaceError, objectTiles,
   type Building, BUILDINGS, type BuildingType, distToTile, ENTERABLE, ITEMS, MAX_VILLAGERS, nearBuilding, PATH_REACH, pathDef, placeError, relocationCost, VILLAGER_HOUSE_MONTH_ONE_LIMIT, VILLAGER_HOUSE_MONTH_TWO_MIN_DAY,
 } from '@hearthwood/shared';
 import { config } from '../../config.ts';
@@ -83,8 +84,10 @@ export const buildHandlers: Pick<Handlers, 'build' | 'relocate' | 'demolish' | '
     if (!def.placeable) return fail('That can’t be placed.');
     if (inv.count(ctx.p, a.item) < 1) return fail('You don’t have that.');
     if (distToTile(ctx.s.x, ctx.s.z, a.x, a.z) > config.reach + 0.5) return fail('Too far away.');
-    if (Math.floor(ctx.s.x) === a.x && Math.floor(ctx.s.z) === a.z) return fail('Step aside first.');
-    if (!ctx.room.grid.canPlace(a.x, a.z)) return fail('Can’t place it there.');
+    const tiles = objectTiles({ kind: 'furniture', item: a.item, x: a.x, z: a.z, rot: a.rot });
+    if (tiles.some(([x, z]) => Math.floor(ctx.s.x) === x && Math.floor(ctx.s.z) === z)) return fail('Step aside first.');
+    const err = furniturePlaceError(ctx.room.grid, a.item, a.x, a.z, a.rot ?? 0);
+    if (err) return fail(err);
     inv.remove(ctx.p, a.item, 1);
     ctx.room.addObject({ id: ctx.room.newId('u'), kind: 'furniture', x: a.x, z: a.z, item: a.item, rot: a.rot });
     return { ok: true };

@@ -5,16 +5,16 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 /**
- * Load `url` and hand its scene to `read`. `label` names the asset in warnings,
+ * Load `url` and hand its scene (and animation clips) to `read`. `label` names the asset in warnings,
  * `fallback` says what the game does without it. If `read` throws, `onError` runs.
  */
-export function loadGlb(url: string, label: string, fallback: string, read: (scene: THREE.Object3D) => void, onError?: () => void): Promise<void> {
+export function loadGlb(url: string, label: string, fallback: string, read: (scene: THREE.Object3D, animations: THREE.AnimationClip[]) => void, onError?: () => void): Promise<void> {
   return new Promise<void>((resolve) => {
     new GLTFLoader().load(
       url,
-      (gltf: { scene: THREE.Object3D }) => {
+      (gltf: { scene: THREE.Object3D; animations?: THREE.AnimationClip[] }) => {
         try {
-          read(gltf.scene);
+          read(gltf.scene, gltf.animations ?? []);
         } catch (e) {
           console.warn(`${label}: could not read`, e);
           onError?.();

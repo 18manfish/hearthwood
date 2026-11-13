@@ -1,11 +1,14 @@
 // What the player is facing and what pressing "use" would do there.
 
-import { atDoor, BUILDINGS, ENTERABLE, isWaterTile, nearBuilding, Tile, villagerDef } from '@hearthwood/shared';
+import { atDoor, BUILDINGS, ENTERABLE, isWaterTile, nearBuilding, Tile, villagerDef, type WorldObject } from '@hearthwood/shared';
 import { net } from '../../net.ts';
 import { state } from '../../state.ts';
 import { Target } from './common.ts';
 import { objectLabel } from './room/objects.ts';
 import type { World } from '../World.ts';
+
+/** How far a line reaches (the server allows 4.5 tiles to the tile). */
+const CAST_REACH = 4.2;
 
 export function facing(self: World) {
   const r = self.me?.r ?? 0;
@@ -70,9 +73,19 @@ export function computeTarget(self: World): Target | null {
   if (best) return best;
   // Water in front → fishing.
   if ((state.inv.fishing_rod || state.inv.pro_rod)) {
+    // Fish only bite at a fish shadow: aim at the nearest one in front of you.
+    let spot: WorldObject | null = null;
+    let sd = Infinity;
+    for (const o of self.objects.values()) {
+      if (o.kind !== 'fish') continue;
+      const dx = o.x + 0.5 - px, dz = o.z + 0.5 - pz, d = Math.hypot(dx, dz);
+      if (d < 0.3 || d > CAST_REACH || (dx * fx + dz * fz) / d < 0.55) continue;
+      if (d < sd) { sd = d; spot = o; }
+    }
+    if (spot) return { kind: 'water', x: spot.x, z: spot.z, label: `Cast at the ${spot.size ?? 'medium'} fish shadow` };
     for (const d of [1.2, 2, 2.8]) {
       const tx = Math.floor(px + fx * d), tz = Math.floor(pz + fz * d);
-      if (isWaterTile(self.grid.tile(tx, tz)) && self.grid.tile(tx, tz) !== Tile.Dock) return { kind: 'water', x: tx, z: tz, label: 'Cast your line' };
+      if (isWaterTile(self.grid.tile(tx, tz)) && self.grid.tile(tx, tz) !== Tile.Dock) return { kind: 'water', x: tx, z: tz, label: 'No fish here – look for a shadow in the water', empty: true };
     }
   }
   if (self.tool === 'sapling' && self.room.canBuild && (state.inv.sapling ?? 0) > 0) {

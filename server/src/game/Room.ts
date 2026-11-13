@@ -4,12 +4,14 @@
 
 import {
   TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, applyTerrainAndWater, classifyWater, type TerrainChange, Rng, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
+  isTransient, type FishShadow,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
 import { config } from '../config.ts';
 import { beachTick, washUp, widenBeaches } from './room/beach.ts';
 import { birdTick, landBirdsNear } from './room/birds.ts';
+import { fishNear, fishTick } from './room/fish.ts';
 import { dailyRefresh, processRespawns, scheduleRespawn } from './room/growth.ts';
 import { round2, spawnVillager, villagerTick, type VillagerRuntime } from './room/villagers.ts';
 
@@ -351,7 +353,7 @@ export class Room {
     if (this.interior) {
       if (this.isHome()) (this.record.interiors ??= {})[this.interior.buildingId] = [...this.objects.values()].filter((x) => x.kind !== 'decor');
     } else {
-      this.record.objects = [...this.objects.values()].filter((o) => o.kind !== 'bird');
+      this.record.objects = [...this.objects.values()].filter((o) => !isTransient(o));
       this.record.buildings = [...this.buildings.values()];
       this.record.nextId = Math.max(this.record.nextId, this.nextId);
       this.record.lastDayKey = this.dayKey;
@@ -414,6 +416,7 @@ export class Room {
     if (this.interior) return;
     if (env.dayKey !== this.dayKey) this.dailyRefresh(env.dayKey, now);
     birdTick(this, now, env);
+    fishTick(this, now, env);
     if (this.kind === 'shared') return;
     beachTick(this, now);
 
@@ -467,6 +470,11 @@ export class Room {
   /** Dev helper: land birds within a few tiles of a point. */
   landBirdsNear(px: number, pz: number, count: number) {
     return landBirdsNear(this, px, pz, count);
+  }
+
+  /** Dev helper: put fish shadows in the water near a point. */
+  fishNear(px: number, pz: number, count: number, size?: FishShadow, at?: [number, number]) {
+    return fishNear(this, px, pz, count, size, at);
   }
 
   // ── Depletion & respawning (room/growth.ts) ─────────────────────────────

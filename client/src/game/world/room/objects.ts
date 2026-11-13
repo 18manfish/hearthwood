@@ -7,7 +7,8 @@ import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { animateRig, makeVillager, type Rig } from '../../characters.ts';
 import { buildingModel, objectModel } from '../../models.ts';
-import { shopkeeper } from '../common.ts';
+import { shopkeeper, WATER_Y } from '../common.ts';
+import { SHADOW_SWIM } from '../../models/fish.ts';
 import { animateBirds } from '../entities/villagers.ts';
 import { currentVisual } from '../scene/environment.ts';
 import type { World } from '../../World.ts';
@@ -21,10 +22,19 @@ export function upsertObjectMesh(self: World, o: WorldObject) {
   const mesh = objectModel(o, season, vs, snowy, def.bushColor, def.bushItem);
   // Wall-mounted decor sits on the wall tile but is placed from floor level.
   const wallDecor = o.kind === 'decor' && o.item?.startsWith('w_');
-  mesh.position.set(o.x + 0.5, wallDecor ? baseHeight(Tile.Floor) : self.grid!.surfaceY(o.x + 0.5, o.z + 0.5), o.z + 0.5);
+  const y = o.kind === 'fish' ? shadowY(self, o) : wallDecor ? baseHeight(Tile.Floor) : self.grid!.surfaceY(o.x + 0.5, o.z + 0.5);
+  mesh.position.set(o.x + 0.5, y, o.z + 0.5);
   mesh.traverse((c: THREE.Object3D) => (c.userData.objId = o.id));
   self.world.add(mesh);
   self.objMeshes.set(o.id, mesh);
+}
+
+/** Fish shadows swim just under the surface – never through the bed of shallow water. */
+function shadowY(self: World, o: WorldObject) {
+  const surface = WATER_Y + (self.grid!.level(o.x, o.z) ?? 0) * CLIFF;
+  const bed = self.grid!.surfaceY(o.x + 0.5, o.z + 0.5);
+  const depth = SHADOW_SWIM[o.size ?? 'medium'].depth;
+  return Math.min(surface - 0.05, Math.max(bed + depth * 0.8, surface - depth - 0.1));
 }
 
 export function upsertBuildingMesh(self: World, b: Building) {
@@ -66,6 +76,7 @@ export function objectLabel(self: World, o: WorldObject, owner: boolean): string
       return owner ? `Pick up ${ITEMS[o.item ?? '']?.name ?? 'it'}` : null;
     case 'furniture': return self.room!.canDecorate ? `Pick up ${ITEMS[o.item!]?.name ?? 'item'} (F)` : null;
     case 'decor': return null;
+    case 'fish': return null; // fished at via the water (targeting.ts)
     case 'bird': {
       const name = BIRD_BY_ID[o.bird ?? '']?.name ?? 'bird';
       const net = state.inv.bird_net || state.inv.silk_net;
@@ -96,6 +107,11 @@ export function animateProps(self: World, t: number) {
       const l = mesh.getObjectByName('firelight') as THREE.PointLight | undefined;
       if (l) l.intensity = 1.6 + Math.sin(t * 11) * 0.3 + (1 - self.day) * 2.5;
     }
+  }
+  // Hanging chairs sway a little.
+  for (const [id, mesh] of self.objMeshes) {
+    const swing = mesh.getObjectByName('swing');
+    if (swing) swing.rotation.x = Math.sin(t * 0.9 + (id.charCodeAt(id.length - 1) % 5)) * 0.045;
   }
   // Moored boats bob on the swell.
   for (const [id, mesh] of self.objMeshes) {

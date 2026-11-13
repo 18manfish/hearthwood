@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { isFreshWater, BIOMES, Tile, hashString, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
+import { kitGeometry } from './assets/kit.ts';
 import { bend } from './bend.ts';
 
 type Vis = 'spring' | 'summer' | 'autumn' | 'winter';
@@ -60,19 +61,62 @@ const GEO = {
   leaf: new THREE.CircleGeometry(0.07, 5).rotateX(-Math.PI / 2).translate(0, 0.015, 0),
   snow: new THREE.SphereGeometry(0.18, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.45, 1),
   stem: tuftGeometry(1, 0.17, 0.008, 0),
+  // Only drawn with the kit models (art/kit/plants.py):
+  clover: null as THREE.BufferGeometry | null,
+  pebbles: null as THREE.BufferGeometry | null,
+  wild: null as THREE.BufferGeometry | null,
 };
 type Kind = keyof typeof GEO;
 
-const MATERIALS: Partial<Record<Kind, THREE.Material>> = {};
-function material(kind: Kind) {
-  let m = MATERIALS[kind];
+/**
+ * Kit ground cover replacing the simple shapes once plants.glb is loaded.
+ * `colors`: keep the model's own colours (the instance colour only tints them).
+ */
+const KIT: Partial<Record<Kind, { name: string; colors: boolean; scale: number }>> = {
+  grass: { name: 'grass_short', colors: false, scale: 1.3 },
+  tall: { name: 'grass_tall', colors: false, scale: 1.25 },
+  reed: { name: 'reeds', colors: true, scale: 1 },
+  fern: { name: 'fern', colors: false, scale: 1 },
+  leaf: { name: 'fallen_leaves', colors: true, scale: 1 },
+  snow: { name: 'snow_clump', colors: true, scale: 1 },
+  clover: { name: 'clover', colors: false, scale: 1 },
+  pebbles: { name: 'pebbles', colors: true, scale: 1 },
+  wild: { name: 'wildflowers', colors: true, scale: 1 },
+};
+const DRY_GRASS = { name: 'grass_dry', colors: false, scale: 1.3 };
+const kitGeo = new Map<string, THREE.BufferGeometry | null>();
+
+/** The kit geometry for a kind (normals up, so it's lit like the ground), or null. */
+function kitFor(kind: Kind, dry: boolean): { geo: THREE.BufferGeometry; colors: boolean } | null {
+  const k = kind === 'grass' && dry ? DRY_GRASS : KIT[kind];
+  if (!k) return null;
+  if (!kitGeo.has(k.name)) {
+    const g = kitGeometry(k.name, k.colors);
+    if (g) {
+      g.scale(k.scale, k.scale, k.scale);
+      g.computeVertexNormals();
+      const n = g.attributes.normal as THREE.BufferAttribute;
+      if (kind !== 'snow' && kind !== 'pebbles') for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
+    }
+    if (!g) return null; // not loaded (yet): try again next build
+    kitGeo.set(k.name, g);
+  }
+  const geo = kitGeo.get(k.name);
+  return geo ? { geo, colors: k.colors } : null;
+}
+
+const MATERIALS = new Map<string, THREE.Material>();
+function material(kind: Kind, vertexColors = false) {
+  const key = `${kind}|${vertexColors}`;
+  let m = MATERIALS.get(key);
   if (!m) {
-    const sway = kind !== 'leaf' && kind !== 'snow';
-    // Per-instance colours only (no vertex colours); both faces lit like the ground.
+    const sway = kind !== 'leaf' && kind !== 'snow' && kind !== 'pebbles';
+    const solid = kind === 'snow' || kind === 'pebbles';
+    // Per-instance colours (times the model's own colours for kit pieces); both faces lit like the ground.
     m = bend(new THREE.MeshStandardMaterial({
-      color: '#ffffff', roughness: 1, side: kind === 'snow' ? THREE.FrontSide : THREE.DoubleSide, flatShading: kind === 'snow',
-    }), { sway, twoSidedLight: kind !== 'snow' });
-    MATERIALS[kind] = m;
+      color: '#ffffff', roughness: 1, side: solid ? THREE.FrontSide : THREE.DoubleSide, flatShading: solid, vertexColors,
+    }), { sway, twoSidedLight: !solid });
+    MATERIALS.set(key, m);
   }
   return m;
 }
@@ -129,7 +173,8 @@ interface Inst {
 
 export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis, snowy: boolean, objects: Iterable<WorldObject>): THREE.Group {
   const pal = palette(biome, season, vs, snowy);
-  const out: Record<Kind, Inst[]> = { grass: [], tall: [], reed: [], fern: [], flower: [], leaf: [], snow: [], stem: [] };
+  const out: Record<Kind, Inst[]> = { grass: [], tall: [], reed: [], fern: [], flower: [], leaf: [], snow: [], stem: [], clover: [], pebbles: [], wild: [] };
+  const kit = !!kitFor('grass', false);
   const size = grid.size;
   const nearTree = new Uint8Array(size * size);
   for (const o of objects) {
@@ -162,12 +207,14 @@ export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis
       };
       if (t === Tile.Shore) {
         if (r() < 0.12) place('tall', 0.8, pick(['#b9b26a', '#a8a45a']));
+        if (kit && r() < 0.05) place('pebbles', 1, '#ffffff');
         continue;
       }
       // Reeds & cattails by ponds.
       if (nearWater(x, z) && !pal.snow && r() < 0.55) {
-        place('reed', 1, pick(['#5f9a3a', '#6fa845', '#7a9a40']));
-        if (r() < 0.6) place('reed', 0.9, pick(['#5f9a3a', '#6fa845']));
+        // Kit reeds bring their own greens and cattail browns.
+        place('reed', 1, kit ? '#ffffff' : pick(['#5f9a3a', '#6fa845', '#7a9a40']));
+        if (r() < 0.6) place('reed', 0.9, kit ? '#f2f2f2' : pick(['#5f9a3a', '#6fa845']));
       }
       const count = Math.floor(pal.density + r());
       for (let k = 0; k < count; k++) place(r() < pal.tallChance ? 'tall' : 'grass');
@@ -178,8 +225,17 @@ export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis
         out.flower.push({ x: px, y, z: pz, rot: 0, s: 1, color: c });
         out.stem.push({ x: px, y, z: pz, rot: 0, s: 1, color: '#4f9e3a' });
       }
-      if (pal.leaves && nearTree[i]) for (let k = 0; k < 3; k++) if (r() < 0.7) place('leaf', 1, pick(pal.leaves));
-      if (pal.snow && r() < 0.22) place('snow', 0.8 + r() * 0.6, '#f4f8fb');
+      if (pal.leaves && nearTree[i]) {
+        // A kit leaf drift is a whole little pile; the simple leaves come singly.
+        if (kit) { if (r() < 0.6) place('leaf', 1, '#ffffff'); }
+        else for (let k = 0; k < 3; k++) if (r() < 0.7) place('leaf', 1, pick(pal.leaves));
+      }
+      if (pal.snow && r() < 0.22) place('snow', 0.8 + r() * 0.6, kit ? '#ffffff' : '#f4f8fb');
+      if (kit && !pal.snow && !pal.dry) {
+        if (r() < 0.05) place('clover', 1, pick(pal.grass));
+        if (r() < pal.flowerChance * 0.4) place('wild', 1, '#ffffff');
+        if (r() < 0.015) place('pebbles', 1, '#ffffff');
+      }
     }
 
   const group = new THREE.Group();
@@ -190,7 +246,10 @@ export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis
   for (const kind of Object.keys(out) as Kind[]) {
     const list = out[kind];
     if (!list.length) continue;
-    const mesh = new THREE.InstancedMesh(GEO[kind], material(kind), list.length);
+    const k = kitFor(kind, pal.dry);
+    const geo = k?.geo ?? GEO[kind];
+    if (!geo) continue;
+    const mesh = new THREE.InstancedMesh(geo, material(kind, !!k?.colors), list.length);
     list.forEach((it, idx) => {
       q.setFromAxisAngle(up, it.rot);
       m4.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.s, it.s, it.s));

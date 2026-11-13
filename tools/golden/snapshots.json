@@ -42,8 +42,8 @@
   "hash": "85efd314eec01dbee60459fa"
  },
  "client/models/furniture": {
-  "hash": "3b13123c51bbfa68ef5cbe1c",
-  "info": "10 items"
+  "hash": "484681ae5fda0cfffe41207f",
+  "info": "30 items"
  },
  "client/models/objects/autumn": {
   "hash": "10258c007c8c7651ca48055b",
@@ -169,7 +169,7 @@
   "hash": "2827f601e868f24765271378"
  },
  "data/tables": {
-  "hash": "dc2437a7becc676d51c6a0e1"
+  "hash": "8f9bde6bcf88a81ac62611be"
  },
  "env": {
   "hash": "395739a506212ed51e8f1d94"

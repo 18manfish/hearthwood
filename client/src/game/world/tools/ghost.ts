@@ -1,7 +1,7 @@
 // Placement ghosts for building, moving buildings and placing furniture.
 
 import * as THREE from 'three';
-import { type Building, BUILDINGS, type BuildingType, distToTile, placeError } from '@hearthwood/shared';
+import { type Building, BUILDINGS, type BuildingType, distToTile, furniturePlaceError, objectTiles, placeError } from '@hearthwood/shared';
 import { furnitureModel, mat, part } from '../../models.ts';
 import { facing, facingTile } from '../targeting.ts';
 import { pickGround, stopPaint } from './paint.ts';
@@ -51,6 +51,11 @@ export function startPlaceGhost(self: World, item: string) {
   const box = part('box', mat('#7fe07f', { opacity: 0.35 }), 1, 0.05, 1, 0.5, 0.03, 0.5, false);
   box.name = 'box';
   group.add(box);
+  // Second tile of long furniture (beds).
+  const box2 = part('box', mat('#7fe07f', { opacity: 0.35 }), 1, 0.05, 1, 0.5, 0.03, 0.5, false);
+  box2.name = 'box2';
+  box2.visible = false;
+  group.add(box2);
   self.scene.add(group);
   self.ghost = { group, type: 'place', item, rot: 0, tx: 0, tz: 0, ok: false };
 }
@@ -97,9 +102,19 @@ export function updateGhost(self: World) {
   g.tz = tz;
   const cx = tx + w / 2, cz = tz + h / 2;
   const inRange = g.type === 'build' ? Math.hypot(self.me.x - cx, self.me.z - cz) <= 6 : distToTile(self.me.x, self.me.z, tx, tz) <= 2.4;
-  const meInside = self.me.x > tx - 0.3 && self.me.x < tx + w + 0.3 && self.me.z > tz - 0.3 && self.me.z < tz + h + 0.3;
-  g.ok = (g.type === 'build' ? placeError(self.grid, g.building, tx, tz) === null : self.grid.canPlace(tx, tz, w, h)) && inRange && !meInside;
+  const me = self.me;
+  const inside = (x: number, z: number, ww: number, hh: number) => me.x > x - 0.3 && me.x < x + ww + 0.3 && me.z > z - 0.3 && me.z < z + hh + 0.3;
+  const tiles = g.type === 'place' ? objectTiles({ kind: 'furniture', item: g.item, x: tx, z: tz, rot: g.rot }) : [];
+  const meInside = g.type === 'build' ? inside(tx, tz, w, h) : tiles.some(([x, z]) => inside(x, z, 1, 1));
+  g.ok = (g.type === 'build' ? placeError(self.grid, g.building, tx, tz) === null : furniturePlaceError(self.grid, g.item, tx, tz, g.rot) === null) && inRange && !meInside;
   g.group.position.set(tx, self.grid.surfaceY(tx + 0.5, tz + 0.5), tz);
+  const look = mat(g.ok ? '#7fe07f' : '#ff6b6b', { opacity: 0.45 });
   const box = g.group.getObjectByName('box') as THREE.Mesh;
-  box.material = mat(g.ok ? '#7fe07f' : '#ff6b6b', { opacity: 0.45 });
+  box.material = look;
+  const box2 = g.group.getObjectByName('box2') as THREE.Mesh | undefined;
+  if (box2) {
+    box2.visible = tiles.length > 1;
+    if (tiles.length > 1) box2.position.set(tiles[1][0] - tx + 0.5, 0.03, tiles[1][1] - tz + 0.5);
+    box2.material = look;
+  }
 }

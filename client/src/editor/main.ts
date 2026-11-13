@@ -15,6 +15,7 @@ import { api, clearToken, health, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
 import { h, clear } from '../ui/dom.ts';
 import { birdModel, buildingModel, furnitureModel } from '../game/models.ts';
+import { loadKitAssets } from '../game/assets/kit.ts';
 import { makeVillager, animateRig, type Rig } from '../game/characters.ts';
 
 const app = document.getElementById('app')!;
@@ -592,5 +593,7 @@ async function start() {
   }
   window.onbeforeunload = () => (dirty.size || unapplied ? 'Unsaved changes' : undefined);
   render();
+  // Bird and furniture previews use the kit models once they're in.
+  loadKitAssets().then(render);
 }
 start();

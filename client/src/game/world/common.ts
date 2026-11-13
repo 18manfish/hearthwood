@@ -27,7 +27,7 @@ export type Target =
   | { kind: 'object'; o: WorldObject; label: string }
   | { kind: 'villager'; id: string; label: string }
   | { kind: 'building'; b: Building; label: string }
-  | { kind: 'water'; x: number; z: number; label: string }
+  | { kind: 'water'; x: number; z: number; label: string; empty?: boolean }
   | { kind: 'plant'; x: number; z: number; label: string }
   | { kind: 'reel'; label: string };
 

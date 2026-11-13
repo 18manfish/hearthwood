@@ -1,4 +1,4 @@
-// Dev commands (only in dev mode): kits, time, weather, seasons, birds, bottles…
+// Dev commands (only in dev mode): kits, time, weather, seasons, birds, fish, bottles…
 
 import {
   BIOMES, type DevCommand, ITEMS, PERMITS, type Season, SEASONS_BY_MODEL, type Weather,
@@ -44,6 +44,15 @@ export function devCommand(game: Game, s: Session, cmd: DevCommand, args: string
       if (!room || room.interior) return reply('Go outside first.');
       const landed = room.landBirdsNear(s.x, s.z, Math.max(1, Math.min(6, n(0, 3))));
       reply(`${landed} bird(s) landed nearby.`);
+      break;
+    }
+    case 'fish': {
+      // Fish shadows in the water around you: /fish [n] [small|medium|large] [x z]
+      if (!room || room.interior) return reply('Go outside first.');
+      const size = (['small', 'medium', 'large'] as const).find((x) => x === args[1]);
+      const at = args[2] !== undefined && args[3] !== undefined ? [Math.floor(n(2, 0)), Math.floor(n(3, 0))] as [number, number] : undefined;
+      const k = room.fishNear(s.x, s.z, Math.max(1, Math.min(8, n(0, 3))), size, at);
+      reply(k ? `${k} fish shadow(s) nearby.` : 'No free water nearby.');
       break;
     }
     case 'bottles':

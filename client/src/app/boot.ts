@@ -4,6 +4,7 @@
 import { net } from '../net.ts';
 import { loadTreeAssets } from '../game/treeAssets.ts';
 import { loadTileset } from '../game/tileAssets.ts';
+import { loadKitAssets } from '../game/assets/kit.ts';
 import { api, clearToken, health, loadGameData, token, type Health } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
 import { showStart } from '../ui/start.ts';
@@ -37,7 +38,7 @@ export function bindAuth() {
 
 export async function boot() {
   statusScreen('Connecting to the islands…');
-  const models = Promise.all([loadTreeAssets(), loadTileset()]); // in parallel with login; never rejects
+  const models = Promise.all([loadTreeAssets(), loadTileset(), loadKitAssets()]); // in parallel with login; never rejects
   try {
     serverInfo = await health();
     await loadGameData();

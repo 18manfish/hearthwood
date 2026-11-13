@@ -77,6 +77,7 @@ export async function interact() {
     case 'building':
       return game.hud.openBuilding(t.b);
     case 'water': {
+      if (t.empty) return game.hud.toast('No fish here – cast next to a fish shadow.', 'warn');
       game.world.startCast(t.x, t.z);
       const r = await game.hud.act({ k: 'cast', x: t.x, z: t.z });
       if (!r.ok || r.msg) game.world.endCast();

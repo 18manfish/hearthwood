@@ -2,8 +2,10 @@
 // stumps, washed-up finds, and birds.
 
 import * as THREE from 'three';
-import { BIRD_BY_ID, ITEMS, type Season, type WorldObject } from '@hearthwood/shared';
+import { BIOMES, BIRD_BY_ID, ITEMS, type BiomeId, type Season, type WorldObject } from '@hearthwood/shared';
+import { kitModel } from '../assets/kit.ts';
 import { decorModel } from '../decor.ts';
+import { fishShadowModel } from './fish.ts';
 import { furnitureModel } from './furniture.ts';
 import { mat, part, rand } from './primitives.ts';
 import { treeModel } from './trees.ts';
@@ -19,14 +21,18 @@ export function objectModel(o: WorldObject, season: Season, visual: 'spring' | '
       return g;
     }
     case 'rock': {
-      const g = new THREE.Group();
       const worn = Math.min(1, (o.hits ?? 0) / 8);
+      const kit = kitRock(o, bushColor, worn);
+      if (kit) return kit;
+      const g = new THREE.Group();
       g.add(part('dodeca', '#8d8f93', 0.48 - worn * 0.12, 0.38 - worn * 0.12, 0.42 - worn * 0.1, 0, 0.25, 0));
       g.add(part('dodeca', '#a3a5a8', 0.22, 0.2, 0.22, 0.3, 0.15, 0.2));
       g.rotation.y = rand(o.id) * 6;
       return g;
     }
     case 'bush': {
+      const kit = kitBush(o, snowy, bushColor);
+      if (kit) return kit;
       const g = new THREE.Group();
       const c = snowy ? '#cfe3d6' : bushColor;
       g.add(part('ico', c, 0.42, 0.35, 0.42, 0, 0.32, 0));
@@ -44,6 +50,8 @@ export function objectModel(o: WorldObject, season: Season, visual: 'spring' | '
     case 'washed':
       return washedModel(o.item ?? 'seashell', o.id);
     case 'mushroom': {
+      const kit = kitModel(o.rare ? 'glowcap' : rand(o.id, 3) < 0.35 ? 'mushroom_brown' : 'mushroom');
+      if (kit) return spin(kit, o.id);
       const g = new THREE.Group();
       const cap = o.rare ? mat('#4dd0e1', { emissive: '#26c6da', ei: 0.9 }) : mat('#d84315');
       g.add(part('cyl', '#f5ecd7', 0.05, 0.18, 0.05, 0, 0.09, 0));
@@ -53,9 +61,13 @@ export function objectModel(o: WorldObject, season: Season, visual: 'spring' | '
       return g;
     }
     case 'flower': {
-      const g = new THREE.Group();
       const colors = ['#ff6f91', '#ffd166', '#c77dff', '#ffffff', '#ff9f1c', '#4cc9f0'];
-      const col = colors[Math.floor(rand(o.id) * colors.length)];
+      const pick = Math.floor(rand(o.id) * colors.length);
+      // Same colour order as the kit flowers (art/kit/plants.py).
+      const kit = kitModel(`flower_${FLOWER_KINDS[pick]}`);
+      if (kit) return spin(kit, o.id);
+      const g = new THREE.Group();
+      const col = colors[pick];
       g.add(part('cyl', '#4f9e3a', 0.02, 0.3, 0.02, 0, 0.15, 0, false));
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2;
@@ -70,14 +82,58 @@ export function objectModel(o: WorldObject, season: Season, visual: 'spring' | '
       return decorModel(o.item ?? 'none', o.rot ?? 0);
     case 'bird':
       return birdModel(o.bird ?? 'bird_sparrow', o.rot ?? 0);
+    case 'fish':
+      return fishShadowModel(o.size ?? 'medium', o.id);
   }
+}
+
+const FLOWER_KINDS = ['tulip', 'buttercup', 'bell', 'daisy', 'poppy', 'cornflower'];
+const SNOW_LEAF = '#cfe3d6';
+const LEAFY = new Set(['leaves', 'leaf', 'mound', 'frond']);
+
+function spin(g: THREE.Object3D, id: string) {
+  g.rotation.y = rand(id, 7) * Math.PI * 2;
+  return g;
+}
+
+/** The biome whose bushes have this colour (objectModel only gets the colour). */
+function biomeOfBush(bushColor: string): BiomeId | undefined {
+  return (Object.keys(BIOMES) as BiomeId[]).find((b) => BIOMES[b].bushColor === bushColor);
+}
+
+/** Kit bush for the biome: berries only while ripe, leaves frosted when snowy. */
+function kitBush(o: WorldObject, snowy: boolean, bushColor: string): THREE.Object3D | null {
+  const biome = biomeOfBush(bushColor);
+  const g = biome ? kitModel(`bush_${biome}`, snowy ? (role) => (LEAFY.has(role) ? mat(SNOW_LEAF) : null) : undefined) : null;
+  if (!g) return null;
+  const berries = g.getObjectByName('berries');
+  if (berries) berries.visible = !!o.ripe;
+  return spin(g, o.id);
+}
+
+/** Kit rock: one of three shapes (mossy in the wet biomes), worn down as it is hit. */
+function kitRock(o: WorldObject, bushColor: string, worn: number): THREE.Object3D | null {
+  const biome = biomeOfBush(bushColor);
+  const mossy = (biome === 'forest_edge' || biome === 'jungle' || biome === 'nordic') && rand(o.id, 2) < 0.4;
+  const g = kitModel(mossy ? 'rock_mossy' : `rock_${1 + Math.floor(rand(o.id, 1) * 3)}`);
+  if (!g) return null;
+  g.scale.set(1 - worn * 0.25, 1 - worn * 0.3, 1 - worn * 0.25);
+  g.rotation.y = rand(o.id) * 6;
+  return g;
 }
 
 /**
  * A little bird, facing +z inside its `body` group so it can be animated:
  * `body` (hop/peck), `head` (look around), `wingL`/`wingR` (flap).
+ * The kit model when it's loaded, otherwise a procedural one.
  */
 export function birdModel(id: string, rot = 0): THREE.Object3D {
+  const kit = kitBird(id);
+  if (kit) {
+    kit.rotation.y = (rot * Math.PI) / 2 + (rand(id, rot) - 0.5) * 0.8;
+    kit.userData.bird = true;
+    return kit;
+  }
   const def = BIRD_BY_ID[id] ?? BIRD_BY_ID.bird_sparrow;
   const [body, wing, belly, beak] = def.colors;
   const root = new THREE.Group();
@@ -122,6 +178,17 @@ export function birdModel(id: string, rot = 0): THREE.Object3D {
   root.rotation.y = (rot * Math.PI) / 2 + (rand(id, rot) - 0.5) * 0.8;
   root.userData.bird = true;
   return root;
+}
+
+/** Kit bird: its `hop` node is the game's `body` (the body mesh itself becomes `torso`). */
+function kitBird(id: string): THREE.Object3D | null {
+  const g = kitModel(BIRD_BY_ID[id] ? id : 'bird_sparrow');
+  if (!g) return null;
+  const torso = g.getObjectByName('body');
+  if (torso) torso.name = 'torso';
+  const hop = g.getObjectByName('hop');
+  if (hop) hop.name = 'body';
+  return g;
 }
 
 /** Things lying on the beach. */

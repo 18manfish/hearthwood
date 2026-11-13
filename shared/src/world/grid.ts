@@ -6,7 +6,7 @@ import { CoastField, coastY, isCoastal } from './coast.ts';
 import { dockRamp, dockRampLen } from './dock.ts';
 import { cornerHeights, surfaceY } from './heights.ts';
 import { WADE_FLOOR } from './constants.ts';
-import { type Building, isBridge, objectBlocks, type WorldObject } from './objects.ts';
+import { type Building, isBridge, isTransient, objectBlocks, objectTiles, type WorldObject } from './objects.ts';
 import { DIRS, isWaterTile, Tile, tileAt } from './tiles.ts';
 
 const WALKABLE = new Set<Tile>([Tile.Ground, Tile.Shore, Tile.Dock, Tile.Ramp, Tile.Floor]);
@@ -97,11 +97,15 @@ export class Grid {
   }
 
   addObject(o: WorldObject, sign = 1) {
-    // Birds hop about freely and never get in the way.
-    if (!this.inBounds(o.x, o.z) || o.kind === 'bird') return;
-    const i = this.idx(o.x, o.z);
-    this.occupied[i] += sign;
-    if (objectBlocks(o)) this.blocked[i] += sign;
+    // Birds hop about and fish swim freely: they never get in the way.
+    if (isTransient(o)) return;
+    const blocks = objectBlocks(o);
+    for (const [x, z] of objectTiles(o)) {
+      if (!this.inBounds(x, z)) continue;
+      const i = this.idx(x, z);
+      this.occupied[i] += sign;
+      if (blocks) this.blocked[i] += sign;
+    }
   }
 
   removeObject(o: WorldObject) {

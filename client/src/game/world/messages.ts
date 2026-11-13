@@ -3,6 +3,7 @@
 import { applyTerrain, type PlayerView, type ServerMessage } from '@hearthwood/shared';
 import { state } from '../../state.ts';
 import { addPlayer, removeMover } from './entities/players.ts';
+import { showCatch } from './entities/sealife.ts';
 import { upsertVillager } from './entities/villagers.ts';
 import { upsertBuildingMesh, upsertObjectMesh } from './room/objects.ts';
 import { scheduleFoliage, schedulePaths, scheduleTerrain } from './room/terrainLayer.ts';
@@ -128,6 +129,7 @@ export function handle(self: World, m: ServerMessage) {
       break;
     case 'fish':
       if (self.cast?.id === m.castId) endCast(self);
+      if (m.ok && m.item) showCatch(self, m.item);
       break;
     case 'env':
       refreshVisuals(self);

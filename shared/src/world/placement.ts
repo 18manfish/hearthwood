@@ -2,7 +2,7 @@
 
 import { BUILDINGS, type BuildingType } from '../data/buildings.ts';
 import { Grid } from './grid.ts';
-import { type Building, isBridge } from './objects.ts';
+import { type Building, frontDir, furnitureShape, isBridge, objectTiles } from './objects.ts';
 import { Tile } from './tiles.ts';
 
 /** Is a building's footprint adjacent to (or under) point px,pz within `reach`? */
@@ -68,6 +68,18 @@ export function findFreeSpot(
     const tx = 1 + Math.floor(rand() * (grid.size - 2));
     const tz = 1 + Math.floor(rand() * (grid.size - 2));
     if (ok(tx, tz)) return { x: tx, z: tz };
+  }
+  return null;
+}
+
+/** Why a furniture item can't go at (x, z) facing `rot` – null if it can. */
+export function furniturePlaceError(g: Grid, item: string, x: number, z: number, rot: number): string | null {
+  const tiles = objectTiles({ kind: 'furniture', item, x, z, rot });
+  const lvl = g.level(x, z);
+  for (const [tx, tz] of tiles) if (!g.canPlace(tx, tz) || g.level(tx, tz) !== lvl) return tiles.length > 1 ? 'It needs two free tiles.' : 'Can’t place it there.';
+  if (furnitureShape(item) === 'wall') {
+    const [dx, dz] = frontDir(rot);
+    if (g.tile(x - dx, z - dz) !== Tile.Wall) return 'Hang it with its back against a wall.';
   }
   return null;
 }

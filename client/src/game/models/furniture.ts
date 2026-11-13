@@ -1,12 +1,21 @@
 // Furniture and decor items, and emoji signs (sprites) over buildings.
 
 import * as THREE from 'three';
-import { ITEMS } from '@hearthwood/shared';
+import { furnitureShape, ITEMS } from '@hearthwood/shared';
+import { kitModel } from '../assets/kit.ts';
 import { bend } from '../bend.ts';
 import { mat, part } from './primitives.ts';
 
+const HULLS = ['#e8604c', '#3fa7d6', '#f2c14e', '#59cd90'];
+
 export function furnitureModel(item: string, rot = 0): THREE.Object3D {
   const g = new THREE.Group();
+  const kit = kitFurniture(item, rot);
+  if (kit) {
+    g.add(kit);
+    g.rotation.y = (rot * Math.PI) / 2;
+    return g;
+  }
   const wood = '#a0703f';
   // Items can borrow another model (set in the game creation tool).
   switch (ITEMS[item]?.model ?? item) {
@@ -66,8 +75,7 @@ export function furnitureModel(item: string, rot = 0): THREE.Object3D {
       break;
     case 'rowboat': {
       // Hull tapers to a bow; striped gunwale; bench and oars. Floats at water level.
-      const hulls = ['#e8604c', '#3fa7d6', '#f2c14e', '#59cd90'];
-      const c0 = hulls[Math.abs(Math.floor(rot * 7 + 3)) % hulls.length];
+      const c0 = HULLS[Math.abs(Math.floor(rot * 7 + 3)) % HULLS.length];
       const hull = new THREE.Group();
       hull.add(part('box', '#f5ecd7', 0.62, 0.22, 1.25, 0, 0.12, 0));
       hull.add(part('box', c0, 0.66, 0.08, 1.29, 0, 0.26, 0));
@@ -91,6 +99,19 @@ export function furnitureModel(item: string, rot = 0): THREE.Object3D {
   }
   g.rotation.y = (rot * Math.PI) / 2;
   return g;
+}
+
+/**
+ * Kit furniture (placeables and the Bohemian pack). Wall pieces are modelled on
+ * the wall tile; placed from the floor tile in front, they move back onto the wall.
+ */
+function kitFurniture(item: string, rot: number): THREE.Object3D | null {
+  const model = ITEMS[item]?.model ?? item;
+  const trim = HULLS[Math.abs(Math.floor(rot * 7 + 3)) % HULLS.length];
+  const k = kitModel(model, model === 'rowboat' ? (role) => (role === 'trim' ? mat(trim) : null) : undefined);
+  if (!k) return null;
+  if (furnitureShape(item) === 'wall') k.position.z = -1;
+  return k;
 }
 
 /** Emoji sign as a sprite (shop icons). */

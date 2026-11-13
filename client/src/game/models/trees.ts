@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { type Season, TREES, type WorldObject } from '@hearthwood/shared';
+import { kitModel } from '../assets/kit.ts';
 import { gltfTree } from '../treeAssets.ts';
 import { G, mat, part, rand } from './primitives.ts';
 
@@ -20,7 +21,7 @@ export function treeModel(o: WorldObject, season: Season, visual: 'spring' | 'su
   const fruitColor = def.fruit ? FRUIT_COLORS[def.fruit] : undefined;
   const fruits: [number, number, number][] = [];
 
-  // Prefer the Blender models when they are loaded (saplings stay procedural).
+  // Prefer the Blender models when they are loaded (saplings come from the art kit).
   if (stage > 0) {
     const m = gltfTree(
       o,
@@ -105,7 +106,12 @@ export function treeModel(o: WorldObject, season: Season, visual: 'spring' | 'su
     for (let i = 0; i < n; i++) g.add(part('sphere', fruitColor, 0.11, 0.11, 0.11, ...fruits[i]));
   }
   if (stage === 0) {
-    // Sapling: a tiny sprout.
+    // Sapling: the kit sprout, else a tiny procedural one.
+    const kit = kitModel('sapling');
+    if (kit) {
+      kit.rotation.y = rand(o.id) * Math.PI * 2;
+      return kit;
+    }
     g.clear();
     g.add(part('cyl', '#7a5230', 0.04, 0.4, 0.04, 0, 0.2, 0));
     g.add(part('ico', '#7fc650', 0.16, 0.12, 0.16, 0.06, 0.42, 0));

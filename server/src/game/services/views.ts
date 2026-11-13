@@ -3,6 +3,7 @@
 
 import {
   type Album, DEFAULT_HOTBAR, encodeTiles, LEGACY_ISLAND_SIZE, normalizeHotbar, type SelfView,
+  isTransient,
 } from '@hearthwood/shared';
 import { Room } from '../Room.ts';
 import { Session } from '../Session.ts';
@@ -62,7 +63,7 @@ export function adminIslandView(game: Game, rec: IslandRecord) {
   const g = room.grid;
   const owner = game.store.players.get(rec.ownerId);
   return {
-    record: { ...rec, objects: live ? [...live.objects.values()].filter((o) => o.kind !== 'bird') : rec.objects, buildings: live ? [...live.buildings.values()] : rec.buildings },
+    record: { ...rec, objects: live ? [...live.objects.values()].filter((o) => !isTransient(o)) : rec.objects, buildings: live ? [...live.buildings.values()] : rec.buildings },
     owner: owner ? { id: owner.id, name: owner.name, username: owner.username ?? null } : null,
     size: g.size,
     tiles: encodeTiles(g.tiles), levels: encodeTiles(g.levels), ramps: encodeTiles(g.ramps), paths: encodeTiles(g.paths),

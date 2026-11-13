@@ -1,6 +1,8 @@
 declare module 'three' {
   export const ACESFilmicToneMapping: any; export type ACESFilmicToneMapping = any;
   export const AdditiveBlending: any; export type AdditiveBlending = any;
+  export const AnimationClip: any; export type AnimationClip = any;
+  export const AnimationMixer: any; export type AnimationMixer = any;
   export const BackSide: any; export type BackSide = any;
   export const BoxGeometry: any; export type BoxGeometry = any;
   export const BufferAttribute: any; export type BufferAttribute = any;

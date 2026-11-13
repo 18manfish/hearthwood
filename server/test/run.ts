@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR,
+  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 
@@ -818,6 +818,17 @@ async function main() {
       for (let i = 0; i < g.size * g.size; i++) { if (g.tiles[i] === Tile.River) river++; if (g.tiles[i] === Tile.Pond) pond++; }
       check(river > 0 && pond > 0, `the island has a river (${river} tiles) and a pond (${pond})`);
       check(classifyWater(g.size, Uint8Array.from(g.tiles)).length === 0, 'rivers connect to the sea, ponds don’t');
+      // Digging into beach sand: joined to the sea it's a river; filled in, it's sand again.
+      {
+        const n = 10, tiles = new Uint8Array(n * n).fill(Tile.Ground);
+        for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) if (z >= 6) tiles[z * n + x] = z >= 8 ? Tile.Sea : Tile.Shore;
+        const tg = new Grid(n, tiles);
+        check(terraformError(tg, 'water', 4, 7) === null, 'water can be dug into sand');
+        applyTerrainAndWater(tg, terraformChanges(tg, 'water', 4, 7));
+        check(tg.tile(4, 7) === Tile.River, 'sand dug next to the sea becomes river');
+        applyTerrainAndWater(tg, terraformChanges(tg, 'land', 4, 7));
+        check(tg.tile(4, 7) === Tile.Shore, 'filled back in with sand on the beach');
+      }
       // Wide beaches and wading into the shallow sea.
       {
         let shore = 0, wade = 0, deep = 0;

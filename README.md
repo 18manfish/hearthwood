@@ -145,7 +145,7 @@ Builders and residents can always visit, whatever the access setting. The island
 | ⛰️ Raise / 🕳️ Lower cliff | Moves ground up or down one level, to a maximum of 3. Cliffs grow one level at a time and need solid ground all around them. |
 | 📐 Build / 🚧 Remove ramp | Adds a grassy slope up to a cliff one level higher, or turns a ramp back into flat ground. |
 | 🪨 🪜 🪵 Stairs | Stone stairs, wooden stairs with posts and a rail, or log steps. Build them like a ramp, or use one on an existing ramp to change its look. |
-| 💧 Dig / 🟫 Fill water | Digs a pond tile at ground level, away from cliffs, or fills pond water back in. |
+| 💧 Dig / 🟫 Fill water | Digs water into ground or beach sand at ground level, away from cliffs (joined to the sea or a river it's river, otherwise a pond), or fills it back in (sand on the beach). |
 
 The tile must be empty, and nobody can be standing on it. Reshaped terrain is saved with your island.
 

@@ -23,8 +23,8 @@ export const TERRA_INFO: Record<TerraOp, { name: string; icon: string; color: st
   stairs_wood: { name: 'Wooden stairs', icon: '🪜', color: '#c08a52', hint: 'Plank steps with posts (or turn a ramp into them)' },
   stairs_log: { name: 'Log steps', icon: '🪵', color: '#8b5a2b', hint: 'Rustic logs set into the slope (or turn a ramp into them)' },
   unramp: { name: 'Remove ramp', icon: '🚧', color: '#ef8354', hint: 'Turns a ramp back into flat ground' },
-  water: { name: 'Dig water', icon: '💧', color: '#4fb7d8', hint: 'Digs water (ground level). Joined to the sea or a river it becomes river, otherwise a pond' },
-  land: { name: 'Fill water', icon: '🟫', color: '#a1887f', hint: 'Fills a pond or river tile with earth' },
+  water: { name: 'Dig water', icon: '💧', color: '#4fb7d8', hint: 'Digs water into ground or sand. Joined to the sea or a river it becomes river, otherwise a pond' },
+  land: { name: 'Fill water', icon: '🟫', color: '#a1887f', hint: 'Fills a pond or river tile (with sand on the beach)' },
 };
 
 /** One changed tile: [x, z, tile, level, ramp (dir + 1, 0 = none)]. */
@@ -100,7 +100,7 @@ export function terraformError(g: Grid, op: TerraOp, x: number, z: number, dir =
       if (t !== Tile.Ramp) return 'That isn’t a ramp.';
       return null;
     case 'water':
-      if (t !== Tile.Ground) return 'You can only dig water into plain ground.';
+      if (t !== Tile.Ground && t !== Tile.Shore) return 'You can only dig water into plain ground or sand.';
       if (L !== 0) return 'Water only works at ground level.';
       if (!free || g.path(x, z)) return 'Clear this spot first.';
       if (g.reserved[i]) return 'Keep the ground around ramps clear.';
@@ -116,6 +116,19 @@ export function terraformError(g: Grid, op: TerraOp, x: number, z: number, dir =
   }
 }
 
+/** Is a filled-in water tile on the beach (mostly sand or sea around it)? */
+function sandy(g: Grid, x: number, z: number) {
+  let beach = 0, land = 0;
+  for (let dz = -1; dz <= 1; dz++)
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dz) continue;
+      const t = g.tile(x + dx, z + dz);
+      if (t === Tile.Shore || t === Tile.Sea || t === Tile.Dock) beach++;
+      else if (t === Tile.Ground || t === Tile.Ramp) land++;
+    }
+  return beach > land;
+}
+
 /** The tile changes `op` makes (assumes `terraformError` returned null). */
 export function terraformChanges(g: Grid, op: TerraOp, x: number, z: number, dir = -1): TerrainChange[] {
   const L = g.level(x, z);
@@ -128,7 +141,7 @@ export function terraformChanges(g: Grid, op: TerraOp, x: number, z: number, dir
     case 'lower': return [[x, z, Tile.Ground, L - 1, 0]];
     case 'unramp': return [[x, z, Tile.Ground, L, 0]];
     case 'water': return [[x, z, Tile.Pond, 0, 0]];
-    case 'land': return [[x, z, Tile.Ground, 0, 0]];
+    case 'land': return [[x, z, sandy(g, x, z) ? Tile.Shore : Tile.Ground, 0, 0]];
     default: return [];
   }
 }

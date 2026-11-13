@@ -9,6 +9,7 @@ import { config } from '../../config.ts';
 import { logger } from '../../log.ts';
 import { Session } from '../Session.ts';
 import { runAction } from '../actions/index.ts';
+import type { PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
 import { createCharacter, hello, kick, uniqueCode } from './accounts.ts';
 import { devCommand } from './dev.ts';
@@ -91,55 +92,57 @@ export function onMessage(game: Game, s: Session, m: ClientMessage) {
   if (m.t === 'create') return createCharacter(game, s, m);
   if (!p.created) return s.send({ t: 'err', code: 'no_character', msg: 'Create your character first.' });
 
-  switch (m.t) {
-    case 'move': return move(game, s, m.x, m.z, m.r);
-    case 'act': {
-      const res = runAction(game, s, m.a);
-      if (!res.ok) log.debug('action refused', { player: p.id, action: m.a.k, err: res.err });
-      s.send({ t: 'res', seq: m.seq, ...res });
-      if (res.ok) afterAction(game, s, m.a.k);
-      return;
-    }
-    case 'travel': return travel(game, s, m.to);
-    case 'chat': return chat(game, s, m.text);
-    case 'friend': return friendOp(game, s, m.op, m.code, m.id);
-    case 'access': {
-      const isl = homeIsland(game, p);
-      if (!isl) return;
-      isl.access = m.access;
-      game.store.markIsland(isl.id);
-      sendSelf(game, s);
-      s.send({ t: 'toast', text: `Visitors: ${accessLabel(m.access)}`, kind: 'good' });
-      return;
-    }
-    case 'newInvite': {
-      const isl = homeIsland(game, p);
-      if (!isl) return;
-      game.store.setInviteCode(isl, uniqueCode(game, 8));
-      sendSelf(game, s);
-      return;
-    }
-    case 'kick': {
-      const room = s.room;
-      const target = game.online.get(m.id);
-      if (!room || !room.isOwner(p.id) || room.kind !== 'island' || !target || target.room !== room || target === s) return;
-      if (room.isResident(m.id)) return s.send({ t: 'toast', text: 'Residents live here – remove their residency first.', kind: 'warn' });
-      log.info('visitor sent home', { owner: p.id, visitor: m.id, room: room.id });
-      target.send({ t: 'toast', text: `${p.name} sent you home.`, kind: 'warn' });
-      travel(game, target, { kind: 'home' });
-      return;
-    }
-    case 'map': return s.send({ t: 'map', islands: mapFor(game, p) });
-    case 'role': return setRole(game, s, m.id, m.role);
-    case 'geo': return setGeo(game, s, m.lat, m.lon, m.tz);
-    case 'hotbar':
-      p.hotbar = normalizeHotbar(m.slots);
-      game.store.markPlayer(p.id);
-      return;
-    case 'board': return boardOp(game, s, m.op, m.text, m.id);
-    case 'dev': {
-      if (!config.devFast) return s.send({ t: 'toast', text: 'Dev commands need the server in dev mode (npm run dev:fast).', kind: 'warn' });
-      return devCommand(game, s, m.cmd, m.args);
-    }
-  }
+  const route = ROUTES[m.t as Routed] as ((game: Game, s: Session, m: ClientMessage, p: PlayerRecord) => void) | undefined;
+  route?.(game, s, m, p);
 }
+
+/** Messages handled once the player has said hello and has a character. */
+type Routed = Exclude<ClientMessage['t'], 'ping' | 'hello' | 'create'>;
+
+const ROUTES: { [T in Routed]: (game: Game, s: Session, m: Extract<ClientMessage, { t: T }>, p: PlayerRecord) => void } = {
+  move: (game, s, m) => move(game, s, m.x, m.z, m.r),
+  act(game, s, m, p) {
+    const res = runAction(game, s, m.a);
+    if (!res.ok) log.debug('action refused', { player: p.id, action: m.a.k, err: res.err });
+    s.send({ t: 'res', seq: m.seq, ...res });
+    if (res.ok) afterAction(game, s, m.a.k);
+  },
+  travel: (game, s, m) => travel(game, s, m.to),
+  chat: (game, s, m) => chat(game, s, m.text),
+  friend: (game, s, m) => friendOp(game, s, m.op, m.code, m.id),
+  access(game, s, m, p) {
+    const isl = homeIsland(game, p);
+    if (!isl) return;
+    isl.access = m.access;
+    game.store.markIsland(isl.id);
+    sendSelf(game, s);
+    s.send({ t: 'toast', text: `Visitors: ${accessLabel(m.access)}`, kind: 'good' });
+  },
+  newInvite(game, s, _m, p) {
+    const isl = homeIsland(game, p);
+    if (!isl) return;
+    game.store.setInviteCode(isl, uniqueCode(game, 8));
+    sendSelf(game, s);
+  },
+  kick(game, s, m, p) {
+    const room = s.room;
+    const target = game.online.get(m.id);
+    if (!room || !room.isOwner(p.id) || room.kind !== 'island' || !target || target.room !== room || target === s) return;
+    if (room.isResident(m.id)) return s.send({ t: 'toast', text: 'Residents live here – remove their residency first.', kind: 'warn' });
+    log.info('visitor sent home', { owner: p.id, visitor: m.id, room: room.id });
+    target.send({ t: 'toast', text: `${p.name} sent you home.`, kind: 'warn' });
+    travel(game, target, { kind: 'home' });
+  },
+  map: (_game, s, _m, p) => s.send({ t: 'map', islands: mapFor(_game, p) }),
+  role: (game, s, m) => setRole(game, s, m.id, m.role),
+  geo: (game, s, m) => setGeo(game, s, m.lat, m.lon, m.tz),
+  hotbar(game, _s, m, p) {
+    p.hotbar = normalizeHotbar(m.slots);
+    game.store.markPlayer(p.id);
+  },
+  board: (game, s, m) => boardOp(game, s, m.op, m.text, m.id),
+  dev(game, s, m) {
+    if (!config.devFast) return s.send({ t: 'toast', text: 'Dev commands need the server in dev mode (npm run dev:fast).', kind: 'warn' });
+    return devCommand(game, s, m.cmd, m.args);
+  },
+};

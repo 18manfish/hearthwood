@@ -36,6 +36,13 @@ go here instead of being fixed inline (plan §3 rule 8, §10 decision 4).
   (`offsetHSL`) is a plain sRGB HSL, not three's colour-managed version, so goldens catch any
   change in the code but say nothing about exact on-screen colours.
 
+- **Server services are functions taking `game`, not classes with injected dependencies**
+  (plan step 2.4). Moving method bodies verbatim (`this.` → `game.`) kept the risk low;
+  narrowing each service to the parts of `Game` it needs is a follow-up that can be done one
+  file at a time now that they're separate. The action handlers already see only `GameApi`.
+- **`store.ts` was not split** (plan step 2.6 said only if natural; at 440 lines it is one
+  cohesive SQLite wrapper).
+
 ## Open questions / bugs found
 
 - **Flaky server test (pre-existing):** islands get a random seed, and on crowded ones the test

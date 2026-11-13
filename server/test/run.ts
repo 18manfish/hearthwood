@@ -829,6 +829,23 @@ async function main() {
         applyTerrainAndWater(tg, terraformChanges(tg, 'land', 4, 7));
         check(tg.tile(4, 7) === Tile.Shore, 'filled back in with sand on the beach');
       }
+      // Water on cliffs: against a cliff is fine, over an edge only with water below (a waterfall).
+      {
+        const n = 10, tiles = new Uint8Array(n * n).fill(Tile.Ground), levels = new Uint8Array(n * n);
+        for (let z = 0; z < 5; z++) for (let x = 0; x < n; x++) levels[z * n + x] = 1;
+        const tg = new Grid(n, tiles, levels);
+        const dig = (op: 'water' | 'land' | 'lower', x: number, z: number) => {
+          const err = terraformError(tg, op, x, z);
+          if (!err) applyTerrainAndWater(tg, terraformChanges(tg, op, x, z));
+          return err;
+        };
+        check(dig('water', 4, 4) !== null, 'water at a cliff edge with dry ground below is refused');
+        check(dig('water', 4, 5) === null && dig('water', 5, 5) === null, 'water dug right against a cliff');
+        check(dig('water', 4, 4) === null && tg.level(4, 4) === 1 && tg.level(4, 5) === 0, 'water on the cliff above water below (a waterfall)');
+        check(dig('land', 4, 5) !== null, 'the water under a waterfall can’t be filled while it falls');
+        check(dig('lower', 3, 4) !== null, 'ground holding raised water can’t be lowered');
+        check(dig('land', 4, 4) === null && tg.tile(4, 4) === Tile.Ground && tg.level(4, 4) === 1, 'raised water filled back in on its level');
+      }
       // Wide beaches and wading into the shallow sea.
       {
         let shore = 0, wade = 0, deep = 0;

@@ -576,13 +576,15 @@ export class Room {
   /** A free beach tile right next to the sea. */
   private beachSpot(): { x: number; z: number } | null {
     const g = this.grid;
-    for (let tries = 0; tries < 60; tries++) {
-      const x = this.birdRng.int(1, g.size - 2), z = this.birdRng.int(1, g.size - 2);
-      if (g.tile(x, z) !== Tile.Shore || g.occupied[z * g.size + x]) continue;
-      if (!DIRS.some(([dx, dz]) => g.tile(x + dx, z + dz) === Tile.Sea)) continue;
-      return { x, z };
-    }
-    return null;
+    const spots: number[] = [];
+    for (let z = 1; z < g.size - 1; z++)
+      for (let x = 1; x < g.size - 1; x++) {
+        if (g.tile(x, z) !== Tile.Shore || g.occupied[z * g.size + x]) continue;
+        if (DIRS.some(([dx, dz]) => g.tile(x + dx, z + dz) === Tile.Sea)) spots.push(z * g.size + x);
+      }
+    if (!spots.length) return null;
+    const i = spots[this.birdRng.int(0, spots.length - 1)];
+    return { x: i % g.size, z: Math.floor(i / g.size) };
   }
 
   // ── Birds ──────────────────────────────────────────────────────────────

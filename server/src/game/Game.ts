@@ -20,7 +20,7 @@ import type { Store } from '../store.ts';
 import type { Friendship, IslandRecord, PlayerRecord } from '../types.ts';
 import { Room } from './Room.ts';
 import { Session } from './Session.ts';
-import { runAction } from './actions.ts';
+import { runAction } from './actions/index.ts';
 import * as inv from './inventory.ts';
 
 const DEFAULT_LOOK: Look = { skin: '#f1c27d', hair: 'short', hairColor: '#5a3a1e', eyes: '#2b1d14', shirt: '#3498db', pants: '#34495e', shoes: '#8d6e63' };

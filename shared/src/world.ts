@@ -91,6 +91,8 @@ export interface IslandLayout {
   objects: WorldObject[];
   buildings: Building[];
   spawn: { x: number; z: number };
+  /** Sea the generator turned into beach (1) or river mouth (2) to make beaches wider; saved terrain gets it once. */
+  beachBand?: Uint8Array;
 }
 
 export function tileAt(tiles: Uint8Array, size: number, x: number, z: number): Tile {
@@ -227,6 +229,7 @@ export class Grid {
     this.tiles[i] = tile;
     this.levels[i] = level;
     this.ramps[i] = ramp;
+    this.coast = null;
   }
 
   private idx(x: number, z: number) {
@@ -245,9 +248,16 @@ export class Grid {
     return this.inBounds(x, z) ? this.levels[this.idx(x, z)] : 0;
   }
 
-  /** Ramp direction at a tile, or -1. */
+  /** Ramp direction at a tile, or -1. (The stored byte is dir + 1 + 4 × style.) */
   ramp(x: number, z: number): number {
-    return this.inBounds(x, z) ? this.ramps[this.idx(x, z)] - 1 : -1;
+    const v = this.inBounds(x, z) ? this.ramps[this.idx(x, z)] : 0;
+    return v ? (v - 1) & 3 : -1;
+  }
+
+  /** Look of a ramp: 0 = grassy slope, then the kinds of stairs (see RAMP_STYLES). */
+  rampStyle(x: number, z: number): number {
+    const v = this.inBounds(x, z) ? this.ramps[this.idx(x, z)] : 0;
+    return v ? (v - 1) >> 2 : 0;
   }
 
   addObject(o: WorldObject, sign = 1) {
@@ -334,19 +344,27 @@ export class Grid {
     return false;
   }
 
-  /** Continuous-position walkability with a small body radius (no elevation check). */
-  walkable(px: number, pz: number, r = 0.22): boolean {
+  /** Shallow sea a player can wade into (water up to the chest at most). */
+  wadeableTile(x: number, z: number): boolean {
+    if (!this.inBounds(x, z) || this.tile(x, z) !== Tile.Sea) return false;
+    const i = this.idx(x, z);
+    return this.blocked[i] === 0 && this.coastY(x + 0.5, z + 0.5, Tile.Sea) >= WADE_FLOOR;
+  }
+
+  /** Continuous-position walkability with a small body radius (no elevation check). Players may wade. */
+  walkable(px: number, pz: number, r = 0.22, wade = true): boolean {
+    const ok = (x: number, z: number) => this.walkableTile(x, z) || (wade && this.wadeableTile(x, z));
     return (
-      this.walkableTile(Math.floor(px - r), Math.floor(pz - r)) &&
-      this.walkableTile(Math.floor(px + r), Math.floor(pz - r)) &&
-      this.walkableTile(Math.floor(px - r), Math.floor(pz + r)) &&
-      this.walkableTile(Math.floor(px + r), Math.floor(pz + r))
+      ok(Math.floor(px - r), Math.floor(pz - r)) &&
+      ok(Math.floor(px + r), Math.floor(pz - r)) &&
+      ok(Math.floor(px - r), Math.floor(pz + r)) &&
+      ok(Math.floor(px + r), Math.floor(pz + r))
     );
   }
 
   /** Movement check from one position to a nearby one, including cliffs and ramps. */
-  canMove(fx: number, fz: number, tx: number, tz: number, r = 0.22): boolean {
-    if (!this.walkable(tx, tz, r)) return false;
+  canMove(fx: number, fz: number, tx: number, tz: number, r = 0.22, wade = true): boolean {
+    if (!this.walkable(tx, tz, r, wade)) return false;
     const ax = Math.floor(fx), az = Math.floor(fz);
     const pts = [[tx, tz], [tx - r, tz - r], [tx + r, tz - r], [tx - r, tz + r], [tx + r, tz + r]];
     for (const [px, pz] of pts) if (!this.stepOk(ax, az, Math.floor(px), Math.floor(pz))) return false;
@@ -397,25 +415,80 @@ export class Grid {
    * being drawn (a point on a tile border belongs to both tiles).
    */
   coastY(px: number, pz: number, t: Tile): number {
-    const R = 3;
-    let dl = R + 1, ds = R + 1, dn = R + 1;
-    const x0 = Math.floor(px) - R, z0 = Math.floor(pz) - R;
-    for (let z = z0; z <= z0 + 2 * R + 1; z++)
-      for (let x = x0; x <= x0 + 2 * R + 1; x++) {
-        const dx = Math.max(x - px, 0, px - (x + 1)), dz = Math.max(z - pz, 0, pz - (z + 1));
-        const d = Math.hypot(dx, dz);
-        const k = this.tile(x, z);
-        const sea = k === Tile.Sea || k === Tile.Dock;
-        if (sea) ds = Math.min(ds, d);
-        else {
-          dn = Math.min(dn, d);
-          // Land the beach rises to (not shore, and not ponds or river mouths: those cut in).
-          if ((k !== Tile.Shore || this.level(x, z) !== 0) && k !== Tile.Pond && k !== Tile.River) dl = Math.min(dl, d);
-        }
-      }
-    if (t === Tile.Sea || t === Tile.Dock) return BEACH_EDGE + (baseHeight(Tile.Sea) - BEACH_EDGE) * smoothstep(dn / SEA_SHELF);
+    const [dl, ds, dn] = this.coastDist(px, pz);
+    if (t === Tile.Sea || t === Tile.Dock) return BEACH_EDGE + (SEA_DEEP - BEACH_EDGE) * smoothstep(dn / SEA_SHELF);
     if (dl <= 0) return BEACH_TOP;
     return BEACH_TOP + (BEACH_EDGE - BEACH_TOP) * smoothstep(dl / (dl + ds));
+  }
+
+  /** Distances to [land, sea, anything not sea], bilinear from a cached quarter-tile field. */
+  private coastDist(px: number, pz: number): [number, number, number] {
+    const f = (this.coast ??= this.buildCoastField());
+    const gx = (px + COAST_MARGIN) * COAST_RES, gz = (pz + COAST_MARGIN) * COAST_RES;
+    const ix = Math.floor(gx), iz = Math.floor(gz);
+    if (ix < 0 || iz < 0 || ix >= f.w - 1 || iz >= f.w - 1) return [COAST_FAR, 0, COAST_FAR]; // open ocean
+    const fx = gx - ix, fz = gz - iz;
+    const out: [number, number, number] = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      const a = f.d[k], i = iz * f.w + ix;
+      out[k] = (a[i] * (1 - fx) + a[i + 1] * fx) * (1 - fz) + (a[i + f.w] * (1 - fx) + a[i + f.w + 1] * fx) * fz;
+    }
+    return out;
+  }
+
+  private coast: { w: number; d: [Float32Array, Float32Array, Float32Array] } | null = null;
+
+  private buildCoastField() {
+    const M = COAST_MARGIN, R = COAST_FAR;
+    const w = (this.size + 2 * M) * COAST_RES + 1;
+    const d: [Float32Array, Float32Array, Float32Array] = [new Float32Array(w * w), new Float32Array(w * w), new Float32Array(w * w)];
+    // Tile classes once: 0 sea, 1 beach & fresh water, 2 land; plus prefix sums to skip uniform areas.
+    const o = M + R + 1, tw = this.size + 2 * o;
+    const cls = new Uint8Array(tw * tw);
+    const s0 = new Int32Array((tw + 1) * (tw + 1)), s2 = new Int32Array((tw + 1) * (tw + 1));
+    for (let z = 0; z < tw; z++)
+      for (let x = 0; x < tw; x++) {
+        const k = this.tile(x - o, z - o);
+        const c = k === Tile.Sea || k === Tile.Dock ? 0 : (k === Tile.Shore && this.level(x - o, z - o) === 0) || k === Tile.Pond || k === Tile.River ? 1 : 2;
+        cls[z * tw + x] = c;
+        const j = (z + 1) * (tw + 1) + x + 1;
+        s0[j] = s0[j - 1] + s0[j - tw - 1] - s0[j - tw - 2] + (c === 0 ? 1 : 0);
+        s2[j] = s2[j - 1] + s2[j - tw - 1] - s2[j - tw - 2] + (c === 2 ? 1 : 0);
+      }
+    const box = (s: Int32Array, x0: number, z0: number, x1: number, z1: number) =>
+      s[(z1 + 1) * (tw + 1) + x1 + 1] - s[z0 * (tw + 1) + x1 + 1] - s[(z1 + 1) * (tw + 1) + x0] + s[z0 * (tw + 1) + x0];
+    const all = (2 * R + 1) * (2 * R + 1);
+    for (let j = 0; j < w; j++)
+      for (let i = 0; i < w; i++) {
+        const px = i / COAST_RES - M, pz = j / COAST_RES - M;
+        const idx = j * w + i;
+        // Window of tiles that can be within R (in class-grid coordinates).
+        const x0 = Math.floor(px) - R + o, z0 = Math.floor(pz) - R + o;
+        const x1 = x0 + 2 * R, z1 = z0 + 2 * R;
+        const n0 = box(s0, x0, z0, x1, z1), n2 = box(s2, x0, z0, x1, z1);
+        if (n0 === all) { d[0][idx] = R; d[1][idx] = 0; d[2][idx] = R; continue; }
+        if (n2 === all) { d[0][idx] = 0; d[1][idx] = R; d[2][idx] = 0; continue; }
+        let dl = R, ds = R, dn = R;
+        for (let z = z0; z <= z1; z++) {
+          const dz = Math.max(z - o - pz, 0, pz - (z - o + 1));
+          if (dz >= R) continue;
+          for (let x = x0; x <= x1; x++) {
+            const dx = Math.max(x - o - px, 0, px - (x - o + 1));
+            if (dx >= R) continue;
+            const c = cls[z * tw + x];
+            const dd = Math.hypot(dx, dz);
+            if (c === 0) { if (dd < ds) ds = dd; }
+            else {
+              if (dd < dn) dn = dd;
+              if (c === 2 && dd < dl) dl = dd; // ponds & river mouths cut into the beach instead of raising it
+            }
+          }
+        }
+        d[0][idx] = dl;
+        d[1][idx] = ds;
+        d[2][idx] = dn;
+      }
+    return { w, d };
   }
 
   /** Height of the walkable surface at a continuous position. */
@@ -424,7 +497,7 @@ export class Grid {
     const t = this.tile(x, z);
     const bridge = this.inBounds(x, z) ? this.bridges[this.idx(x, z)] : 0;
     if (bridge) return (bridge - 1) * CLIFF + BRIDGE_DECK;
-    if (t === Tile.Shore && this.isCoastal(x, z)) return this.coastY(px, pz, t);
+    if ((t === Tile.Shore || t === Tile.Sea) && this.isCoastal(x, z)) return this.coastY(px, pz, t);
     const base = baseHeight(t) + this.level(x, z) * CLIFF;
     const d = this.ramp(x, z);
     if (d < 0) return t === Tile.Dock ? 0.16 : isWaterTile(t) ? WATER_SURFACE + this.level(x, z) * CLIFF : base;
@@ -451,8 +524,22 @@ export class Grid {
 /** Beaches: height where the sand meets the grass, and at the water's edge (just under the sea surface). */
 export const BEACH_TOP = 0.12;
 export const BEACH_EDGE = -0.18;
-/** Tiles from the coast until the sea floor reaches full depth. */
-export const SEA_SHELF = 1.6;
+/** Tiles from the coast until the sea floor reaches full depth, and that depth. */
+export const SEA_SHELF = 4.5;
+export const SEA_DEEP = -1.6;
+/** Visual sea level, and the deepest sea floor you can wade on (water up to the chest). */
+export const SEA_LEVEL = -0.12;
+export const WADE_FLOOR = SEA_LEVEL - 0.6;
+const COAST_MARGIN = 10;
+/** Land-mask value where the sea starts now (beaches run from 0.74; the sea used to start at 0.83). */
+const BEACH_OUTER = 0.92;
+const COAST_FAR = 5;
+/** Coast field samples per tile (bilinear in between). */
+const COAST_RES = 2;
+
+/** Ramp looks (stored in the ramp byte). */
+export const RAMP_STYLES = ['slope', 'stone_stairs', 'wood_stairs', 'log_steps'] as const;
+export type RampStyle = (typeof RAMP_STYLES)[number];
 
 function smoothstep(t: number) {
   const u = Math.min(1, Math.max(0, t));
@@ -665,8 +752,43 @@ export function generateIsland(seed: number, biome: BiomeId, opts: GenOptions = 
     }
   }
 
+  // Wide beaches: the shallows just outside the old sand line become beach too
+  // (twice as deep, without taking any land). Rivers are carried across the new
+  // sand to the sea, and the water in front of the dock stays open.
+  const beachBand = new Uint8Array(size * size);
+  const vAt = (x: number, z: number) => {
+    const dx = (x + 0.5 - c) / c, dz = (z + 0.5 - c) / c;
+    return Math.sqrt(dx * dx + dz * dz) + (fbm2D(seed, x / (9 * S), z / (9 * S), 3) - 0.5) * 0.32;
+  };
+  for (let z = 2; z < size - 2; z++)
+    for (let x = 2; x < size - 2; x++) {
+      const i = z * size + x;
+      if (tiles[i] !== Tile.Sea || vAt(x, z) >= BEACH_OUTER) continue;
+      if (x >= dockX - 2 && x <= dockX + 3 && z >= beachZ - 1) continue;
+      tiles[i] = Tile.Shore;
+      beachBand[i] = 1;
+    }
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (let z = 2; z < size - 2; z++)
+      for (let x = 2; x < size - 2; x++) {
+        const i = z * size + x;
+        if (beachBand[i] !== 1) continue;
+        const v = vAt(x, z);
+        for (const [dx, dz] of DIRS) {
+          const j = (z + dz) * size + x + dx;
+          if (tiles[j] === Tile.River && levels[j] === 0 && vAt(x + dx, z + dz) < v) {
+            tiles[i] = Tile.River;
+            beachBand[i] = 2;
+            changed = true;
+            break;
+          }
+        }
+      }
+  }
+
   classifyWater(size, tiles);
-  return { size, tiles, levels, ramps, objects, buildings: [dock], spawn };
+  return { size, tiles, levels, ramps, objects, buildings: [dock], spawn, beachBand };
 }
 
 const RIVER_BIOMES: BiomeId[] = ['grassland', 'tropical', 'nordic', 'forest_edge', 'jungle'];

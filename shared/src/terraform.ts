@@ -1,9 +1,9 @@
 // Terraforming: raise / lower cliffs, place / remove ramps, dig / fill ponds.
 // The same rules run on the client (ghost preview) and the server (authority).
 
-import { CLIFF, DIRS, Grid, MAX_LEVEL, Tile, classifyWater } from './world.ts';
+import { CLIFF, DIRS, Grid, MAX_LEVEL, RAMP_STYLES, Tile, classifyWater, type RampStyle } from './world.ts';
 
-export const TERRA_OPS = ['raise', 'lower', 'ramp', 'unramp', 'water', 'land'] as const;
+export const TERRA_OPS = ['raise', 'lower', 'ramp', 'stairs_stone', 'stairs_wood', 'stairs_log', 'unramp', 'water', 'land'] as const;
 export type TerraOp = (typeof TERRA_OPS)[number];
 
 /** How far from the player a tile can be reshaped. */
@@ -11,13 +11,17 @@ export const TERRA_REACH = 6;
 
 /** Which permit (bought at the Town Hall) each operation needs. */
 export const TERRA_PERMIT: Record<TerraOp, 'permit_cliff' | 'permit_water'> = {
-  raise: 'permit_cliff', lower: 'permit_cliff', ramp: 'permit_cliff', unramp: 'permit_cliff', water: 'permit_water', land: 'permit_water',
+  raise: 'permit_cliff', lower: 'permit_cliff', ramp: 'permit_cliff', stairs_stone: 'permit_cliff', stairs_wood: 'permit_cliff', stairs_log: 'permit_cliff',
+  unramp: 'permit_cliff', water: 'permit_water', land: 'permit_water',
 };
 
 export const TERRA_INFO: Record<TerraOp, { name: string; icon: string; color: string; hint: string }> = {
   raise: { name: 'Raise cliff', icon: '⛰️', color: '#c58b4a', hint: 'Lifts ground one level' },
   lower: { name: 'Lower cliff', icon: '🕳️', color: '#8d6e63', hint: 'Takes ground down one level' },
-  ramp: { name: 'Build ramp', icon: '📐', color: '#ffd166', hint: 'Slope up to the level in front of it' },
+  ramp: { name: 'Build ramp', icon: '📐', color: '#ffd166', hint: 'Grassy slope up to the level in front of it' },
+  stairs_stone: { name: 'Stone stairs', icon: '🪨', color: '#b0aca3', hint: 'Stone steps up a cliff (or turn a ramp into them)' },
+  stairs_wood: { name: 'Wooden stairs', icon: '🪜', color: '#c08a52', hint: 'Plank steps with posts (or turn a ramp into them)' },
+  stairs_log: { name: 'Log steps', icon: '🪵', color: '#8b5a2b', hint: 'Rustic logs set into the slope (or turn a ramp into them)' },
   unramp: { name: 'Remove ramp', icon: '🚧', color: '#ef8354', hint: 'Turns a ramp back into flat ground' },
   water: { name: 'Dig water', icon: '💧', color: '#4fb7d8', hint: 'Digs water (ground level). Joined to the sea or a river it becomes river, otherwise a pond' },
   land: { name: 'Fill water', icon: '🟫', color: '#a1887f', hint: 'Fills a pond or river tile with earth' },
@@ -27,6 +31,11 @@ export const TERRA_INFO: Record<TerraOp, { name: string; icon: string; color: st
 export type TerrainChange = [number, number, number, number, number];
 
 const isLand = (t: Tile) => t === Tile.Ground || t === Tile.Ramp;
+
+/** Ramp-building operations and the look each one gives. */
+export const RAMP_OPS: Partial<Record<TerraOp, RampStyle>> = { ramp: 'slope', stairs_stone: 'stone_stairs', stairs_wood: 'wood_stairs', stairs_log: 'log_steps' };
+export const isRampOp = (op: TerraOp) => op in RAMP_OPS;
+const styleIndex = (op: TerraOp) => Math.max(0, RAMP_STYLES.indexOf(RAMP_OPS[op] ?? 'slope'));
 
 /** Ramp direction (uphill) that fits on (x, z), preferring `prefer`; −1 if none. */
 export function autoRampDir(g: Grid, x: number, z: number, prefer = -1): number {
@@ -62,6 +71,16 @@ export function terraformError(g: Grid, op: TerraOp, x: number, z: number, dir =
       for (let dx = -1; dx <= 1; dx++) if ((dx || dz) && !fn(x + dx, z + dz)) return false;
     return true;
   };
+  if (isRampOp(op)) {
+    // On an existing ramp: change its look.
+    if (t === Tile.Ramp) return g.rampStyle(x, z) === styleIndex(op) ? 'It already looks like that.' : null;
+    if (t !== Tile.Ground) return 'Ramps and stairs go on plain ground.';
+    if (!free || g.path(x, z)) return 'Clear this spot first.';
+    if (g.reserved[i]) return 'There’s already a ramp right here.';
+    const d = dir >= 0 ? dir : autoRampDir(g, x, z);
+    if (d < 0 || !rampFits(g, x, z, d)) return 'A ramp needs a cliff one level up in front and flat ground behind.';
+    return null;
+  }
   switch (op) {
     case 'raise':
       if (t !== Tile.Ground) return 'You can only raise plain ground.';
@@ -77,14 +96,6 @@ export function terraformError(g: Grid, op: TerraOp, x: number, z: number, dir =
       if (g.reserved[i]) return 'Keep the ground around ramps clear.';
       if (!neighbours((nx, nz) => g.level(nx, nz) <= L)) return 'Lower the higher ground around it first.';
       return null;
-    case 'ramp': {
-      if (t !== Tile.Ground) return 'Ramps go on plain ground.';
-      if (!free || g.path(x, z)) return 'Clear this spot first.';
-      if (g.reserved[i]) return 'There’s already a ramp right here.';
-      const d = dir >= 0 ? dir : autoRampDir(g, x, z);
-      if (d < 0 || !rampFits(g, x, z, d)) return 'A ramp needs a cliff one level up in front and flat ground behind.';
-      return null;
-    }
     case 'unramp':
       if (t !== Tile.Ramp) return 'That isn’t a ramp.';
       return null;
@@ -100,19 +111,25 @@ export function terraformError(g: Grid, op: TerraOp, x: number, z: number, dir =
       if (g.bridges[i]) return 'There’s a bridge over this water.';
       if (L !== 0) return 'Only ground-level water can be filled in.';
       return null;
+    default:
+      return 'Unknown terraforming.';
   }
 }
 
 /** The tile changes `op` makes (assumes `terraformError` returned null). */
 export function terraformChanges(g: Grid, op: TerraOp, x: number, z: number, dir = -1): TerrainChange[] {
   const L = g.level(x, z);
+  if (isRampOp(op)) {
+    const d = g.tile(x, z) === Tile.Ramp ? g.ramp(x, z) : dir >= 0 ? dir : autoRampDir(g, x, z);
+    return [[x, z, Tile.Ramp, L, d + 1 + 4 * styleIndex(op)]];
+  }
   switch (op) {
     case 'raise': return [[x, z, Tile.Ground, L + 1, 0]];
     case 'lower': return [[x, z, Tile.Ground, L - 1, 0]];
-    case 'ramp': return [[x, z, Tile.Ramp, L, (dir >= 0 ? dir : autoRampDir(g, x, z)) + 1]];
     case 'unramp': return [[x, z, Tile.Ground, L, 0]];
     case 'water': return [[x, z, Tile.Pond, 0, 0]];
     case 'land': return [[x, z, Tile.Ground, 0, 0]];
+    default: return [];
   }
 }
 

@@ -116,6 +116,7 @@ export class Room {
       }
     }
     const paths = !o.interior && o.record?.paths && o.record.paths.length === this.layout.size * this.layout.size ? decodeTiles(o.record.paths) : this.layout.paths;
+    if (!o.interior && o.record && this.layout.beachBand) this.widenBeaches(o.record, this.layout.beachBand);
     this.grid = new Grid(this.layout.size, this.layout.tiles, this.layout.levels, this.layout.ramps, paths);
 
     let objs: WorldObject[];
@@ -140,6 +141,23 @@ export class Room {
     this.respawns = o.interior ? [] : o.record ? (o.record.respawns ??= []) : [];
 
     if (!o.interior) for (const v of o.record?.villagers ?? []) this.spawnVillager(v.defId, v.houseId);
+  }
+
+  /**
+   * Beaches got twice as wide (out into the old shallows). Generated terrain
+   * already has them; reshaped, saved terrain gets them once.
+   */
+  private widenBeaches(rec: IslandRecord, band: Uint8Array) {
+    const L = this.layout;
+    if (rec.terrain && rec.beach !== 2) {
+      for (let i = 0; i < band.length; i++)
+        if (band[i] && L.tiles[i] === Tile.Sea) L.tiles[i] = band[i] === 2 ? Tile.River : Tile.Shore;
+      classifyWater(L.size, L.tiles);
+    }
+    if (rec.beach !== 2) {
+      rec.beach = 2;
+      this.dirty = true;
+    }
   }
 
   // ── Identity helpers ────────────────────────────────────────────────────
@@ -445,7 +463,7 @@ export class Room {
             const tx = doorX + (rng() - 0.5) * 14;
             const tz = doorZ + (rng() - 0.5) * 14;
             // Stay on the same cliff level as the house.
-            if (this.grid.walkable(tx, tz, 0.3) && this.grid.level(Math.floor(tx), Math.floor(tz)) === this.grid.level(house.x, house.z)) {
+            if (this.grid.walkable(tx, tz, 0.3, false) && this.grid.level(Math.floor(tx), Math.floor(tz)) === this.grid.level(house.x, house.z)) {
               v.tx = tx;
               v.tz = tz;
               break;
@@ -455,7 +473,7 @@ export class Room {
           const step = Math.min(d, 1.3 * dt);
           const nx = v.x + (dx / d) * step;
           const nz = v.z + (dz / d) * step;
-          if (this.grid.canMove(v.x, v.z, nx, nz, 0.25) || !this.grid.walkable(v.x, v.z, 0.25)) {
+          if (this.grid.canMove(v.x, v.z, nx, nz, 0.25, false) || !this.grid.walkable(v.x, v.z, 0.25, false)) {
             v.x = nx;
             v.z = nz;
             v.r = Math.atan2(dx, dz);

@@ -13,7 +13,7 @@ import type { GeoInfo } from './env.ts';
 import { BOTTLE_MAX_CHARS } from './data/beach.ts';
 import { HOTBAR_SIZE, HOTBAR_TOOLS, type Hotbar } from './data/hotbar.ts';
 
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';

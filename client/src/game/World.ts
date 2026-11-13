@@ -6,11 +6,11 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import {
   BIOMES, BUILDINGS, ITEMS, Grid, Tile, TREES, CLIFF, ENTERABLE, daylight, decodeTiles, distToTile, isWaterTile, nearBuilding,
   slideMove, atDoor, placeError, sunPosition, villagerDef, visualSeason, hashString, baseHeight, wrapAngle, PATHS, PATH_REACH,
-  TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, terraformError, BIRD_BY_ID, type TerraOp, type HotbarTool,
-  type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season,
-} from '@hearthwood/shared';
+  TERRA_INFO, TERRA_REACH, applyTerrain, autoRampDir, isRampOp, terraformError, BIRD_BY_ID, type TerraOp, type HotbarTool,
+  type Building, type EnvView, type PlayerView, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type BuildingType, type Weather, type Season, SEA_LEVEL } from '@hearthwood/shared';
 import { bend, bendDrop, bendFocusZ, bendStrength } from './bend.ts';
 import { buildDocks, buildTerrainMesh, buildWater, fallTexture, waterColor } from './terrain.ts';
+import { buildStairs } from './tileAssets.ts';
 import { buildPaths, disposePaths, setPathSnow } from './paths.ts';
 import { buildFoliage, disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
@@ -443,7 +443,7 @@ export class World {
     const op = this.paint!.terra;
     if (op) {
       if (distToTile(this.me.x, this.me.z, tx, tz) > TERRA_REACH) return false;
-      this.paint!.dir = op === 'ramp' ? this.rampDir(tx, tz) : -1;
+      this.paint!.dir = isRampOp(op) ? (this.grid.ramp(tx, tz) >= 0 ? this.grid.ramp(tx, tz) : this.rampDir(tx, tz)) : -1;
       return terraformError(this.grid, op, tx, tz, this.paint!.dir) === null;
     }
     if (distToTile(this.me.x, this.me.z, tx, tz) > PATH_REACH) return false;
@@ -541,6 +541,7 @@ export class World {
     }
     const m = buildTerrainMesh(this.grid, { biome: this.room.biome, ...this.visual(), interior: this.room.interior, theme: this.room.theme });
     m.add(buildDocks(this.grid)); // boardwalks & piers ride along with the terrain mesh
+    m.add(buildStairs(this.grid));
     if (this.room.kind !== 'interior') m.add(buildWater(this.grid, waterColor(this.room.biome))); // raised rivers, waterfalls
     this.terrain = m;
     this.world.add(m);
@@ -1114,6 +1115,7 @@ export class World {
     } else me.speed = 0;
     me.rig.root.position.set(me.x, this.groundY(me.x, me.z), me.z);
     me.rig.root.rotation.y = me.r;
+    this.wadeRipple(me.rig.root, me.speed);
     this.bendLabel(me);
     me.swing = Math.max(0, me.swing - dt * 2.5);
     animateRig(me.rig, dt, me.speed, me.swing);
@@ -1127,9 +1129,28 @@ export class World {
     }
   }
 
+  /** A ring of foam where a wading character meets the sea surface. */
+  private wadeRipple(root: THREE.Object3D, speed: number) {
+    let ring = root.getObjectByName('wade') as THREE.Mesh | undefined;
+    const depth = SEA_LEVEL - root.position.y;
+    if (depth < 0.03 || this.room?.kind === 'interior') {
+      if (ring) ring.visible = false;
+      return;
+    }
+    if (!ring) {
+      ring = new THREE.Mesh(new THREE.RingGeometry(0.24, 0.34, 20).rotateX(-Math.PI / 2), mat('#ffffff', { opacity: 0.6 }));
+      ring.name = 'wade';
+      root.add(ring);
+    }
+    ring.visible = true;
+    ring.position.y = depth + 0.01;
+    const s = 1 + Math.min(1, speed / 3) * 0.35 + Math.sin(performance.now() / 260) * 0.06;
+    ring.scale.set(s, 1, s);
+  }
+
   groundY(x: number, z: number) {
     if (!this.grid) return 0;
-    return Math.max(0, this.grid.surfaceY(x, z));
+    return this.grid.surfaceY(x, z); // can dip below 0: beaches and wading
   }
 
   /** Labels are HTML, so the world bend is applied to them on the CPU. */
@@ -1151,6 +1172,7 @@ export class World {
     m.swing = Math.max(0, m.swing - dt * 2.5);
     m.rig.root.position.set(m.x, this.groundY(m.x, m.z), m.z);
     m.rig.root.rotation.y = m.r;
+    this.wadeRipple(m.rig.root, m.speed);
     this.bendLabel(m);
     animateRig(m.rig, dt, m.speed, m.swing);
   }

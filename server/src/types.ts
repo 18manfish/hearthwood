@@ -72,6 +72,8 @@ export interface Respawn {
 }
 
 export interface IslandRecord {
+  /** 2 = beaches widened (saved terrain migrated). */
+  beach?: number;
   /** Generator version: 1 = flat (legacy), 2 = cliffs & ramps. */
   gen?: number;
   /** Furniture placed inside the tent / house, keyed by building id. */

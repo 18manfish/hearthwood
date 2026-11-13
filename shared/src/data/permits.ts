@@ -14,7 +14,7 @@ export interface PermitDef {
 }
 
 export const PERMITS: PermitDef[] = [
-  { id: 'permit_cliff', name: 'Cliff Construction Permit', icon: '⛰️', price: 2000, desc: 'Raise and lower cliffs, build and remove ramps.', ops: ['raise', 'lower', 'ramp', 'unramp'] },
+  { id: 'permit_cliff', name: 'Cliff Construction Permit', icon: '⛰️', price: 2000, desc: 'Raise and lower cliffs, build ramps and stairs, and remove them.', ops: ['raise', 'lower', 'ramp', 'stairs_stone', 'stairs_wood', 'stairs_log', 'unramp'] },
   { id: 'permit_water', name: 'Waterscaping Permit', icon: '💧', price: 1500, desc: 'Dig ponds and fill water back in.', ops: ['water', 'land'] },
 ];
 

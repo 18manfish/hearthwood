@@ -17,7 +17,7 @@
 # gives back exactly these numbers.
 
 import bpy, bmesh, math, random
-from mathutils import Vector
+from mathutils import Vector, Matrix, Euler
 
 PROFILES = {
     # (inset from the tile edge, y). Top lip first, foot last.
@@ -298,15 +298,145 @@ def game_from_blender(v):
     return (v.x, v.z, -v.y)
 
 
+
+# ---------------------------------------------------------------- stairs
+# Stairs sit on a ramp tile: x in [-0.5, 0.5], the bottom edge at z = +0.5 (y = 0)
+# and the top edge at z = -0.5 (y = 1, the next cliff level). The game turns
+# them to face the ramp's direction. Each kind is an empty `stairs_<kind>` with
+# one mesh per material; the colours come from the materials.
+
+def mesh_obj(name, bm, material, parent):
+    for vert in bm.verts:
+        vert.co = game_to_blender(vert.co)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    for p in me.polygons:
+        p.use_smooth = False
+    o = bpy.data.objects.new(name, me)
+    o.data.materials.append(material)
+    bpy.context.scene.collection.objects.link(o)
+    o.parent = parent
+    return o
+
+
+def box(bm, x0, x1, y0, y1, z0, z1, jitter=0.0, rng=None):
+    g = bmesh.ops.create_cube(bm, size=1.0)
+    for v in g['verts']:
+        x = x0 if v.co.x < 0 else x1
+        y = y0 if v.co.y < 0 else y1
+        z = z0 if v.co.z < 0 else z1
+        if jitter and rng:
+            x += rng.uniform(-jitter, jitter); y += rng.uniform(-jitter, jitter) * 0.5; z += rng.uniform(-jitter, jitter)
+        v.co = Vector((x, y, z))
+    return g
+
+
+def prism(bm, pts2d, x0, x1):
+    """Extrude a (z, y) polygon along x from x0 to x1."""
+    a = [bm.verts.new(Vector((x0, y, z))) for z, y in pts2d]
+    b = [bm.verts.new(Vector((x1, y, z))) for z, y in pts2d]
+    bm.faces.new(a[::-1])
+    bm.faces.new(b)
+    n = len(pts2d)
+    for i in range(n):
+        j = (i + 1) % n
+        bm.faces.new([a[i], a[j], b[j], b[i]])
+
+
+def cylinder_x(bm, x0, x1, y, z, r, seg=7):
+    m = Matrix.Translation(((x0 + x1) / 2, y, z)) @ Euler((0, math.pi / 2, 0)).to_matrix().to_4x4()  # cone axis z -> x
+    return bmesh.ops.create_cone(bm, cap_ends=True, segments=seg, radius1=r, radius2=r, depth=x1 - x0, matrix=m)
+
+
+def stairs_root(name):
+    e = bpy.data.objects.new(name, None)
+    e.empty_display_size = 0.3
+    bpy.context.scene.collection.objects.link(e)
+    return e
+
+
+STEPS = 5
+
+
+def build_stairs():
+    from mathutils import Matrix, Euler  # noqa: F401  (used by helpers)
+    out = []
+    rng = random.Random(7)
+    run = 1.0 / STEPS
+
+    # Stone stairs: chunky blocks between two low cheek walls.
+    r = stairs_root('stairs_stone')
+    bm = bmesh.new()
+    for k in range(STEPS):
+        z1 = 0.5 - k * run
+        z0 = z1 - run
+        top = (k + 1) * run + rng.uniform(-0.008, 0.008)
+        box(bm, -0.42, 0.42, max(0.0, top - 0.45), top, z0 - 0.01, z1, 0.012, rng)
+    mesh_obj('stairs_stone_steps', bm, material('stairs_stone', '#b3aea4'), r)
+    bm = bmesh.new()
+    for side in (-1, 1):
+        x0, x1 = (0.42, 0.5) if side > 0 else (-0.5, -0.42)
+        prism(bm, [(0.5, 0.0), (0.5, 0.16), (-0.5, 1.12), (-0.5, 0.0)], x0, x1)
+    mesh_obj('stairs_stone_cheeks', bm, material('stairs_stone_dark', '#8f8a80'), r)
+    out.append(r)
+
+    # Wooden stairs: plank treads on two stringers, posts and a hand rail.
+    r = stairs_root('stairs_wood')
+    bm = bmesh.new()
+    for k in range(STEPS):
+        z1 = 0.5 - k * run - 0.01
+        z0 = z1 - run + 0.03
+        top = (k + 1) * run
+        box(bm, -0.42, 0.42, top - 0.045, top, z0, z1, 0.006, rng)
+    mesh_obj('stairs_wood_treads', bm, material('stairs_wood', '#b98450'), r)
+    bm = bmesh.new()
+    for x in (-0.38, 0.38):
+        prism(bm, [(0.52, 0.0), (0.52, 0.1), (-0.5, 1.02), (-0.5, 0.88)], x - 0.035, x + 0.035)
+    for x in (-0.44, 0.44):
+        for z, y0 in ((0.42, 0.0), (-0.42, 0.84)):
+            box(bm, x - 0.035, x + 0.035, y0, y0 + 0.62, z - 0.035, z + 0.035)
+        prism(bm, [(0.46, 0.5), (0.46, 0.56), (-0.46, 1.4), (-0.46, 1.34)], x - 0.025, x + 0.025)
+    mesh_obj('stairs_wood_frame', bm, material('stairs_wood_dark', '#7c5534'), r)
+    out.append(r)
+
+    # Log steps: logs laid across the slope, held by little stakes.
+    r = stairs_root('stairs_log')
+    bm = bmesh.new()
+    ends = bmesh.new()
+    for k in range(STEPS):
+        z = 0.5 - (k + 1) * run + 0.04
+        y = (0.5 - z) + 0.02
+        cylinder_x(bm, -0.44, 0.44, y, z, 0.075 + rng.uniform(-0.008, 0.01))
+        for x in (-0.445, 0.445):
+            cylinder_x(ends, x - 0.006, x + 0.006, y, z, 0.068)
+    mesh_obj('stairs_log_logs', bm, material('stairs_log', '#8b5a2b'), r)
+    mesh_obj('stairs_log_ends', ends, material('stairs_log_end', '#d8b07c'), r)
+    bm = bmesh.new()
+    for k in range(STEPS):
+        z = 0.5 - (k + 1) * run + 0.04
+        y = 0.5 - z
+        for x in (-0.36, 0.36):
+            box(bm, x - 0.02, x + 0.02, y - 0.1, y + 0.13, z + 0.09, z + 0.12)
+    mesh_obj('stairs_log_stakes', bm, material('stairs_log_stake', '#6b4a2e'), r)
+    out.append(r)
+    return out
+
+
 if __name__ == '__main__':
     # Run from Blender's Text Editor: rebuilds the pieces and exports tileset.glb next to the .blend.
     import os
     for o in [o for o in bpy.data.objects if o.name.startswith('tile_')]:
         bpy.data.objects.remove(o, do_unlink=True)
+    for o in [o for o in bpy.data.objects if o.name.startswith('stairs_')]:
+        bpy.data.objects.remove(o, do_unlink=True)
     pieces = build_tileset()
+    stairs = build_stairs()
+    keep = set(pieces) | set(stairs) | {c for s in stairs for c in s.children}
     for o in bpy.data.objects:
-        o.select_set(o in pieces)
+        o.select_set(o in keep)
     target = os.path.join(os.path.dirname(bpy.data.filepath) or os.path.expanduser('~'), 'tileset.glb')
     bpy.ops.export_scene.gltf(filepath=target, export_format='GLB', use_selection=True, export_yup=True,
-                              export_normals=False, export_materials='NONE')
+                              export_normals=False, export_materials='EXPORT')
     print('exported', target)

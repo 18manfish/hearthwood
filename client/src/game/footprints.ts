@@ -3,7 +3,7 @@
 // the ground colour, then the slot is recycled.
 
 import * as THREE from 'three';
-import { Tile, type Grid } from '@hearthwood/shared';
+import { Tile, type Grid, SEA_LEVEL } from '@hearthwood/shared';
 import { bend } from './bend.ts';
 
 const MAX = 500;
@@ -77,7 +77,7 @@ export class Footprints {
     t.left = !t.left;
     const tx = Math.floor(x), tz = Math.floor(z);
     const tile = grid.tile(tx, tz);
-    const onSand = tile === Tile.Shore;
+    const onSand = tile === Tile.Shore && grid.surfaceY(x, z) > SEA_LEVEL + 0.01; // not under water
     const onSnow = snowy && (tile === Tile.Ground || tile === Tile.Ramp) && grid.path(tx, tz) === 0;
     if (!onSand && !onSnow) return;
     const ang = Math.atan2(dx, dz);

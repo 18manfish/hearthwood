@@ -12,6 +12,8 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { CLIFF, RAMP_STYLES, Tile, baseHeight, type Grid } from '@hearthwood/shared';
+import { bend, bentDepth } from './bend.ts';
 
 export const TILESET_URL = '/models/tileset.glb';
 export type Family = 'cliff' | 'bank';
@@ -19,6 +21,9 @@ export type PieceKind = 'edge' | 'outer' | 'inner';
 
 /** Non-indexed triangle positions (x, y, z per vertex) per piece name. */
 const pieces = new Map<string, Float32Array>();
+/** Stairs models by ramp style name (`stairs_stone` → 'stone_stairs' …). */
+const stairs = new Map<string, THREE.Object3D>();
+const STAIRS_NODE: Record<string, string> = { stone_stairs: 'stairs_stone', wood_stairs: 'stairs_wood', log_steps: 'stairs_log' };
 let loading: Promise<void> | null = null;
 
 export function loadTileset(url = TILESET_URL): Promise<void> {
@@ -35,6 +40,10 @@ export function loadTileset(url = TILESET_URL): Promise<void> {
             pieces.set(o.name, new Float32Array(geo.getAttribute('position').array as ArrayLike<number>));
           });
           if (!hasTileset()) pieces.clear(); // all or nothing
+          for (const [style, node] of Object.entries(STAIRS_NODE)) {
+            const o = gltf.scene.getObjectByName(node);
+            if (o) stairs.set(style, prepareStairs(o));
+          }
         } catch (e) {
           console.warn('tileset: could not read', e);
           pieces.clear();
@@ -65,4 +74,41 @@ export function piece(family: Family, kind: PieceKind, variant = 0): Float32Arra
 export function setPieces(map: Record<string, Float32Array>) {
   pieces.clear();
   for (const [k, v] of Object.entries(map)) pieces.set(k, v);
+}
+
+function prepareStairs(node: THREE.Object3D): THREE.Object3D {
+  const root = node.clone(true);
+  root.position.set(0, 0, 0);
+  root.rotation.set(0, 0, 0);
+  root.scale.set(1, 1, 1);
+  root.traverse((c: THREE.Object3D) => {
+    const m = c as THREE.Mesh;
+    if (!m.isMesh) return;
+    const src = m.material as THREE.MeshStandardMaterial;
+    m.material = bend(new THREE.MeshStandardMaterial({ color: src.color, roughness: 0.9, metalness: 0, flatShading: true }));
+    m.castShadow = true;
+    m.receiveShadow = true;
+    m.customDepthMaterial = bentDepth;
+  });
+  return root;
+}
+
+/** Stairs on every ramp tile that has a stairs look (grassy slopes have none). */
+export function buildStairs(g: Grid): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'stairs';
+  for (let z = 0; z < g.size; z++)
+    for (let x = 0; x < g.size; x++) {
+      const d = g.ramp(x, z);
+      if (d < 0) continue;
+      const style = RAMP_STYLES[g.rampStyle(x, z)];
+      const tpl = style && stairs.get(style);
+      if (!tpl) continue;
+      const o = tpl.clone(true);
+      // Modelled climbing towards −z (north); DIRS: 0 = north, 1 = east, 2 = south, 3 = west.
+      o.rotation.y = -d * (Math.PI / 2);
+      o.position.set(x + 0.5, baseHeight(Tile.Ramp) + g.level(x, z) * CLIFF, z + 0.5);
+      group.add(o);
+    }
+  return group;
 }

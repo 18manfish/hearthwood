@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS,
+  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 
@@ -193,7 +193,11 @@ class Bot {
       if (!(await this.walkTo(x - 1, z + Math.floor(BUILDINGS[type].h / 2), false))) continue;
       return this.act({ k: 'build', type, x, z });
     }
-    return { ok: false, err: 'no reachable spot' };
+    const g = this.grid, size = g.size, seen = new Uint8Array(size * size), st = [Math.floor(this.z) * size + Math.floor(this.x)];
+    seen[st[0]] = 1; let n = 0;
+    while (st.length) { const c = st.pop()!; n++; const cx = c % size, cz = Math.floor(c / size); for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (cz + dz) * size + cx + dx; if (!seen[k] && g.walkableTile(cx + dx, cz + dz) && g.stepOk(cx, cz, cx + dx, cz + dz)) { seen[k] = 1; st.push(k); } } }
+    const spots = this.freeSpots(type);
+    return { ok: false, err: `no reachable spot (at ${this.x.toFixed(1)},${this.z.toFixed(1)} tile ${g.tile(Math.floor(this.x), Math.floor(this.z))}, reachable ${n}, spots ${spots.length}, first ${JSON.stringify(spots.slice(0, 3))})` };
   }
 
   async chat(text: string) {
@@ -458,6 +462,13 @@ async function main() {
         await sleep(150);
         check(A.grid.ramp(tx, tz + 1) === 0 && A.grid.stepOk(tx, tz + 1, tx, tz), 'the ramp connects both levels');
         check(!(await A.act({ k: 'terra', op: 'lower', x: tx, z: tz })).ok, 'cannot lower a ramp landing');
+        for (const [op, style] of [['stairs_stone', 1], ['stairs_wood', 2], ['stairs_log', 3]] as const) {
+          const st = await A.act({ k: 'terra', op, x: tx, z: tz + 1 });
+          await sleep(120);
+          check(st.ok && A.grid.rampStyle(tx, tz + 1) === style && A.grid.ramp(tx, tz + 1) === 0, `ramp turned into ${op.replace('_', ' ')}${st.ok ? '' : ` (${st.err})`}`);
+        }
+        check(!(await A.act({ k: 'terra', op: 'stairs_log', x: tx, z: tz + 1 })).ok, 'same stairs again is refused');
+        check(A.grid.stepOk(tx, tz + 1, tx, tz), 'stairs still connect both levels');
         check((await A.act({ k: 'terra', op: 'unramp', x: tx, z: tz + 1 })).ok, 'ramp removed');
         check((await A.act({ k: 'terra', op: 'lower', x: tx, z: tz })).ok, 'cliff lowered again');
         check((await A.act({ k: 'terra', op: 'water', x: tx, z: tz })).ok, 'pond dug');
@@ -807,6 +818,52 @@ async function main() {
       for (let i = 0; i < g.size * g.size; i++) { if (g.tiles[i] === Tile.River) river++; if (g.tiles[i] === Tile.Pond) pond++; }
       check(river > 0 && pond > 0, `the island has a river (${river} tiles) and a pond (${pond})`);
       check(classifyWater(g.size, Uint8Array.from(g.tiles)).length === 0, 'rivers connect to the sea, ponds don’t');
+      // Wide beaches and wading into the shallow sea.
+      {
+        let shore = 0, wade = 0, deep = 0;
+        for (let z = 0; z < g.size; z++)
+          for (let x = 0; x < g.size; x++) {
+            if (g.tile(x, z) === Tile.Shore) shore++;
+            if (g.tile(x, z) === Tile.Sea) g.wadeableTile(x, z) ? wade++ : deep++;
+          }
+        check(shore > g.size * 8, `wide beaches (${shore} sand tiles)`);
+        check(wade > 0 && deep > 0, `the sea is shallow near the beach (${wade} wadeable tiles), then deep`);
+        let pair: [number, number, number, number] | null = null;
+        let best = Infinity;
+        for (let z = 1; z < g.size - 1; z++)
+          for (let x = 1; x < g.size - 1; x++) {
+            if (g.tile(x, z) !== Tile.Shore || !g.walkableTile(x, z)) continue;
+            for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const wx = x + dx * 2, wz = z + dz * 2;
+              if (g.tile(x + dx, z + dz) !== Tile.Sea || !g.wadeableTile(x + dx, z + dz) || !g.wadeableTile(wx, wz)) continue;
+              const d = Math.hypot(x - A.x, z - A.z);
+              if (d < best) { best = d; pair = [x, z, dx, dz]; }
+            }
+          }
+        check(!!pair, 'found a beach with shallow water in front');
+        if (pair && (await A.walkTo(pair[0], pair[1], false))) {
+          A.inbox = A.inbox.filter((m) => m.t !== 'corr');
+          for (let i = 1; i <= 4; i++) {
+            A.x += pair[2] * 0.4;
+            A.z += pair[3] * 0.4;
+            A.send({ t: 'move', seq: ++A.seq, x: A.x, z: A.z, r: 0 });
+            await sleep(110);
+          }
+          await sleep(200);
+          const corrected = A.inbox.some((m) => m.t === 'corr');
+          const tx = Math.floor(A.x), tz = Math.floor(A.z);
+          check(!corrected && g.tile(tx, tz) === Tile.Sea, 'waded into the shallow sea');
+          check(g.surfaceY(A.x, A.z) < SEA_LEVEL - 0.1 && g.surfaceY(A.x, A.z) >= WADE_FLOOR, `standing in the water (floor ${g.surfaceY(A.x, A.z).toFixed(2)})`);
+          // Back to the beach.
+          for (let i = 0; i < 4; i++) {
+            A.x -= pair[2] * 0.4;
+            A.z -= pair[3] * 0.4;
+            A.send({ t: 'move', seq: ++A.seq, x: A.x, z: A.z, r: 0 });
+            await sleep(110);
+          }
+        }
+        check(!g.walkable(0.5, 0.5) && !g.wadeableTile(0, 0), 'the deep sea is still off limits');
+      }
       // A bridge across the river.
       A.send({ t: 'dev', cmd: 'kit', args: [] });
       await sleep(300);

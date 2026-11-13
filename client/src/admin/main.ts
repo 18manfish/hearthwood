@@ -359,7 +359,7 @@ function islandEditor(v: IslandView) {
         // Ramp arrows (uphill).
         const r = d.ramps[i];
         if (r) {
-          const [dx, dz] = DIRS[r - 1];
+          const [dx, dz] = DIRS[(r - 1) & 3];
           const cx = x * cell + cell / 2, cz = z * cell + cell / 2;
           g.strokeStyle = '#3b2f25';
           g.lineWidth = Math.max(1, cell / 8);

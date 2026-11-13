@@ -6,7 +6,7 @@ import {
   BIOMES, BUILDINGS, ENTERABLE, SHOP_TYPES, FISH, ITEMS, MAX_VILLAGERS, RECIPES, SHOP_STOCK, TREES, VILLAGER_HOUSE_MONTH_ONE_LIMIT,
   VILLAGER_HOUSE_MONTH_TWO_MIN_DAY, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE,
   FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_TALK, FRIENDSHIP_MAX, FRIENDSHIP_BIRTHDAY_BONUS, HAIR_STYLES,
-  Rng, Tile, waterKind, placeError, BOTTLE_COOLDOWN_MS, BOTTLE_MIN_DELAY_MS, BOTTLE_MAX_DELAY_MS, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
+  Rng, Tile, waterKind, placeError, BOTTLE_COOLDOWN_MS, BOTTLE_MIN_DELAY_MS, BOTTLE_MAX_DELAY_MS, PATH_REACH, TERRA_REACH, TERRA_PERMIT, PERMIT_BY_ID, BIRD_BY_ID, birdCatchChance, relocationCost, terraformError, terraformChanges, isRampOp, pathDef, distToTile, friendshipLevel, isWaterTile, nearBuilding, villagerDef, villagerLine, hashMany,
   type Action, type BuildingType, type TalkView, type WorldObject, type Building,
 } from '@hearthwood/shared';
 import { config } from '../config.ts';
@@ -642,7 +642,7 @@ const handlers: { [K in Action['k']]: (ctx: Ctx, a: Extract<Action, { k: K }>) =
     const err = terraformError(grid, a.op, a.x, a.z, a.dir ?? -1);
     if (err) return fail(err);
     // Never bury or drown anyone standing there (or walking there).
-    if (a.op === 'raise' || a.op === 'water' || a.op === 'ramp') {
+    if (a.op === 'raise' || a.op === 'water' || (isRampOp(a.op) && grid.tile(a.x, a.z) !== Tile.Ramp)) {
       const on = (px: number, pz: number) => Math.abs(px - (a.x + 0.5)) < 0.75 && Math.abs(pz - (a.z + 0.5)) < 0.75;
       for (const s of room.sessions) if (on(s.x, s.z)) return fail(s === ctx.s ? 'Step off that spot first.' : 'Someone is standing there.');
       for (const v of room.villagers.values()) if (on(v.x, v.z) || on(v.tx, v.tz)) return fail('A villager is in the way.');

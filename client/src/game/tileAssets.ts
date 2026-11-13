@@ -67,12 +67,6 @@ export function piece(family: Family, kind: PieceKind, variant = 0): Float32Arra
   return pieces.get(kind === 'edge' ? `tile_${family}_edge_${variant % 3}` : `tile_${family}_${kind}`)!;
 }
 
-/** For tests: install pieces without a loader. */
-export function setPieces(map: Record<string, Float32Array>) {
-  pieces.clear();
-  for (const [k, v] of Object.entries(map)) pieces.set(k, v);
-}
-
 function prepareStairs(node: THREE.Object3D): THREE.Object3D {
   const root = node.clone(true);
   root.position.set(0, 0, 0);

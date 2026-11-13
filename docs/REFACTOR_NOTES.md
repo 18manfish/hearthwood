@@ -77,3 +77,33 @@ a TypeScript-scanner diff of every string literal against the pre-refactor commi
 expected changes (router keys moved into the routes table; the glb loader builds its
 log messages from parts). The earlier splits (Room, Game, World, terrain, water,
 models) had no such slips.
+
+## Phase 5: cleanup
+
+- **Deleted (nothing referenced them anywhere, admin/editor/tools included):**
+  `setPieces` (tileAssets), `hasTreeModel` (treeAssets), `villagerPos` (was an unused
+  World method), `permitFor` (permits), `terraPreviewY` (terraform),
+  `buildingFootprint` (world/objects). Unused exported *types* (`Config`, `HairStyle`,
+  `ActionKind`) were kept: they document shapes and cost nothing.
+- **Unused imports** left behind by the splits removed (`tsc --noUnusedLocals` is clean
+  for client/server/shared src, apart from the two below). Every module whose import
+  was dropped is still imported elsewhere, so load order is unchanged.
+- **Left alone on purpose:** the unused local `Lv` in `generate/cliffs.ts` (moved
+  verbatim from the old generator), `applyGameData` imported but unused in
+  `server/src/api.ts` (admin, out of scope), unused imports in the test suites.
+- **Fallbacks kept** (procedural trees, straight-wall terrain, plank docks): they are
+  what players see when a .glb is missing or fails to load.
+- **Legacy data paths** now each carry a comment saying which saves still need them:
+  JSON import (`store.ts`), `LEGACY_ISLAND_SIZE`, `gen` 1 islands (`types.ts`), beach
+  migration (`room/beach.ts`). The `beach` field comment said "3 = current"; it is 4.
+- **README:** project structure tree and file paths updated (also: the store line said
+  JSON; it is SQLite). `docs/ARCHITECTURE.md` was not edited and is now out of date.
+- **CSS:** only section banners added; moving rules would change the cascade, so the
+  order is untouched.
+
+## Open suggestion
+
+- `TEST_SEED`: the server tests create random islands, which causes the rare flakes
+  listed above (town hall spot, stuck bot, fishing distance, bird net). A fixed seed for
+  test islands would make the suite deterministic. Not done: it changes test setup
+  behaviour and needs a decision.

@@ -6,7 +6,7 @@ import { addPlayer, removeMover } from './entities/players.ts';
 import { upsertVillager } from './entities/villagers.ts';
 import { upsertBuildingMesh, upsertObjectMesh } from './room/objects.ts';
 import { scheduleFoliage, schedulePaths, scheduleTerrain } from './room/terrainLayer.ts';
-import { currentEnv, refreshVisuals } from './scene/environment.ts';
+import { refreshVisuals } from './scene/environment.ts';
 import { endCast } from './tools/fishing.ts';
 import { cancelGhost } from './tools/ghost.ts';
 import type { World } from '../World.ts';

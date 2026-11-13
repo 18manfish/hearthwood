@@ -2,7 +2,7 @@
 
 import { villagerDef, type VillagerView } from '@hearthwood/shared';
 import { makeVillager } from '../../characters.ts';
-import { makeLabel, swing } from './players.ts';
+import { makeLabel } from './players.ts';
 import type { World } from '../../World.ts';
 
 export function upsertVillager(self: World, v: VillagerView) {
@@ -23,11 +23,6 @@ export function upsertVillager(self: World, v: VillagerView) {
   m.tr = v.r;
   m.home = v.home;
   m.rig.root.visible = !v.home;
-}
-
-export function villagerPos(self: World, id: string) {
-  const v = self.villagers.get(id);
-  return v ? { x: v.x, z: v.z, home: v.home } : null;
 }
 
 export function animateBirds(self: World, t: number) {

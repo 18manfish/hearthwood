@@ -6,7 +6,7 @@ import { type PlayerView, SEA_LEVEL, slideMove, wrapAngle } from '@hearthwood/sh
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
-import { bend, bendDrop } from '../../bend.ts';
+import { bendDrop } from '../../bend.ts';
 import { animateRig, makePlayer, setTool } from '../../characters.ts';
 import { mat } from '../../models.ts';
 import { Mover, PLAYER_SPEED, round2 } from '../common.ts';

@@ -1,7 +1,7 @@
 // Terraforming: raise / lower cliffs, place / remove ramps, dig / fill ponds.
 // The same rules run on the client (ghost preview) and the server (authority).
 
-import { CLIFF, DIRS, Grid, MAX_LEVEL, RAMP_STYLES, Tile, classifyWater, isWaterTile, type RampStyle, isFreshWater } from './world.ts';
+import { DIRS, Grid, MAX_LEVEL, RAMP_STYLES, Tile, classifyWater, isWaterTile, type RampStyle, isFreshWater } from './world.ts';
 
 export const TERRA_OPS = ['raise', 'lower', 'ramp', 'stairs_stone', 'stairs_wood', 'stairs_log', 'unramp', 'water', 'land'] as const;
 export type TerraOp = (typeof TERRA_OPS)[number];
@@ -200,8 +200,3 @@ export function applyTerrainAndWater(g: Grid, changes: TerrainChange[]): Terrain
   return out;
 }
 
-/** Visual height of a raised tile, for previews. */
-export function terraPreviewY(g: Grid, op: TerraOp, x: number, z: number) {
-  const base = g.surfaceY(x + 0.5, z + 0.5);
-  return op === 'raise' ? base + CLIFF : base;
-}

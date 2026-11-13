@@ -72,9 +72,13 @@ export interface Respawn {
 }
 
 export interface IslandRecord {
-  /** Wide-beach migration version applied to saved terrain (3 = current). */
+  /** Wide-beach migration version applied to saved terrain (4 = current, see room/beach.ts). */
   beach?: number;
-  /** Generator version: 1 = flat (legacy), 2 = cliffs & ramps. */
+  /**
+   * Generator version: 1 = flat (legacy), 2 = cliffs & ramps.
+   * Legacy data: islands without `gen` (or gen 1) still load flat, so the
+   * `(rec.gen ?? 1) >= 2` checks stay while such saves may exist.
+   */
   gen?: number;
   /** Furniture placed inside the tent / house, keyed by building id. */
   interiors?: Record<string, WorldObject[]>;

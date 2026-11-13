@@ -5,7 +5,7 @@ import { NON_BLOCKING } from '../data/buildings.ts';
 import { CoastField, coastY, isCoastal } from './coast.ts';
 import { dockRamp, dockRampLen } from './dock.ts';
 import { cornerHeights, surfaceY } from './heights.ts';
-import { RAMP_STYLES, WADE_FLOOR } from './constants.ts';
+import { WADE_FLOOR } from './constants.ts';
 import { type Building, isBridge, objectBlocks, type WorldObject } from './objects.ts';
 import { DIRS, isWaterTile, Tile, tileAt } from './tiles.ts';
 

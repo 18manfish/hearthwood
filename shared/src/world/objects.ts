@@ -1,7 +1,7 @@
 // Things placed on an island: world objects, buildings and the island layout record.
 
 import { type TreeSpecies } from '../data/biomes.ts';
-import { BUILDINGS, type BuildingType } from '../data/buildings.ts';
+import { type BuildingType } from '../data/buildings.ts';
 
 export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor' | 'bird' | 'washed';
 
@@ -83,7 +83,3 @@ export function isBridge(type: string) {
   return type.startsWith('bridge_');
 }
 
-export function buildingFootprint(type: BuildingType) {
-  const d = BUILDINGS[type];
-  return { w: d.w, h: d.h };
-}

@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import { type BuildingType as BT, type Building, type HotbarTool, SEA_LEVEL, type Season, type VillagerDef, type Weather, type WorldObject } from '@hearthwood/shared';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { bend } from '../bend.ts';
 import { type Rig, setHat } from '../characters.ts';
 
 /** Who works the counter in each kind of building. */

@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { BIOMES, Grid, CLIFF, decodeTiles, type TerraOp, type Building, type RoomView, type ServerMessage, type WorldObject, type BuildingType } from '@hearthwood/shared';
-import { bend, bendFocusZ, bendStrength } from './bend.ts';
+import { bendFocusZ, bendStrength } from './bend.ts';
 import { disposePaths } from './paths.ts';
 import { disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';

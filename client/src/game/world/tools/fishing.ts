@@ -2,7 +2,6 @@
 
 import { CLIFF } from '@hearthwood/shared';
 import { WATER_Y } from '../common.ts';
-import { swing } from '../entities/players.ts';
 import type { World } from '../../World.ts';
 
 export function startCast(self: World, x: number, z: number) {

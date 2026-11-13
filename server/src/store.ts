@@ -171,7 +171,12 @@ export class Store {
     log.info('database opened', { file: this.file, players: this.players.size, islands: this.islands.size, tokens: this.byToken.size });
   }
 
-  /** One-time import of the JSON files written by earlier versions. */
+  /**
+   * One-time import of the JSON files written by earlier versions.
+   * Legacy data: still needed for servers whose data folder has `players/`,
+   * `islands/` or `boards.json` from before the SQLite store. Safe to drop once
+   * every running server has started at least once on the database version.
+   */
   private importLegacyJson() {
     const pdir = path.join(this.dir, 'players');
     const idir = path.join(this.dir, 'islands');

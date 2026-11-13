@@ -6,7 +6,7 @@
 import { CHAPTERS, ITEMS, localTime, type Building, type TalkView, type MapIsland } from '@hearthwood/shared';
 import { net } from '../net.ts';
 import { state, watch } from '../state.ts';
-import { debug, type World, type Tool } from '../game/World.ts';
+import { type World, type Tool } from '../game/World.ts';
 import { DEFAULT_HOTBAR, type Hotbar, type HotbarTool, type TerraOp } from '@hearthwood/shared';
 import { PATHS, TERRA_INFO } from '@hearthwood/shared';
 import { h, clear } from './dom.ts';

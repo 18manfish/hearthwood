@@ -1,7 +1,7 @@
 // Dev commands (only in dev mode): kits, time, weather, seasons, birds, bottles…
 
 import {
-  BIOMES, type Building, type DevCommand, ITEMS, parse, PERMITS, type Season, SEASONS_BY_MODEL, type Weather,
+  BIOMES, type DevCommand, ITEMS, PERMITS, type Season, SEASONS_BY_MODEL, type Weather,
 } from '@hearthwood/shared';
 import { logger } from '../../log.ts';
 import { Session } from '../Session.ts';
@@ -9,7 +9,6 @@ import * as inv from '../inventory.ts';
 import type { Game } from '../Game.ts';
 import { deliverBottles } from './bottles.ts';
 import { progress, sendQuest } from './progress.ts';
-import { chat } from './social.ts';
 import { homeIsland } from './travel.ts';
 import { sendInv, sendSelf } from './views.ts';
 

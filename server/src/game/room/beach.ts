@@ -5,7 +5,11 @@ import { classifyWater, DIRS, Tile, washupsFor } from '@hearthwood/shared';
 import type { IslandRecord } from '../../types.ts';
 import type { Room } from '../Room.ts';
 
-/** Version of the wide-beach migration for saved (terraformed) terrain. */
+/**
+ * Version of the wide-beach migration for saved (terraformed) terrain.
+ * Legacy data: still needed for saved islands with `beach` < 4 (or none) that have
+ * terraformed terrain; generated terrain never needs it.
+ */
 const BEACH_VERSION = 4;
 
 /**

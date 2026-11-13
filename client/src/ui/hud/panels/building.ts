@@ -1,7 +1,6 @@
 // Counters inside buildings: town hall services, shops and their stock.
 
 import { type Building, BUILDINGS, type BuildingType, ENTERABLE, ITEMS, type Look, MYSTERY_TOUR_COST, PERMITS, SHOP_STOCK } from '@hearthwood/shared';
-import { type World } from '../../../game/World.ts';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { lookEditor, Preview } from '../../creator.ts';

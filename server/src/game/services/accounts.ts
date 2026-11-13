@@ -9,7 +9,6 @@ import { config } from '../../config.ts';
 import { logger } from '../../log.ts';
 import { Room } from '../Room.ts';
 import { Session } from '../Session.ts';
-import * as inv from '../inventory.ts';
 import { hashToken, hashPassword, newToken, verifyPassword } from '../../auth.ts';
 import type { IslandRecord, PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';

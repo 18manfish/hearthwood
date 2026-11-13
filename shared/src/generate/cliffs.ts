@@ -1,7 +1,7 @@
 // Cliffs and ramps: raise plateaus, smooth them, then add ramps until every walkable
 // tile is reachable from the spawn.
 
-import { fbm2D, Rng } from '../rng.ts';
+import { fbm2D } from '../rng.ts';
 import { LEGACY_ISLAND_SIZE } from '../world/constants.ts';
 import { Grid } from '../world/grid.ts';
 import { DIRS, Tile } from '../world/tiles.ts';

@@ -10,7 +10,6 @@ import * as inv from '../inventory.ts';
 import type { Friendship, PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
 import { islandRoom } from './rooms.ts';
-import { chat } from './social.ts';
 import { sendInv, sendSelf } from './views.ts';
 
 const log = logger('game');

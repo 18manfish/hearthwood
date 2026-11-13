@@ -28,10 +28,6 @@ export function isPermit(id: unknown): id is PermitId {
   return typeof id === 'string' && Object.prototype.hasOwnProperty.call(PERMIT_BY_ID, id);
 }
 
-export function permitFor(op: TerraOp): PermitDef {
-  return PERMITS.find((p) => p.ops.includes(op))!;
-}
-
 /** What it costs to move a building somewhere else on the island. */
 export function relocationCost(w: number, h: number) {
   return Math.max(100, 60 * w * h);

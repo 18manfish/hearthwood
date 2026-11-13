@@ -1,10 +1,10 @@
 // 🐞 Developer debug panel (F3): live stats and dev commands.
 
 import { BIOMES, DEV_COMMANDS, type DevCommand, ITEM_LIST, type Season, SEASONS_BY_MODEL, type Weather } from '@hearthwood/shared';
-import { debug, type World } from '../../../game/World.ts';
+import { debug } from '../../../game/World.ts';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
-import { clear, h } from '../../dom.ts';
+import { h } from '../../dom.ts';
 import type { Hud } from '../../hud.ts';
 
 export function debugPanel(hud: Hud) {

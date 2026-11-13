@@ -5,7 +5,11 @@ import { Tile } from './tiles.ts';
 /** Side length of new home islands (tiles). */
 export const ISLAND_SIZE = 72;
 
-/** Islands created before the 1.5× enlargement keep their original size. */
+/**
+ * Islands created before the 1.5× enlargement keep their original size.
+ * Legacy data: still needed for saved islands without `size`, the 48-tile harbor
+ * layout, and as the scale unit (S) of the generator, so it can never go away.
+ */
 export const LEGACY_ISLAND_SIZE = 48;
 
 /** Highest cliff level players can terraform to. */

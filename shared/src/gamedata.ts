@@ -5,7 +5,7 @@
 import { BASE_ITEMS, FISH, FURNITURE_MODELS, ITEM_CATEGORIES, ITEM_TAGS, rebuildItems, type FishDef, type ItemDef } from './data/items.ts';
 import { BIRDS, rebuildBirds, type BirdDef } from './data/birds.ts';
 import { RECIPES, type RecipeDef } from './data/recipes.ts';
-import { BUILDINGS, SHOP_STOCK, rebuildBuildable, type BuildingDef, type BuildingType } from './data/buildings.ts';
+import { BUILDINGS, SHOP_STOCK, rebuildBuildable, type BuildingDef } from './data/buildings.ts';
 import { VILLAGERS, type VillagerDef } from './data/villagers.ts';
 import { PERMITS, rebuildPermits, type PermitDef } from './data/permits.ts';
 import { PATHS, type PathDef } from './data/paths.ts';

@@ -9,7 +9,6 @@ import { Session } from '../Session.ts';
 import type { IslandRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
 import { buildingCompleted } from './progress.ts';
-import { chat } from './social.ts';
 import { moveToRoom, travel } from './travel.ts';
 
 /** One-off upgrades for islands saved by older versions. */

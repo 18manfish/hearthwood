@@ -11,7 +11,7 @@ import { Session } from '../Session.ts';
 import { runAction } from '../actions/index.ts';
 import type { PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
-import { createCharacter, hello, kick, uniqueCode } from './accounts.ts';
+import { createCharacter, hello, uniqueCode } from './accounts.ts';
 import { devCommand } from './dev.ts';
 import { afterAction } from './progress.ts';
 import { setGeo, setRole } from './roles.ts';

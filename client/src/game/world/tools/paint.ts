@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { autoRampDir, CLIFF, distToTile, isRampOp, PATH_REACH, PATHS, TERRA_INFO, TERRA_REACH, terraformError, type TerraOp } from '@hearthwood/shared';
-import { bend, bendDrop } from '../../bend.ts';
+import { bendDrop } from '../../bend.ts';
 import { mat, part } from '../../models.ts';
 import { groundY } from '../entities/players.ts';
 import { facingTile } from '../targeting.ts';

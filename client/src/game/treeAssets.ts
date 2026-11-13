@@ -68,10 +68,6 @@ function prepare(node: THREE.Object3D, species: string): Template {
   return { root, fruits: fruits.filter(Boolean), scale };
 }
 
-export function hasTreeModel(species: string) {
-  return templates.has(species);
-}
-
 export interface TreeLook {
   trunk: string;
   foliage: string;

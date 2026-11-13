@@ -170,11 +170,21 @@ export class Grid {
   stepOk(ax: number, az: number, bx: number, bz: number): boolean {
     if (ax === bx && az === bz) return true;
     if (Math.abs(ax - bx) > 1 || Math.abs(az - bz) > 1) return false;
+    // Piers have no way down into the sea (or up out of it): off the deck or the gangway only onto land.
+    const sa = this.tile(ax, az) === Tile.Sea, sb = this.tile(bx, bz) === Tile.Sea;
+    if (sa !== sb && (sa ? this.isPier(bx, bz) : this.isPier(ax, az))) return false;
     const ra = this.ramp(ax, az);
     const rb = this.ramp(bx, bz);
     if (ra < 0 && rb < 0) return this.walkLevel(ax, az) === this.walkLevel(bx, bz);
     if (ra >= 0 && rb >= 0) return ra === rb && this.level(ax, az) === this.level(bx, bz);
     return ra >= 0 ? this.rampLink(ax, az, ra, bx, bz) : this.rampLink(bx, bz, rb, ax, az);
+  }
+
+  /** A dock deck tile, or a beach tile its gangway runs over. */
+  isPier(x: number, z: number): boolean {
+    const t = this.tile(x, z);
+    if (t === Tile.Dock) return true;
+    return (t === Tile.Shore || t === Tile.Ground) && dockRamp(this, x + 0.5, z + 0.5) !== null;
   }
 
   private rampLink(rx: number, rz: number, d: number, ox: number, oz: number) {

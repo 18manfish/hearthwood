@@ -2,13 +2,13 @@
 // and reloading islands, villagers coming home, and old-save upgrades.
 
 import {
-  BIOMES, type Building, BUILDINGS, hashString, interiorSpecFor, LEGACY_ISLAND_SIZE, Rng, sharedLocation, villagerDef,
+  BIOMES, type Building, BUILDINGS, hashString, houseLevel, interiorSpecFor, LEGACY_ISLAND_SIZE, Rng, sharedLocation, villagerDef,
 } from '@hearthwood/shared';
 import { Room } from '../Room.ts';
 import { Session } from '../Session.ts';
 import type { IslandRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
-import { buildingCompleted } from './progress.ts';
+import { buildingCompleted, houseUpgraded } from './progress.ts';
 import { moveToRoom, travel } from './travel.ts';
 
 /** One-off upgrades for islands saved by older versions. */
@@ -57,6 +57,7 @@ export function islandRoom(game: Game, id: string): Room | null {
     geo: owner?.geo ?? { lat: 47, lon: 8, tz: 'UTC' }, seed: rec.seed, record: rec, elevation: (rec.gen ?? 1) >= 2, size: rec.size ?? LEGACY_ISLAND_SIZE,
   });
   room.onBuildingComplete = (r, b) => buildingCompleted(game, r, b);
+  room.onHouseUpgraded = (r, b) => houseUpgraded(game, r, b);
   game.rooms.set(id, room);
   // Catch up on everything that happened while nobody was here.
   room.slowTick(Date.now());
@@ -68,11 +69,16 @@ export function interiorRoom(game: Game, parent: Room, b: Building): Room | null
   const id = `${parent.id}~${b.id}`;
   const existing = game.rooms.get(id);
   const villager = b.villagerId ? villagerDef(b.villagerId) : undefined;
-  if (existing) {
+  const level = b.type === 'cabin' ? houseLevel(b, Date.now()) : 1;
+  if (existing && existing.interior?.spec.style === 'cabin' && (existing.interior.spec.level ?? 1) !== level && existing.sessions.size === 0) {
+    // The house was upgraded: rebuild the (bigger) interior, keeping the furniture.
+    if (existing.syncRecord()) game.store.markIsland(parent.id);
+    game.rooms.delete(id);
+  } else if (existing) {
     syncVillagerAtHome(game, parent, existing, b);
     return existing;
   }
-  const spec = interiorSpecFor(b.type, b.id, villager);
+  const spec = interiorSpecFor(b.type, b.id, villager, level);
   if (!spec) return null;
   const houseOwnerId = b.ownerId ?? parent.ownerId ?? undefined;
   const owner = (b.ownerId ? game.store.players.get(b.ownerId)?.name : parent.ownerName) ?? 'Someone';

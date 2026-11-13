@@ -74,6 +74,7 @@ export class Room {
   dayKey = '';
   /** Callbacks the game layer hooks into. */
   onBuildingComplete?: (room: Room, b: Building) => void;
+  onHouseUpgraded?: (room: Room, b: Building) => void;
 
   constructor(o: RoomOptions) {
     this.id = o.id;
@@ -441,6 +442,14 @@ export class Room {
       if (!this.completed.has(b.id) && b.completeAt <= now) {
         this.completed.add(b.id);
         if (b.completeAt > 0) this.onBuildingComplete?.(this, b); // must be idempotent (also runs after a restart)
+      }
+      // House upgrades.
+      if (b.upgrade && b.upgrade.at <= now) {
+        b.level = b.upgrade.level;
+        delete b.upgrade;
+        this.broadcast({ t: 'bAdd', b: [b] });
+        this.touch();
+        this.onHouseUpgraded?.(this, b);
       }
     }
   }

@@ -17,7 +17,7 @@ import { Session } from './Session.ts';
 import { banReason, claimAccount, deletePlayer, isAdmin, kick, login, register } from './services/accounts.ts';
 import { deliverBottles } from './services/bottles.ts';
 import { loadGameData, resetGameData, setGameData } from './services/gamedata.ts';
-import { levelUpCheck } from './services/progress.ts';
+import { levelUpCheck, sendQuest } from './services/progress.ts';
 import { reloadIsland, sharedRoom, syncIsland, syncVillagerAtHome } from './services/rooms.ts';
 import { handleConnection } from './services/router.ts';
 import { sanitize } from './services/social.ts';
@@ -174,6 +174,10 @@ export class Game {
 
   sendSelf(s: Session) {
     return sendSelf(this, s);
+  }
+
+  sendQuest(s: Session) {
+    return sendQuest(this, s);
   }
 
   broadcastLook(s: Session) {

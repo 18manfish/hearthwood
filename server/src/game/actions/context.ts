@@ -23,7 +23,7 @@ export interface ActionResult {
 }
 
 /** The parts of the game the action handlers may use (narrower than all of Game). */
-export type GameApi = Pick<Game, 'store' | 'sanitize' | 'levelUpCheck' | 'broadcastLook' | 'sendSelf' | 'notifyMail'>;
+export type GameApi = Pick<Game, 'store' | 'sanitize' | 'levelUpCheck' | 'broadcastLook' | 'sendSelf' | 'notifyMail' | 'rooms' | 'sendQuest'>;
 
 export interface Ctx {
   game: GameApi;

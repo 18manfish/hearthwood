@@ -157,6 +157,53 @@ function fixture(type: BuildingType, name: string, icon: string, w: number, h: n
   return { type, name, icon, w, h, cost: {}, requires: [], minDay: 1, buildMinutes: 0, max: 1, color: '#a0703f', roof: '#a0703f', description, fixed: true };
 }
 
+// ── Starter House tiers ─────────────────────────────────────────────────────
+// The Starter House ('cabin') is upgraded in place: same 3×3 footprint, a
+// grander model (client/public/models/house.glb, built by art/house_build.py)
+// and a bigger interior at every tier. Upgrades are ordered at the Town Hall
+// and the house stays usable while the builders work.
+
+export interface HouseTier {
+  level: number;
+  name: string;
+  icon: string;
+  description: string;
+  /** Upgrade price to reach this tier (tier 1 is the normal build cost). */
+  cost: Record<string, number>;
+  coins: number;
+  requires: BuildingType[];
+  minDay: number;
+  buildMinutes: number;
+  /** Interior side length in tiles. */
+  interior: number;
+}
+
+export const HOUSE_TIERS: HouseTier[] = [
+  {
+    level: 1, name: 'Starter House', icon: '🏠', description: 'A snug plaster cottage with a shingle roof and a stone chimney.',
+    cost: {}, coins: 0, requires: [], minDay: 2, buildMinutes: 60, interior: 9,
+  },
+  {
+    level: 2, name: 'Timber House', icon: '🏡', description: 'Two storeys of timber framing on a stone base, with a porch, dormer window and flower boxes.',
+    cost: { wood: 80, stone: 60, clay: 25, iron_ore: 8 }, coins: 8000, requires: ['town_hall'], minDay: 10, buildMinutes: 240, interior: 11,
+  },
+  {
+    level: 3, name: 'Hearth Manor', icon: '🏰', description: 'A dressed-stone manor with a columned portico, balcony, corner tower and gilded trim.',
+    cost: { wood: 120, stone: 150, clay: 40, iron_ore: 25, sea_glass: 10, pearl: 3 }, coins: 40000, requires: ['town_hall'], minDay: 21, buildMinutes: 480, interior: 13,
+  },
+];
+export const MAX_HOUSE_LEVEL = HOUSE_TIERS.length;
+
+/** The tier a house shows right now (finished upgrades count). */
+export function houseLevel(b: { level?: number; upgrade?: { level: number; at: number } }, now: number): number {
+  const lvl = b.upgrade && b.upgrade.at <= now ? b.upgrade.level : b.level ?? 1;
+  return Math.max(1, Math.min(MAX_HOUSE_LEVEL, lvl));
+}
+
+export function houseTier(b: { level?: number; upgrade?: { level: number; at: number } }, now: number): HouseTier {
+  return HOUSE_TIERS[houseLevel(b, now) - 1];
+}
+
 /** Buildings you can walk into. */
 export const ENTERABLE: BuildingType[] = [
   'tent', 'cabin', 'town_hall', 'villager_house', 'travel_agent', 'clothing_shop', 'restaurant', 'tool_store', 'furniture_store', 'shack', 'lighthouse',

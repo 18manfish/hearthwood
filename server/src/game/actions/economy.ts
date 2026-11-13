@@ -1,12 +1,14 @@
 // Crafting, permits, shopping and selling, clothes and hairstyles.
 
 import {
-  BUILDINGS, HAIR_STYLES, ITEMS, PERMIT_BY_ID, RECIPES, SHOP_STOCK,
+  BUILDINGS, HAIR_STYLES, HOUSE_TIERS, houseLevel, ITEMS, PERMIT_BY_ID, RECIPES, SHOP_STOCK,
 } from '@hearthwood/shared';
+import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
+import { ownHouse } from '../services/progress.ts';
 import { fail, give, type Handlers, log, nearCompleted } from './context.ts';
 
-export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'buy' | 'sell' | 'wear' | 'restyle'> = {
+export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'upgrade' | 'buy' | 'sell' | 'wear' | 'restyle'> = {
   craft(ctx, a) {
     const r = RECIPES.find((x) => x.id === a.recipe);
     if (!r) return fail('Unknown recipe.');
@@ -24,6 +26,36 @@ export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'buy' | 'sell'
     give(ctx, gained, r.output, r.qty * times);
     ctx.p.crafted[r.output] = (ctx.p.crafted[r.output] ?? 0) + r.qty * times;
     return { ok: true, gained, msg: `Made ${outDef.name}${times * r.qty > 1 ? ` ×${times * r.qty}` : ''}!` };
+  },
+  upgrade(ctx) {
+    if (!nearCompleted(ctx, ['town_hall'])) return fail('House upgrades are ordered at the Town Hall counter.');
+    const island = ctx.room.interior ? ctx.game.rooms.get(ctx.room.interior.parentId) : ctx.room;
+    if (!island || island.kind !== 'island' || !island.ownsHere(ctx.p.id)) return fail('Order upgrades at the Town Hall of the island you live on.');
+    const house = ownHouse(island, ctx.p.id);
+    if (!house || house.completeAt > ctx.now) return fail('Build your Starter House first.');
+    if (house.upgrade && house.upgrade.at > ctx.now) return fail('The builders are already working on your house.');
+    const cur = houseLevel(house, ctx.now);
+    if (house.upgrade) {
+      house.level = cur;
+      delete house.upgrade;
+    }
+    const next = HOUSE_TIERS[cur];
+    if (!next) return fail('Your house is as grand as it gets!');
+    for (const req of next.requires) if (island.completedCount(req, ctx.now) < 1) return fail(`Requires a finished ${BUILDINGS[req].name}.`);
+    const day = island.islandDay(ctx.now);
+    if (!config.ignoreDayGates && day < next.minDay) return fail(`The ${next.name} unlocks on island day ${next.minDay} (today is day ${day}).`);
+    if (ctx.p.coins < next.coins) return fail(`The ${next.name} costs ${next.coins.toLocaleString()} coins.`);
+    if (!inv.removeAll(ctx.p, next.cost)) return fail('Not enough materials.');
+    ctx.p.coins -= next.coins;
+    house.upgrade = { level: next.level, at: ctx.now + (next.buildMinutes * 60000) / config.timeFactor };
+    island.dirty = true;
+    island.broadcast({ t: 'bAdd', b: [house] });
+    ctx.game.store.markIsland(island.id);
+    ctx.game.sendSelf(ctx.s);
+    ctx.game.sendQuest(ctx.s);
+    log.info('house upgrade ordered', { player: ctx.p.id, island: island.id, level: next.level });
+    const mins = Math.round(next.buildMinutes / config.timeFactor);
+    return { ok: true, msg: `🏗️ Upgrading to the ${next.name}! Ready in about ${mins >= 60 ? `${Math.round(mins / 60)}h` : `${Math.max(1, mins)} min`} – you can keep living in it meanwhile.` };
   },
   permit(ctx, a) {
     const def = PERMIT_BY_ID[a.id];

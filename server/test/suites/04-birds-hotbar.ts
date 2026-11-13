@@ -1,0 +1,57 @@
+import {
+  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
+  type RoomView, type ServerMessage, type WorldObject, type BuildingType,
+} from '@hearthwood/shared';
+import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
+
+export async function run(ctx: Ctx) {
+  const { A } = ctx;
+  console.log('Birds & album');
+  {
+    const birdsSeen = () => [...A.objects.values()].filter((o) => o.kind === 'bird');
+    A.send({ t: 'dev', cmd: 'birds', args: ['5'] });
+    await A.wait('oAdd', (m) => m.o.some((o) => o.kind === 'bird')).catch(() => null);
+    await sleep(200);
+    check(birdsSeen().length > 0, `birds landed (${birdsSeen().length})`);
+    const first = birdsSeen()[0];
+    if (first) {
+      await A.walkTo(first.x + 1, first.z, false).catch(() => false);
+      const noNet = await A.act({ k: 'catch', id: first.id });
+      check(!noNet.ok && /net/.test(noNet.err ?? ''), 'catching birds needs a net');
+    }
+    A.send({ t: 'dev', cmd: 'give', args: ['bird_net', '1'] });
+    await sleep(300);
+    let caught: string | null = null;
+    for (let tries = 0; tries < 12 && !caught; tries++) {
+      let b = birdsSeen()[0];
+      if (!b) {
+        A.send({ t: 'dev', cmd: 'birds', args: ['4'] });
+        await A.wait('oAdd', (m) => m.o.some((o) => o.kind === 'bird')).catch(() => null);
+        await sleep(150);
+        b = birdsSeen()[0];
+        if (!b) continue;
+      }
+      let reached = false;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!reached) reached = await A.walkTo(b.x + dx, b.z + dz, false).catch(() => false);
+      const r = await A.act({ k: 'catch', id: b.id });
+      if (r.ok && r.gained && Object.keys(r.gained).some((k) => k.startsWith('bird_'))) caught = Object.keys(r.gained)[0];
+      else await sleep(200);
+    }
+    check(!!caught, `caught a bird (${caught})`);
+    const album = A.inbox.filter((m) => m.t === 'album').pop() as Extract<ServerMessage, { t: 'album' }> | undefined;
+    check(!!caught && !!album?.album.birds[caught], 'the bird is in the album');
+    check(!birdsSeen().some((o) => o.id === caught), 'caught bird is gone from the island');
+  }
+
+  console.log('Hotbar');
+  {
+    const slots = ['net', 'hand', 'axe', null, 'rod', 'shovel', 'sapling', 'pick', 'spade', null];
+    A.send({ t: 'hotbar', slots });
+    A.send({ t: 'hotbar', slots: ['axe', 'axe', 'bogus'] }); // duplicates / unknown tools are cleaned
+    await sleep(200);
+    A.send({ t: 'hotbar', slots });
+    await sleep(200);
+    state.hotbarPlayer = A.self.id;
+    state.hotbarExpected = slots;
+  }
+}

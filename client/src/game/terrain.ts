@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { BIOMES, CLIFF, Tile, baseHeight, hashString, isWaterTile, type BiomeId, type Grid, type Season, type InteriorTheme } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
+import { hasTileset, piece, type Family } from './tileAssets.ts';
 
 export interface TerrainOptions {
   biome: BiomeId;
@@ -57,6 +58,100 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
       return g0.cornerHeights(x, z);
     };
     const pad = interior ? 0 : o.pad ?? 8;
+    const useTiles = !interior && hasTileset();
+
+    /** Straight vertical faces down to lower neighbours (the fallback, and next to ramps). */
+    const edgeFaces = (x: number, z: number, t: Tile, h: number[], c: THREE.Color, only?: (nx: number, nz: number) => boolean) => {
+      const edges: [number, number, [number, number], [number, number], number[], number[]][] = [
+        // dx, dz, my corner indices, neighbour corner indices (matching positions), positions
+        [0, 1, [3, 2], [0, 1], [x, z + 1], [x + 1, z + 1]],
+        [1, 0, [2, 1], [3, 0], [x + 1, z + 1], [x + 1, z]],
+        [0, -1, [1, 0], [2, 3], [x + 1, z], [x, z]],
+        [-1, 0, [0, 3], [1, 2], [x, z], [x, z + 1]],
+      ];
+      for (const [dx, dz, mine, theirs, p0, p1] of edges) {
+        if (only && !only(x + dx, z + dz)) continue;
+        const nh = corners(x + dx, z + dz);
+        const a0 = h[mine[0]], a1 = h[mine[1]];
+        const b0 = Math.min(a0, nh[theirs[0]]), b1 = Math.min(a1, nh[theirs[1]]);
+        if (a0 - b0 < 0.01 && a1 - b1 < 0.01) continue;
+        const face = t === Tile.Wall ? c.clone().multiplyScalar(0.85) : t === Tile.Ground || t === Tile.Ramp ? cliff.clone().offsetHSL(0, 0, ((Math.floor(a0 * 3) % 2) - 0.5) * 0.04) : c.clone().multiplyScalar(0.72);
+        quad([p0[0], a0, p0[1]], [p0[0], b0, p0[1]], [p1[0], b1, p1[1]], [p1[0], a1, p1[1]], face);
+      }
+    };
+
+    // ---- Blender tileset: quarter tiles with rocky cliffs and rounded corners.
+    const QUARTERS: [number, number][] = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
+    const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpN = new THREE.Vector3();
+    const faceCol = new THREE.Color(), mixCol = new THREE.Color();
+    const tileColor = (x: number, z: number) => colors[g0.tile(x, z)] ?? colors[Tile.Ground]!;
+    const emitPiece = (
+      arr: Float32Array, swap: boolean, sx: number, sz: number, cx: number, cz: number, top: number, drop: number,
+      fam: Family, topC: THREE.Color, faceC: THREE.Color, floorC: THREE.Color,
+    ) => {
+      const flip = sx * sz * (swap ? -1 : 1) < 0;
+      const v: number[][] = [[], [], []];
+      for (let i = 0; i < arr.length; i += 9) {
+        for (let k = 0; k < 3; k++) {
+          let lx = arr[i + k * 3], lz = arr[i + k * 3 + 2];
+          const ly = arr[i + k * 3 + 1];
+          if (swap) [lx, lz] = [lz, lx];
+          v[k] = [cx + sx * lx, top + ly * drop, cz + sz * lz];
+        }
+        const [a, b, d] = flip ? [v[0], v[2], v[1]] : [v[0], v[1], v[2]];
+        tmpA.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        tmpB.set(d[0] - a[0], d[1] - a[1], d[2] - a[2]);
+        tmpN.crossVectors(tmpA, tmpB);
+        const len = tmpN.length();
+        if (len < 1e-9) continue;
+        const ny = Math.abs(tmpN.y) / len;
+        const ymin = Math.min(a[1], b[1], d[1]), ymax = Math.max(a[1], b[1], d[1]);
+        let col: THREE.Color;
+        if (ny > 0.8 && ymin > top - 0.03) col = topC;
+        else if (ny > 0.8 && ymax < top - drop + 0.02) col = floorC;
+        else {
+          faceCol.copy(faceC);
+          if (fam === 'cliff') faceCol.offsetHSL(0, 0, ((Math.floor((ymin + ymax) * 1.5) & 1) - 0.5) * 0.05);
+          if (ny > 0.8) faceCol.offsetHSL(0, 0, 0.05); // ledges catch the light
+          col = ny > 0.5 && ymin > top - 0.08 ? mixCol.copy(topC).lerp(faceCol, 0.5) : faceCol;
+        }
+        tri(a, b, d, col);
+      }
+    };
+    const tiledTile = (x: number, z: number, t: Tile, H: number, c: THREE.Color) => {
+      const fam: Family = t === Tile.Ground ? 'cliff' : 'bank';
+      const faceC = fam === 'cliff' ? cliff : c.clone().multiplyScalar(0.72);
+      const nh = (dx: number, dz: number) => (g0.ramp(x + dx, z + dz) >= 0 ? H : corners(x + dx, z + dz)[0]);
+      const cx = x + 0.5, cz = z + 0.5;
+      const flats: number[] = [];
+      for (let q = 0; q < 4; q++) {
+        const [sx, sz] = QUARTERS[q];
+        const dA = H - nh(sx, 0), dB = H - nh(0, sz), dD = H - nh(sx, sz);
+        const lA = dA > 0.01, lB = dB > 0.01, lD = dD > 0.01;
+        const variant = hashString(`${x},${z},${q}`) % 3;
+        if (lA && lB) {
+          const drop = Math.max(dA, dB);
+          const floorC = tileColor(dA >= dB ? x + sx : x, dA >= dB ? z : z + sz);
+          emitPiece(piece(fam, 'outer'), false, sx, sz, cx, cz, H, drop, fam, c, faceC, floorC);
+          // Two-level corner: the layer below needs its own inner corner.
+          if (dD > drop + 0.01) emitPiece(piece(fam, 'inner'), false, sx, sz, cx, cz, H - drop - 0.003, dD - drop, fam, tileColor(x + sx, z), faceC, tileColor(x + sx, z + sz));
+        } else if (lA) emitPiece(piece(fam, 'edge', variant), false, sx, sz, cx, cz, H, dA, fam, c, faceC, tileColor(x + sx, z));
+        else if (lB) emitPiece(piece(fam, 'edge', variant), true, sx, sz, cx, cz, H, dB, fam, c, faceC, tileColor(x, z + sz));
+        else if (lD) emitPiece(piece(fam, 'inner'), false, sx, sz, cx, cz, H, dD, fam, c, faceC, tileColor(x + sx, z + sz));
+        else flats.push(q);
+      }
+      if (flats.length === 4) {
+        quad([x, H, z], [x, H, z + 1], [x + 1, H, z + 1], [x + 1, H, z], c);
+        return;
+      }
+      for (const q of flats) {
+        const [sx, sz] = QUARTERS[q];
+        const x0 = Math.min(cx, cx + sx * 0.5), x1 = Math.max(cx, cx + sx * 0.5);
+        const z0 = Math.min(cz, cz + sz * 0.5), z1 = Math.max(cz, cz + sz * 0.5);
+        quad([x0, H, z0], [x0, H, z1], [x1, H, z1], [x1, H, z0], c);
+      }
+    };
+
     for (let z = -pad; z < size + pad; z++)
       for (let x = -pad; x < size + pad; x++) {
         const t = g0.tile(x, z);
@@ -69,24 +164,15 @@ export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
           const alt = pat === 'planks' ? z % 2 === 1 : pat === 'tiles' ? (x + z) % 2 === 1 : false;
           if (alt) c.set(o.theme?.floorAlt ?? '#a87b4f');
         }
+        const flat = h[0] === h[1] && h[1] === h[2] && h[2] === h[3];
+        if (useTiles && flat && t !== Tile.Wall && t !== Tile.Floor) {
+          tiledTile(x, z, t, h[0], c.clone());
+          edgeFaces(x, z, t, h, c, (nx, nz) => g0.ramp(nx, nz) >= 0); // straight walls only beside ramps
+          continue;
+        }
         // Top surface: [x0z0, x1z0, x1z1, x0z1]
         quad([x, h[0], z], [x, h[3], z + 1], [x + 1, h[2], z + 1], [x + 1, h[1], z], c);
-        // Vertical faces down to lower neighbours, per edge.
-        const edges: [number, number, [number, number], [number, number], number[], number[]][] = [
-          // dx, dz, my corner indices, neighbour corner indices (matching positions), positions
-          [0, 1, [3, 2], [0, 1], [x, z + 1], [x + 1, z + 1]],
-          [1, 0, [2, 1], [3, 0], [x + 1, z + 1], [x + 1, z]],
-          [0, -1, [1, 0], [2, 3], [x + 1, z], [x, z]],
-          [-1, 0, [0, 3], [1, 2], [x, z], [x, z + 1]],
-        ];
-        for (const [dx, dz, mine, theirs, p0, p1] of edges) {
-          const nh = corners(x + dx, z + dz);
-          const a0 = h[mine[0]], a1 = h[mine[1]];
-          const b0 = Math.min(a0, nh[theirs[0]]), b1 = Math.min(a1, nh[theirs[1]]);
-          if (a0 - b0 < 0.01 && a1 - b1 < 0.01) continue;
-          const face = t === Tile.Wall ? c.clone().multiplyScalar(0.85) : t === Tile.Ground || t === Tile.Ramp ? cliff.clone().offsetHSL(0, 0, ((Math.floor(a0 * 3) % 2) - 0.5) * 0.04) : c.clone().multiplyScalar(0.72);
-          quad([p0[0], a0, p0[1]], [p0[0], b0, p0[1]], [p1[0], b1, p1[1]], [p1[0], a1, p1[1]], face);
-        }
+        edgeFaces(x, z, t, h, c);
       }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

@@ -1,0 +1,312 @@
+# Builds the Hearthwood terrain tileset in Blender (run inside Blender).
+#
+# The terrain is assembled from QUARTER tiles (0.5 x 0.5). Each quarter picks a
+# piece from its two side neighbours and the diagonal one:
+#   edge   - one side is lower           (cliff face along local +x)
+#   outer  - both sides are lower        (rounded convex corner)
+#   inner  - only the diagonal is lower  (concave corner)
+#   flat   - nothing lower               (drawn by the game, not stored here)
+# Pieces span x, z in [0, 0.5] with the tile centre at the origin; the top is at
+# y = 0 and the foot at y = -1 (the game scales y by the real drop). All edge
+# variants share the same cross-section at their ends, so any piece fits next
+# to any other. Two families: "cliff" (grass on top) and "bank" (sand, pond and
+# river beds: gentler slope).
+#
+# Coordinates below are GAME coordinates (y up, z south); they're turned into
+# Blender's z-up only when the mesh is written, so the glTF export (+Y up)
+# gives back exactly these numbers.
+
+import bpy, bmesh, math, random
+from mathutils import Vector
+
+PROFILES = {
+    # (inset from the tile edge, y). Top lip first, foot last.
+    'cliff': [(0.17, 0.0), (0.125, -0.012), (0.085, -0.05), (0.07, -0.13), (0.075, -0.24), (0.09, -0.3),
+              (0.045, -0.31), (0.035, -0.38), (0.05, -0.55), (0.025, -0.63), (0.03, -0.82), (-0.02, -1.0)],
+    'bank': [(0.26, 0.0), (0.2, -0.03), (0.15, -0.14), (0.11, -0.34), (0.07, -0.6), (0.03, -0.85), (-0.02, -1.0)],
+}
+RADIUS = {'cliff': 0.4, 'bank': 0.45}   # outer-corner rounding (must exceed the top inset)
+NOISE = {'cliff': (0.022, 0.018), 'bank': (0.012, 0.01)}
+
+
+def game_to_blender(v):
+    x, y, z = v
+    return Vector((x, -z, y))
+
+
+class Piece:
+    def __init__(self, seed):
+        self.bm = bmesh.new()
+        self.rng = random.Random(seed)
+        self.cache = {}
+
+    def v(self, p):
+        key = (round(p[0], 5), round(p[1], 5), round(p[2], 5))
+        if key not in self.cache:
+            self.cache[key] = self.bm.verts.new(Vector(p))
+        return self.cache[key]
+
+    def face(self, pts):
+        vs = []
+        for p in pts:
+            vv = self.v(p)
+            if not vs or vs[-1] is not vv:
+                vs.append(vv)
+        if len(vs) > 2 and vs[0] is vs[-1]:
+            vs.pop()
+        if len(set(vs)) < 3:
+            return None
+        try:
+            return self.bm.faces.new(vs)
+        except ValueError:
+            return None
+
+    def noisy(self, prof, fam, ends):
+        """Profile with jitter on interior columns (ends keep the shared shape)."""
+        if ends:
+            return list(prof)
+        ni, ny = NOISE[fam]
+        out = []
+        for k, (i, y) in enumerate(prof):
+            if k == 0:
+                out.append((i, y))  # the lip stays on the top plane
+            elif k == len(prof) - 1:
+                out.append((i + self.rng.uniform(-ni, ni) * 0.5, y))  # foot stays on the ground below
+            else:
+                out.append((i + self.rng.uniform(-ni, ni), y + self.rng.uniform(-ny, ny)))
+        return out
+
+    def sweep(self, cols, outward):
+        """cols: list of columns, each a list of 3D points top->foot. Quads between columns."""
+        faces = []
+        for j in range(len(cols) - 1):
+            a, b = cols[j], cols[j + 1]
+            for k in range(len(a) - 1):
+                f = self.face([a[k], b[k], b[k + 1], a[k + 1]])
+                if f:
+                    faces.append(f)
+        # Orient all side faces away from the hill (they're built consistently).
+        best = max(faces, key=lambda f: (f.normal_update(), abs(Vector((f.normal.x, 0, f.normal.z)).length))[1])
+        c = best.calc_center_median()
+        if best.normal.dot(outward(c)) < 0:
+            for f in faces:
+                f.normal_flip()
+
+    def top(self, pts):
+        f = self.face([(x, 0.0, z) for x, z in pts])
+        if f:
+            f.normal_update()
+            if f.normal.y < 0:
+                f.normal_flip()
+
+    def cap(self, col, plane):
+        """Close the hill's cross-section at a piece end (hidden unless neighbours differ)."""
+        if plane == 'z':  # end in a z = const plane; back of the hill is x = 0
+            z = col[0][2]
+            pts = [(0.0, 0.0, z)] + col + [(0.0, col[-1][1], z)]
+        else:  # x = const plane; back is z = 0
+            x = col[0][0]
+            pts = [(x, 0.0, 0.0)] + col + [(x, col[-1][1], 0.0)]
+        self.face(pts)
+
+    def finish(self, name, material):
+        bm = self.bm
+        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='EAR_CLIP')
+        for vert in bm.verts:
+            vert.co = game_to_blender(vert.co)
+        me = bpy.data.meshes.new(name)
+        bm.to_mesh(me)
+        bm.free()
+        for p in me.polygons:
+            p.use_smooth = False
+        o = bpy.data.objects.new(name, me)
+        o.data.materials.append(material)
+        bpy.context.scene.collection.objects.link(o)
+        return o
+
+
+def edge_piece(fam, seed, name, mat):
+    p = Piece(seed)
+    prof = PROFILES[fam]
+    zs = [0, 0.125, 0.25, 0.375, 0.5]
+    cols = []
+    for j, z in enumerate(zs):
+        pr = p.noisy(prof, fam, j in (0, len(zs) - 1))
+        cols.append([(0.5 - i, y, z) for i, y in pr])
+    p.sweep(cols, lambda c: Vector((1, 0, 0)))
+    i0 = prof[0][0]
+    p.top([(0, 0), (0, 0.5), (0.5 - i0, 0.5), (0.5 - i0, 0)])
+    p.cap(cols[0], 'z')
+    p.cap(cols[-1], 'z')
+    return p.finish(name, mat)
+
+
+def outer_piece(fam, seed, name, mat):
+    p = Piece(seed)
+    prof = PROFILES[fam]
+    r = RADIUS[fam]
+    c = 0.5 - r
+    # Path: straight along x = 0.5 - i (z from 0 to c), arc round (c, c), straight along z = 0.5 - i.
+    stations = [('a', 0.0), ('a', c / 2)] + [('arc', k * (math.pi / 2) / 4) for k in range(5)] + [('b', c / 2), ('b', 0.0)]
+
+    def at(st, i):
+        kind, t = st
+        if kind == 'a':
+            return (0.5 - i, t)
+        if kind == 'b':
+            return (t, 0.5 - i)
+        return (c + (r - i) * math.cos(t), c + (r - i) * math.sin(t))
+
+    cols = []
+    for j, st in enumerate(stations):
+        pr = p.noisy(prof, fam, j in (0, len(stations) - 1))
+        cols.append([(*[at(st, i)[0]], y, at(st, i)[1]) for i, y in pr])
+    p.sweep(cols, lambda q: Vector((q.x - c, 0, q.z - c)).normalized() if (q.x > c and q.z > c) else (Vector((1, 0, 0)) if q.z <= c else Vector((0, 0, 1))))
+    i0 = prof[0][0]
+    p.top([(0, 0)] + [at(st, i0) for st in stations])
+    # Floor in the rounded-off corner, at the foot (else you'd see under the island).
+    iF, yF = prof[-1]
+    fl = p.face([col[-1] for col in cols] + [(0.5 - iF, yF, 0.5 - iF)])
+    if fl:
+        fl.normal_update()
+        if fl.normal.y < 0:
+            fl.normal_flip()
+    p.cap(cols[0], 'z')    # the A end lies in the z = 0 plane
+    p.cap(cols[-1], 'x')   # the B end lies in the x = 0 plane
+    return p.finish(name, mat)
+
+
+def inner_piece(fam, seed, name, mat):
+    p = Piece(seed)
+    prof = [(max(i, 0.004), y) for i, y in PROFILES[fam]]
+    # Each profile point sweeps a quarter circle of radius i round the tile corner (0.5, 0.5).
+    angles = [k * (math.pi / 2) / 4 for k in range(5)]
+    cols = []
+    for j, a in enumerate(angles):
+        pr = p.noisy(prof, fam, j in (0, len(angles) - 1))
+        cols.append([(0.5 - max(i, 0.004) * math.sin(a), y, 0.5 - max(i, 0.004) * math.cos(a)) for i, y in pr])
+    p.sweep(cols, lambda q: Vector((0.5 - q.x, 0, 0.5 - q.z)).normalized())
+    i0 = prof[0][0]
+    arc = [(0.5 - i0 * math.sin(a), 0.5 - i0 * math.cos(a)) for a in angles]
+    p.top([(0, 0), (0.5, 0)] + arc + [(0, 0.5)])
+    p.cap(cols[0], 'x')    # x = 0.5 plane, hill behind towards z = 0
+    p.cap(cols[-1], 'z')   # z = 0.5 plane, hill behind towards x = 0
+    return p.finish(name, mat)
+
+
+def hexcol(h):
+    h = h.lstrip('#')
+    c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    return [((x / 12.92) if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4) for x in c] + [1]
+
+
+def material(name, color):
+    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    m.use_nodes = True
+    m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = hexcol(color)
+    m.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = 1.0
+    m.diffuse_color = hexcol(color)
+    return m
+
+
+def build_tileset():
+    """All pieces at the origin, named tile_<family>_<kind>[_<variant>]."""
+    out = []
+    for fam, color in (('cliff', '#8a7356'), ('bank', '#cdb98a')):
+        mat = material(f'tile_{fam}', color)
+        for v in range(3):
+            out.append(edge_piece(fam, 100 + v + (0 if fam == 'cliff' else 50), f'tile_{fam}_edge_{v}', mat))
+        out.append(outer_piece(fam, 200 + (0 if fam == 'cliff' else 50), f'tile_{fam}_outer', mat))
+        out.append(inner_piece(fam, 300 + (0 if fam == 'cliff' else 50), f'tile_{fam}_inner', mat))
+    return out
+
+
+# ---------------------------------------------------------------- preview
+QUADS = [(1, 1), (-1, 1), (-1, -1), (1, -1)]
+
+
+def assemble(name, heights, fams, pieces, tops, faces):
+    """Same rules as the game (client/src/game/terrain.ts), for a quick preview."""
+    data = {}
+    for o in pieces:
+        me = o.data
+        tris = [[game_from_blender(me.vertices[i].co) for i in p.vertices] for p in me.polygons]
+        data[o.name] = tris
+    H = len(heights); W = len(heights[0])
+    hgt = lambda x, z: heights[z][x] if 0 <= x < W and 0 <= z < H else heights[0][0]
+    bm = bmesh.new()
+    rng = random.Random(1)
+
+    def tri(pts, top_col, face_col):
+        vs = [bm.verts.new(game_to_blender(p)) for p in pts]
+        try:
+            f = bm.faces.new(vs)
+        except ValueError:
+            return
+        f.normal_update()
+        ny = abs(f.normal.z)  # blender z = game y
+        low = min(v.co.z for v in vs) < top_col - 0.03
+        f.material_index = 0 if ny > 0.8 and not low else 1
+        f.material_index += 2 * (face_col)
+
+    for z in range(H):
+        for x in range(W):
+            h = hgt(x, z); fam = fams[z][x]
+            for sx, sz in QUADS:
+                dA = h - hgt(x + sx, z); dB = h - hgt(x, z + sz); dD = h - hgt(x + sx, z + sz)
+                lA, lB, lD = dA > 0.01, dB > 0.01, dD > 0.01
+                swap = False
+                extra = None
+                if lA and lB:
+                    key, drop = f'tile_{fam}_outer', max(dA, dB)
+                    if dD > drop + 0.01:
+                        # Two-level corner: the lower layer needs its own inner corner.
+                        extra = (f'tile_{fam}_inner', h - drop - 0.003, dD - drop)
+                elif lA:
+                    key, drop = f'tile_{fam}_edge_{rng.randrange(3)}', dA
+                elif lB:
+                    key, drop, swap = f'tile_{fam}_edge_{rng.randrange(3)}', dB, True
+                elif lD:
+                    key, drop = f'tile_{fam}_inner', dD
+                else:
+                    key = None
+                famidx = 0 if fam == 'cliff' else 1
+                if key is None:
+                    q = [(0, 0), (0.5, 0), (0.5, 0.5), (0, 0.5)]
+                    pts = [(x + 0.5 + sx * a, h, z + 0.5 + sz * b) for a, b in q]
+                    tri(pts, h, famidx)
+                    continue
+                jobs = [(key, h, drop, swap)] + ([(extra[0], extra[1], extra[2], False)] if extra else [])
+                for k2, hh, dd, sw in jobs:
+                    for t in data[k2]:
+                        pts = []
+                        for lx, ly, lz in t:
+                            if sw:
+                                lx, lz = lz, lx
+                            pts.append((x + 0.5 + sx * lx, hh + ly * dd, z + 0.5 + sz * lz))
+                        tri(pts, hh, famidx)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me)
+    for m in faces:
+        o.data.materials.append(m)
+    bpy.context.scene.collection.objects.link(o)
+    return o
+
+
+def game_from_blender(v):
+    return (v.x, v.z, -v.y)
+
+
+if __name__ == '__main__':
+    # Run from Blender's Text Editor: rebuilds the pieces and exports tileset.glb next to the .blend.
+    import os
+    for o in [o for o in bpy.data.objects if o.name.startswith('tile_')]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    pieces = build_tileset()
+    for o in bpy.data.objects:
+        o.select_set(o in pieces)
+    target = os.path.join(os.path.dirname(bpy.data.filepath) or os.path.expanduser('~'), 'tileset.glb')
+    bpy.ops.export_scene.gltf(filepath=target, export_format='GLB', use_selection=True, export_yup=True,
+                              export_normals=False, export_materials='NONE')
+    print('exported', target)

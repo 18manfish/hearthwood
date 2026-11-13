@@ -9,6 +9,7 @@ import { Hud } from './ui/hud.ts';
 import { showCreator } from './ui/creator.ts';
 import { showLogin } from './ui/login.ts';
 import { loadTreeAssets } from './game/treeAssets.ts';
+import { loadTileset } from './game/tileAssets.ts';
 import { api, clearToken, health, loadGameData, token, type Health } from './auth.ts';
 import { showStart } from './ui/start.ts';
 import { h, clear } from './ui/dom.ts';
@@ -394,7 +395,7 @@ net.onAuth = async (kind, msg) => {
 
 async function boot() {
   statusScreen('Connecting to the islands…');
-  const models = loadTreeAssets(); // in parallel with login; never rejects
+  const models = Promise.all([loadTreeAssets(), loadTileset()]); // in parallel with login; never rejects
   try {
     serverInfo = await health();
     await loadGameData();

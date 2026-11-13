@@ -12,7 +12,7 @@ import { bentDepth } from '../bend.ts';
 import { mat } from '../models/primitives.ts';
 import { loadGlb } from './glb.ts';
 
-export const KIT_FILES = ['birds', 'fish', 'plants', 'placeables', 'ambient_fish', 'furniture_boho', 'furniture_cottage', 'fish_school', 'buildings'] as const;
+export const KIT_FILES = ['birds', 'fish', 'plants', 'placeables', 'ambient_fish', 'furniture_boho', 'furniture_cottage', 'fish_school', 'buildings', 'paths'] as const;
 
 /** Roles that glow (emissive) instead of just being coloured. */
 const GLOW = new Set(['glow', 'glow_spot', 'glass', 'candle']);

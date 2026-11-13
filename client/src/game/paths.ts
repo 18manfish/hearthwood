@@ -1,9 +1,11 @@
-// Path rendering: one merged mesh per path type with a procedural texture.
+// Path rendering: low-poly kit pieces when paths.glb is loaded (see below),
+// otherwise one merged mesh per path type with a procedural texture.
 // Tiles connect to same-type neighbours; open edges are inset so paths get
 // soft, hand-laid borders like in Animal Crossing.
 
 import * as THREE from 'three';
 import { PATHS, hashString, type Grid } from '@hearthwood/shared';
+import { kitGeometryByColor } from './assets/kit.ts';
 import { bend } from './bend.ts';
 
 const TEX = 128;
@@ -127,6 +129,93 @@ function pathMaterial(id: number) {
 /** Tint paths when the ground is snowy (they peek through a light dusting). */
 export function setPathSnow(snowy: boolean) {
   for (const m of materials.values()) m.color.set(snowy ? '#e7eef5' : '#ffffff');
+  kitMat.color.set(snowy ? '#e7eef5' : '#ffffff');
+}
+
+// ── Kit paths (art/kit/paths.py → paths.glb) ─────────────────────────────────
+// Low-poly quarter pieces in the ground's flat-shaded style: every path tile is
+// four quarters, each a `full`, `edge` (one side open to the grass) or `outer`
+// (rounded corner) piece, mirrored into place and laid on the terrain.
+
+const kitMat = bend(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+const PIECE_VARIANTS = 3;
+const pieceCache = new Map<string, { pos: Float32Array; col: Float32Array }>();
+
+function kitPiece(key: string, piece: 'full' | 'edge' | 'outer', v: number) {
+  const name = `path_${key}_${piece}_${v}`;
+  if (!pieceCache.has(name)) {
+    const parts = kitGeometryByColor(name);
+    if (!parts) return null; // not loaded (yet)
+    const pos: number[] = [], col: number[] = [];
+    const c = new THREE.Color();
+    for (const { color, geo } of parts) {
+      c.set(color);
+      const p = geo.attributes.position.array as Float32Array;
+      for (let i = 0; i < p.length; i += 3) {
+        pos.push(p[i], p[i + 1], p[i + 2]);
+        col.push(c.r, c.g, c.b);
+      }
+    }
+    pieceCache.set(name, { pos: new Float32Array(pos), col: new Float32Array(col) });
+  }
+  return pieceCache.get(name) ?? null;
+}
+
+/** Path layer from the kit pieces; null when they aren't loaded. */
+function buildKitPaths(grid: Grid): THREE.Group | null {
+  if (!kitPiece('dirt', 'full', 0)) return null;
+  const size = grid.size;
+  const pos: number[] = [];
+  const col: number[] = [];
+  const shade = new THREE.Color();
+  const QUARTERS: [number, number][] = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
+  for (let z = 0; z < size; z++)
+    for (let x = 0; x < size; x++) {
+      const t = grid.path(x, z);
+      if (!t) continue;
+      const key = PATHS[t - 1]?.key;
+      if (!key) continue;
+      const same = (dx: number, dz: number) => grid.path(x + dx, z + dz) === t;
+      // Where the path runs east–west, turn the whole tile so planks lie across and brick rows along it.
+      const turn = (same(-1, 0) || same(1, 0)) && !(same(0, -1) || same(0, 1));
+      const cx = x + 0.5, cz = z + 0.5;
+      // Per-tile shade, like the ground's tiles.
+      const n = ((hashString(`${x}:${z}:p`) % 1000) / 1000 - 0.5) * 0.08;
+      for (const [sx, sz] of QUARTERS) {
+        let openX = !same(sx, 0), openZ = !same(0, sz);
+        if (turn) [openX, openZ] = [openZ, openX];
+        const piece = !openX && !openZ ? 'full' : openX && openZ ? 'outer' : 'edge';
+        const swap = (piece === 'edge' && openZ) !== turn;
+        const v = Math.abs(hashString(`${x},${z},${sx},${sz}`)) % PIECE_VARIANTS;
+        const src = kitPiece(key, piece, v);
+        if (!src) continue;
+        // Mirroring (and swapping) turns triangles inside out: flip their winding back.
+        const flip = (sx * sz < 0) !== swap;
+        for (let i = 0; i < src.pos.length; i += 9) {
+          for (let k = 0; k < 3; k++) {
+            const kk = flip && k > 0 ? 3 - k : k;
+            let lx = src.pos[i + kk * 3], lz = src.pos[i + kk * 3 + 2];
+            const ly = src.pos[i + kk * 3 + 1];
+            if (swap) [lx, lz] = [lz, lx];
+            const X = cx + sx * lx, Z = cz + sz * lz;
+            pos.push(X, grid.surfaceY(X, Z) + 0.012 + ly, Z);
+            shade.setRGB(src.col[i + kk * 3], src.col[i + kk * 3 + 1], src.col[i + kk * 3 + 2]).offsetHSL(0, 0, n);
+            col.push(shade.r, shade.g, shade.b);
+          }
+        }
+      }
+    }
+  const group = new THREE.Group();
+  if (!pos.length) return group;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, kitMat);
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  group.add(mesh);
+  return group;
 }
 
 /**
@@ -134,6 +223,8 @@ export function setPathSnow(snowy: boolean) {
  * without a same-type neighbour are inset, outer corners get bevelled.
  */
 export function buildPaths(grid: Grid): THREE.Group {
+  const kit = buildKitPaths(grid);
+  if (kit) return kit;
   const group = new THREE.Group();
   const byType = new Map<number, { pos: number[]; uv: number[] }>();
   const size = grid.size;

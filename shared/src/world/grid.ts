@@ -25,7 +25,7 @@ export class Grid {
   readonly reserved: Uint8Array;
   /** Path type per tile (0 = none). */
   readonly paths: Uint8Array;
-  /** Bridge deck level + 1 per tile (0 = no bridge). */
+  /** Bridge deck level + 1 per tile under a bridge, ends included (0 = no bridge). */
   readonly bridges: Uint8Array;
 
   constructor(size: number, tiles: Uint8Array, levels?: Uint8Array, ramps?: Uint8Array, paths?: Uint8Array) {
@@ -114,14 +114,16 @@ export class Grid {
 
   addBuilding(b: Building, sign = 1) {
     if (isBridge(b.type)) {
-      // Bridges don't block: they make the water under them walkable at the bank's level.
+      // Bridges don't block: they make the water under them walkable at the bank's level, and
+      // you stand on the deck over the whole footprint – also on its ends, which may be sand
+      // that dips down towards the water (the deck is drawn flat from end to end).
       const deck = this.level(b.x, b.z) + 1;
       for (let dz = 0; dz < b.h; dz++)
         for (let dx = 0; dx < b.w; dx++) {
           if (!this.inBounds(b.x + dx, b.z + dz)) continue;
           const i = this.idx(b.x + dx, b.z + dz);
           this.occupied[i] += sign;
-          if (isWaterTile(this.tiles[i] as Tile)) this.bridges[i] = sign > 0 ? deck : 0;
+          this.bridges[i] = sign > 0 ? deck : 0;
         }
       return;
     }

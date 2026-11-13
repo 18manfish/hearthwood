@@ -43,6 +43,10 @@ export const FURNITURE_MODELS = [
   'boho_peacock_chair', 'boho_egg_chair', 'boho_floor_cushions', 'boho_pouf', 'boho_sofa', 'boho_canopy_bed', 'boho_coffee_table',
   'boho_trunk', 'boho_ladder_shelf', 'boho_room_divider', 'boho_kilim_rug', 'boho_jute_rug', 'boho_macrame', 'boho_tapestry',
   'boho_dreamcatcher', 'boho_lantern', 'boho_floor_lamp', 'boho_monstera', 'boho_plant_stand', 'boho_pampas_vase',
+  // Cottage pack (art/kit/cottage.py)
+  'cottage_armchair', 'cottage_rocking_chair', 'cottage_loveseat', 'cottage_footstool', 'cottage_ladderback_chair', 'cottage_farmhouse_table', 'cottage_welsh_dresser',
+  'cottage_blanket_chest', 'cottage_side_table', 'cottage_range_stove', 'cottage_fireplace', 'cottage_iron_bed', 'cottage_standard_lamp', 'cottage_rag_rug',
+  'cottage_cuckoo_clock', 'cottage_sampler', 'cottage_wall_shelf', 'cottage_geranium_pot',
 ] as const;
 
 /**
@@ -55,6 +59,9 @@ export const FURNITURE_SHAPES: Partial<Record<string, 'flat' | 'wall' | 'long'>>
   boho_kilim_rug: 'flat', boho_jute_rug: 'flat',
   boho_macrame: 'wall', boho_tapestry: 'wall', boho_dreamcatcher: 'wall',
   boho_canopy_bed: 'long',
+  cottage_rag_rug: 'flat',
+  cottage_cuckoo_clock: 'wall', cottage_sampler: 'wall', cottage_wall_shelf: 'wall',
+  cottage_iron_bed: 'long',
 };
 
 export const ITEM_CATEGORIES: ItemCategory[] = ['material', 'tool', 'food', 'fish', 'meal', 'furniture', 'clothing', 'plant', 'bird'];
@@ -165,6 +172,25 @@ export const BASE_ITEMS: ItemDef[] = [
   { id: 'boho_monstera', name: 'Monstera Basket', icon: '🪴', category: 'furniture', tags: ['furniture', 'cozy', 'plant'], sell: 90, buy: 450, placeable: true },
   { id: 'boho_plant_stand', name: 'Plant Stand', icon: '🌵', category: 'furniture', tags: ['furniture', 'cozy', 'plant'], sell: 100, buy: 500, placeable: true },
   { id: 'boho_pampas_vase', name: 'Pampas Vase', icon: '🌾', category: 'furniture', tags: ['furniture', 'cozy', 'plant'], sell: 60, buy: 300, placeable: true },
+  // Cottage furniture pack (home decoration).
+  { id: 'cottage_armchair', name: 'Wingback Armchair', icon: '🪑', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 260, buy: 1300, placeable: true },
+  { id: 'cottage_rocking_chair', name: 'Rocking Chair', icon: '🪑', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 220, buy: 1100, placeable: true },
+  { id: 'cottage_loveseat', name: 'Floral Loveseat', icon: '🛋️', category: 'furniture', tags: ['furniture', 'cozy'], sell: 320, buy: 1600, placeable: true },
+  { id: 'cottage_footstool', name: 'Button Footstool', icon: '🟩', category: 'furniture', tags: ['furniture', 'cozy'], sell: 90, buy: 450, placeable: true },
+  { id: 'cottage_ladderback_chair', name: 'Ladder-back Chair', icon: '🪑', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 120, buy: 600, placeable: true },
+  { id: 'cottage_farmhouse_table', name: 'Farmhouse Table', icon: '🍞', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 280, buy: 1400, placeable: true },
+  { id: 'cottage_welsh_dresser', name: 'Welsh Dresser', icon: '🫖', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 360, buy: 1800, placeable: true },
+  { id: 'cottage_blanket_chest', name: 'Painted Blanket Chest', icon: '🧺', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 160, buy: 800, placeable: true },
+  { id: 'cottage_side_table', name: 'Lace Side Table', icon: '☕', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 120, buy: 600, placeable: true },
+  { id: 'cottage_range_stove', name: 'Range Stove', icon: '🍳', category: 'furniture', tags: ['furniture', 'cozy'], sell: 400, buy: 2000, placeable: true },
+  { id: 'cottage_fireplace', name: 'Stone Fireplace', icon: '🔥', category: 'furniture', tags: ['furniture', 'cozy', 'mineral'], sell: 480, buy: 2400, placeable: true },
+  { id: 'cottage_iron_bed', name: 'Iron Bedstead', icon: '🛏️', category: 'furniture', tags: ['furniture', 'cozy'], sell: 440, buy: 2200, placeable: true },
+  { id: 'cottage_standard_lamp', name: 'Standard Lamp', icon: '💡', category: 'furniture', tags: ['furniture', 'cozy'], sell: 140, buy: 700, placeable: true },
+  { id: 'cottage_rag_rug', name: 'Braided Rag Rug', icon: '🧶', category: 'furniture', tags: ['furniture', 'cozy', 'fiber'], sell: 120, buy: 600, placeable: true },
+  { id: 'cottage_cuckoo_clock', name: 'Cuckoo Clock', icon: '🕰️', category: 'furniture', tags: ['furniture', 'cozy', 'wood'], sell: 200, buy: 1000, placeable: true },
+  { id: 'cottage_sampler', name: 'Cross-stitch Sampler', icon: '🧵', category: 'furniture', tags: ['furniture', 'cozy', 'fiber'], sell: 70, buy: 350, placeable: true },
+  { id: 'cottage_wall_shelf', name: 'Preserves Shelf', icon: '🫙', category: 'furniture', tags: ['furniture', 'cozy'], sell: 110, buy: 550, placeable: true },
+  { id: 'cottage_geranium_pot', name: 'Potted Geraniums', icon: '🌺', category: 'furniture', tags: ['furniture', 'cozy', 'plant'], sell: 70, buy: 350, placeable: true },
 
   // ── Clothing ─────────────────────────────────────────────
   { id: 'straw_hat', name: 'Straw Hat', icon: '👒', category: 'clothing', tags: ['clothing'], sell: 50, buy: 250, wear: 'hat', stack: 1, color: '#e8c872' },

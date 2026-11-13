@@ -9,12 +9,14 @@ import { travelTo } from './map.ts';
 import type { Hud } from '../../hud.ts';
 import { fpsVisible, setFpsVisible } from '../fps.ts';
 import { namesVisible, setNamesVisible } from '../names.ts';
+import { audioSettings, setAudioSettings, type AudioSettings } from '../../../audio/engine.ts';
 
 export function islandPanel(hud: Hud, b: HTMLElement) {
   const self = state.self;
   if (!self) return;
   accountBox(hud, b);
   displayBox(b);
+  soundBox(b);
   const opts: [Access, string, string][] = [
     ['private', '🔒 Nobody', 'Only you.'],
     ['friends', '💌 Friends', 'Everyone on your friend list.'],
@@ -49,6 +51,30 @@ function displayBox(b: HTMLElement) {
     h('div', { class: 'list' },
       toggle('Show names', 'Player and villager names above their heads.', namesVisible(), (v) => setNamesVisible(v)),
       toggle('Show FPS counter', 'Frames per second, in the bottom-right corner.', fpsVisible(), (v) => setFpsVisible(v))));
+}
+
+/** Volumes (this browser only). */
+function soundBox(b: HTMLElement) {
+  const cur = audioSettings();
+  const slider = (label: string, desc: string, key: 'master' | 'effects' | 'ambience') => {
+    const out = h('span', { class: 'muted', style: 'width:38px;text-align:right' }, `${Math.round(cur[key] * 100)}%`);
+    const inp = h('input', {
+      type: 'range', min: 0, max: 100, step: 5, value: String(Math.round(cur[key] * 100)), style: 'width:140px;accent-color:var(--leaf)',
+      oninput: () => {
+        const v = Number(inp.value) / 100;
+        out.textContent = `${Math.round(v * 100)}%`;
+        setAudioSettings({ [key]: v } as Partial<AudioSettings>);
+      },
+    }) as HTMLInputElement;
+    return h('div', { class: 'item' }, h('div', {}, h('b', {}, label), h('div', { class: 'muted' }, desc)), h('div', { class: 'row' }, inp, out));
+  };
+  const mute = h('input', { type: 'checkbox', checked: cur.muted, onchange: () => setAudioSettings({ muted: mute.checked }) }) as HTMLInputElement;
+  b.append(h('h3', { style: 'margin-top:10px' }, '🔊 Sound'),
+    h('div', { class: 'list' },
+      slider('Volume', 'Everything at once.', 'master'),
+      slider('Effects', 'Tools, fishing, building.', 'effects'),
+      slider('Ambience', 'Weather, waves, rivers and waterfalls.', 'ambience'),
+      h('label', { class: 'item', style: 'cursor:pointer' }, h('div', {}, h('b', {}, 'Mute'), h('div', { class: 'muted' }, 'Silence all sound.')), mute)));
 }
 
 /** Friends who may build on / live on your island, and islands you help on. */

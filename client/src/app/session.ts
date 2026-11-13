@@ -8,6 +8,7 @@ import { Hud } from '../ui/hud.ts';
 import { h, clear } from '../ui/dom.ts';
 import { confirmGhost, queuePaint } from './actions.ts';
 import { bindKeys } from '../input/keyboard.ts';
+import { updateAmbience } from '../audio/ambience.ts';
 
 export const app = document.getElementById('app')!;
 export const game = {
@@ -36,6 +37,7 @@ export function startGame() {
   game.world.onTerra = (x, z, op, dir) => queuePaint(x, z, { k: 'terra', op, x, z, dir });
   // Debug handle for the browser console when the server runs in dev mode.
   if (state.dev) (window as unknown as Record<string, unknown>).hearthwood = { world: game.world, hud: game.hud, state, net };
+  game.world.onFrame = (dt) => updateAmbience(game.world!, dt);
   bindKeys();
 }
 

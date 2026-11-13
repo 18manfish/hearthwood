@@ -229,6 +229,8 @@ export class World {
 
   // ── Frame ───────────────────────────────────────────────────────────────
   frameTimes: number[] = [];
+  /** Called every frame after the world has updated (audio hooks in here). */
+  onFrame: ((dt: number) => void) | null = null;
   private frame() {
     const rawDt = this.clock.getDelta();
     const dt = Math.min(0.1, rawDt);
@@ -286,6 +288,7 @@ export class World {
     this.rain.position.set(fx, fy, fz);
     this.water.position.x = Math.round(fx / 2) * 2;
     this.water.position.z = Math.round(fz / 2) * 2;
+    this.onFrame?.(dt);
     this.labels.domElement.style.display = debug.labels ? '' : 'none';
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);

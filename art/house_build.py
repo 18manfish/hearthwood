@@ -1,3 +1,6 @@
+# Superseded: the game's house.glb now comes from art/houses/houses_build.py (the
+# Animal Crossing–style houses). Kept for reference.
+#
 # Builds the three Starter House tiers in Blender and exports house.glb.
 #
 #   house_1  Starter House  – plaster cottage, shingle roof, stone chimney

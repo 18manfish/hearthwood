@@ -167,15 +167,15 @@ export type HouseTier = BuildingTier;
 
 export const HOUSE_TIERS: HouseTier[] = [
   {
-    level: 1, name: 'Starter House', icon: '🏠', description: 'A snug plaster cottage with a shingle roof and a stone chimney.',
+    level: 1, name: 'Starter House', icon: '🏠', description: 'A snug clapboard cottage with a red tiled roof, green shutters, flower boxes and a chimney.',
     cost: {}, coins: 0, requires: [], minDay: 2, buildMinutes: 60, interior: 9,
   },
   {
-    level: 2, name: 'Timber House', icon: '🏡', description: 'Two storeys of timber framing on a stone base, with a porch, dormer window and flower boxes.',
+    level: 2, name: 'Timber House', icon: '🏡', description: 'A bigger house: a porch under a timber-framed front gable, a dormer, blue shutters and flower boxes.',
     cost: { wood: 80, stone: 60, clay: 25, iron_ore: 8 }, coins: 8000, requires: ['town_hall'], minDay: 10, buildMinutes: 240, interior: 11,
   },
   {
-    level: 3, name: 'Hearth Manor', icon: '🏰', description: 'A dressed-stone manor with a columned portico, balcony, corner tower and gilded trim.',
+    level: 3, name: 'Hearth Manor', icon: '🏰', description: 'Two storeys of stone and plaster with a columned portico, a balcony, a round corner tower and gilded trim.',
     cost: { wood: 120, stone: 150, clay: 40, iron_ore: 25, sea_glass: 10, pearl: 3 }, coins: 40000, requires: ['town_hall'], minDay: 21, buildMinutes: 480, interior: 13,
   },
 ];

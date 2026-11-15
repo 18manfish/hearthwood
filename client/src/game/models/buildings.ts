@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { type Building, buildingLevel, BUILDINGS, hashString, houseLevel, tiersOf } from '@hearthwood/shared';
 import { kitModel } from '../assets/kit.ts';
-import { gltfHouse } from '../houseAssets.ts';
+import { gltfHouse, gltfVillagerHouse, type SharedMat, villagerHouseStyle } from '../houseAssets.ts';
 import { bend } from '../bend.ts';
 import { dockProps } from './dockProps.ts';
 import { emojiSprite } from './furniture.ts';
@@ -42,7 +42,7 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
   // Town Hall, shops and villager houses: the kit model of their current tier.
   if (b.type !== 'cabin' && tiersOf(b.type).length) {
     const level = buildingLevel(b, now);
-    const model = kitBuilding(b, level);
+    const model = (b.type === 'villager_house' ? gltfVillagerHouse(level, villagerHouseStyle(b.villagerId, b.id), houseShared) : null) ?? kitBuilding(b, level);
     if (model) {
       g.add(model);
       if (b.upgrade && b.upgrade.at > now) scaffolding(g, b.w, b.h, level);
@@ -248,7 +248,7 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
     }
     case 'cabin': {
       const level = houseLevel(b, now);
-      const model = gltfHouse(level, (c) => mat(c), () => mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }));
+      const model = gltfHouse(level, houseShared);
       if (model) g.add(model);
       else proceduralHouse(g, b, level, def.color, def.roof);
       if (b.upgrade && b.upgrade.at > now) scaffolding(g, b.w, b.h, level);
@@ -295,6 +295,9 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
   }
   return g;
 }
+
+/** Windows and porch lamps of the Blender houses use the game's night-lit materials. */
+const houseShared: SharedMat = (role) => (role === 'glass' ? mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }) : mat('#fff3c4', { emissive: '#ffcf6b', ei: 0.2 }));
 
 const ROOFS = ['#6aa84f', '#e67e22', '#3d6fb6', '#c2185b', '#8e5a3c', '#16a085', '#f1c40f'];
 const WALLS = ['#f3d9b1', '#f6e7c8', '#e9d5c0', '#f2dfd6', '#e3ead2', '#dfe8ef', '#f4e4b8'];

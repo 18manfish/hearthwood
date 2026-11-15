@@ -8,18 +8,23 @@ import type { World } from '../game/World.ts';
 import { debug } from '../game/world/common.ts';
 import { findWaterfalls, type Waterfall } from '../game/water.ts';
 import { state } from '../state.ts';
-import { ambienceBus, audioContext, loopBuffer, play } from './engine.ts';
+import { ambienceBus, audioContext, loopBuffer, loopRecorded, play } from './engine.ts';
 import type { Loop } from './synth.ts';
 
-/** One looping layer: loop → filter → level → stereo position → ambience bus. */
+/**
+ * One looping layer: loop → filter → level → stereo position → ambience bus. It starts on
+ * whatever buffer is ready (the synthesized stand-in, if the recording hasn't arrived yet)
+ * and moves over to the recording once it has.
+ */
 class Layer {
   readonly filter: BiquadFilterNode;
   readonly level: GainNode;
   readonly pan: StereoPannerNode;
-  constructor(c: AudioContext, loop: Loop, type: BiquadFilterType, freq: number, q = 0.7) {
-    const src = c.createBufferSource();
-    src.buffer = loopBuffer(loop);
-    src.loop = true;
+  private src: AudioBufferSourceNode | null = null;
+  private fadeIn: GainNode | null = null;
+  /** Playing the recording (not the synthesized stand-in). */
+  recorded = false;
+  constructor(private readonly c: AudioContext, private readonly loop: Loop, type: BiquadFilterType, freq: number, q = 0.7) {
     this.filter = c.createBiquadFilter();
     this.filter.type = type;
     this.filter.frequency.value = freq;
@@ -27,11 +32,33 @@ class Layer {
     this.level = c.createGain();
     this.level.gain.value = 0;
     this.pan = c.createStereoPanner();
-    src.connect(this.filter).connect(this.level).connect(this.pan).connect(ambienceBus()!);
-    src.start(0, Math.random() * (src.buffer?.duration ?? 1));
+    this.filter.connect(this.level).connect(this.pan).connect(ambienceBus()!);
+    this.refresh();
+  }
+  /** Switch to the recording once it has arrived (cross-fading over a second). */
+  refresh() {
+    const buf = loopBuffer(this.loop);
+    if (!buf || buf === this.src?.buffer) return;
+    const now = this.c.currentTime;
+    const src = this.c.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const g = this.c.createGain();
+    g.gain.value = this.src ? 0 : 1;
+    if (this.src) g.gain.setTargetAtTime(1, now, 0.3);
+    src.connect(g).connect(this.filter);
+    src.start(0, Math.random() * buf.duration);
+    if (this.src && this.fadeIn) {
+      this.fadeIn.gain.setTargetAtTime(0, now, 0.3);
+      this.src.stop(now + 2);
+    }
+    this.src = src;
+    this.fadeIn = g;
+    this.recorded = loopRecorded(this.loop);
   }
   private target = -1;
   set(v: number, tc = 0.6) {
+    this.refresh();
     if (Math.abs(v - this.target) < 0.004) return;
     this.target = v;
     this.level.gain.setTargetAtTime(v, this.level.context.currentTime, tc);
@@ -128,9 +155,13 @@ export function updateAmbience(w: World, dt: number) {
   const windV = WIND[weather] * (0.6 + 0.4 * intensity) * (inside ? 0.25 : 1);
   const wind = level('wind', windV * gust, () => layer('wind', 'wind', 'bandpass', 400, 0.8));
   if (wind && now >= nextGust) {
-    // Gusts: wander the level and the pitch of the wind.
+    // Gusts: wander the level and the pitch of the wind. (The recording is opened up
+    // and darkened; the synthesized wind is a whistle swept around a band.)
     gust = 0.55 + Math.random() * 0.9;
-    wind.freq((inside ? 220 : 300) + Math.random() * (inside ? 150 : 700) * gust, 1.4);
+    if (wind.recorded) {
+      wind.filter.type = 'lowpass';
+      wind.freq(inside ? 500 + 300 * gust : 1500 + 4000 * gust * Math.random(), 1.4);
+    } else wind.freq((inside ? 220 : 300) + Math.random() * (inside ? 150 : 700) * gust, 1.4);
     wind.panTo((Math.random() - 0.5) * 0.6);
     nextGust = now + 1.5 + Math.random() * 2.5;
   }
@@ -170,7 +201,11 @@ export function updateAmbience(w: World, dt: number) {
   const sea = level('sea', water.sea.gain * 0.55, () => layer('sea', 'sea', 'lowpass', 500));
   if (sea) {
     sea.panTo(water.sea.pan);
-    if (now >= nextSurge) {
+    // Real waves already come in surges; only the synthesized wash needs them made.
+    if (sea.recorded) {
+      if (nextSurge >= 0) sea.freq(9000, 0.5);
+      nextSurge = -1;
+    } else if (now >= nextSurge) {
       const s = 0.55 + Math.random() * 0.45;
       sea.filter.frequency.cancelScheduledValues(now);
       sea.filter.frequency.setTargetAtTime(700 + 1500 * s, now, 0.7);

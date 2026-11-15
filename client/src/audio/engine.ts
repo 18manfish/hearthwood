@@ -1,6 +1,10 @@
 // The audio engine: one AudioContext (started on the first click or key press, as
 // browsers require), a master bus with effects and ambience buses under it, volume
-// settings remembered in this browser, and playback of the synthesized sounds.
+// settings remembered in this browser, and playback of the sounds.
+//
+// The sounds are recordings (CC0 stock, built by tools/sfx/build.py into /sfx/, credits
+// in client/public/sfx/CREDITS.md), loaded once audio starts. Until one has arrived – or
+// if it can't be loaded at all – the synthesized version in synth.ts stands in for it.
 
 import { EFFECTS, LOOPS, type Effect, type Loop } from './synth.ts';
 
@@ -23,6 +27,8 @@ let ctx: AudioContext | null = null;
 let master: GainNode, fxBus: GainNode, ambBus: GainNode;
 const effectBufs = new Map<Effect, AudioBuffer[]>();
 const loopBufs = new Map<Loop, AudioBuffer>();
+/** The recorded sounds, as they arrive. */
+const recorded = new Map<string, AudioBuffer[]>();
 
 export function audioSettings(): AudioSettings {
   return { ...settings };
@@ -67,7 +73,7 @@ export function initAudio() {
         fxBus.connect(master);
         ambBus.connect(master);
         applyVolumes();
-        prewarm();
+        void loadRecordings().finally(prewarm);
       }
       if (ctx.state === 'suspended') void ctx.resume();
     } catch (e) {
@@ -91,6 +97,44 @@ function toBuffer(data: Float32Array): AudioBuffer {
   return b;
 }
 
+const SFX = '/sfx/';
+
+/** Fetch and decode the recorded sounds: the short effects first, then the ambience loops. */
+async function loadRecordings() {
+  const c = ctx!;
+  let manifest: Record<string, number>;
+  try {
+    const r = await fetch(`${SFX}manifest.json`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    manifest = (await r.json()) as Record<string, number>;
+  } catch (e) {
+    console.warn('[audio] no recorded sounds, using synthesized ones', e);
+    return;
+  }
+  // Ogg Vorbis where the browser plays it, AAC (Safari) where it doesn't.
+  const ext = typeof Audio !== 'undefined' && new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? 'ogg' : 'm4a';
+  const get = async (file: string) => {
+    const r = await fetch(`${SFX}${file}.${ext}`);
+    if (!r.ok) throw new Error(`${file}: HTTP ${r.status}`);
+    return c.decodeAudioData(await r.arrayBuffer());
+  };
+  const names = Object.keys(manifest).sort((a, b) => Number(manifest[a] === 0) - Number(manifest[b] === 0));
+  for (const name of names) {
+    const n = manifest[name];
+    try {
+      const bufs = await Promise.all(n === 0 ? [get(name)] : Array.from({ length: n }, (_, i) => get(`${name}-${i}`)));
+      recorded.set(name, bufs);
+    } catch (e) {
+      console.warn('[audio] could not load', name, e);
+    }
+  }
+}
+
+/** Is this loop a recording yet (rather than the synthesized stand-in)? */
+export function loopRecorded(name: Loop): boolean {
+  return recorded.has(name);
+}
+
 /** Render one variant of an effect (if it isn't yet). */
 function renderVariant(name: Effect, v: number) {
   let list = effectBufs.get(name);
@@ -99,14 +143,18 @@ function renderVariant(name: Effect, v: number) {
 }
 
 function effect(name: Effect): AudioBuffer[] {
+  const rec = recorded.get(name);
+  if (rec) return rec;
   const n = EFFECTS[name][1];
   for (let v = 0; v < n; v++) renderVariant(name, v);
   return effectBufs.get(name)!;
 }
 
-/** A seamless ambience loop (rendered on first use). */
+/** A seamless ambience loop: the recording, or until it has arrived the synthesized one. */
 export function loopBuffer(name: Loop): AudioBuffer | null {
   if (!ctx) return null;
+  const rec = recorded.get(name);
+  if (rec) return rec[0];
   let b = loopBufs.get(name);
   if (!b) {
     b = toBuffer(LOOPS[name](ctx.sampleRate, 7));
@@ -116,11 +164,11 @@ export function loopBuffer(name: Loop): AudioBuffer | null {
 }
 
 /**
- * Render the effects a little at a time after start-up – one variant per step, so even
- * the long ones (thunder) never hold up a frame for long – and the first chop doesn't stutter.
+ * Render the synthesized effects that have no recording a little at a time – one variant
+ * per step, so even the long ones (thunder) never hold up a frame for long.
  */
 function prewarm() {
-  const queue = (Object.keys(EFFECTS) as Effect[]).flatMap((n) => Array.from({ length: EFFECTS[n][1] }, (_, v) => [n, v] as const));
+  const queue = (Object.keys(EFFECTS) as Effect[]).filter((n) => !recorded.has(n)).flatMap((n) => Array.from({ length: EFFECTS[n][1] }, (_, v) => [n, v] as const));
   const step = () => {
     const job = queue.shift();
     if (!job || !ctx) return;

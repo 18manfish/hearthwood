@@ -365,7 +365,8 @@ export type ServerMessage =
       recreate?: { name: string; gender: Gender; look: Look };
     }
   | { t: 'err'; code: string; msg: string }
-  | { t: 'room'; room: RoomView; env: EnvView }
+  /** door: you arrived by stepping out of this building (your home on the island). */
+  | { t: 'room'; room: RoomView; env: EnvView; door?: string }
   | { t: 'env'; env: EnvView }
   | { t: 'pAdd'; p: PlayerView }
   | { t: 'pDel'; id: string }

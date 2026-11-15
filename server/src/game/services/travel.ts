@@ -2,7 +2,7 @@
 // the world map, and validating every movement step.
 
 import {
-  atDoor, BIOME_IDS, BIOMES, ENTERABLE, hashString, type MapIsland, MYSTERY_TOUR_COST, nearBuilding, type TravelTarget, villagerDef, wrapAngle,
+  atDoor, BIOME_IDS, type Building, BIOMES, ENTERABLE, hashString, type MapIsland, MYSTERY_TOUR_COST, nearBuilding, type TravelTarget, villagerDef, wrapAngle,
 } from '@hearthwood/shared';
 import crypto from 'node:crypto';
 import { config } from '../../config.ts';
@@ -20,10 +20,26 @@ const log = logger('game');
 export function enterIsland(game: Game, s: Session, islandId: string) {
   const room = islandRoom(game, islandId);
   if (!room) return s.send({ t: 'err', code: 'no_island', msg: 'Island not found.' });
-  moveToRoom(game, s, room);
+  // Arriving on an island where you have a home: you step out of your own front door.
+  const home = ownHome(room, s.player!.id);
+  moveToRoom(game, s, room, home ? { ...doorstep(home), door: home.id } : undefined);
 }
 
-export function moveToRoom(game: Game, s: Session, room: Room, at?: { x: number; z: number; r?: number }) {
+/** Where you stand after walking out of a building's door (facing away from it). */
+export function doorstep(b: Building) {
+  return { x: b.x + b.w / 2, z: b.z + b.h + 0.45, r: 0 };
+}
+
+/** The player's own finished home on this island: their house if they have one, else their tent. */
+export function ownHome(room: Room, playerId: string): Building | undefined {
+  if (room.kind !== 'island') return undefined;
+  const now = Date.now();
+  const mine = [...room.buildings.values()].filter((b) =>
+    (b.type === 'cabin' || b.type === 'tent') && b.completeAt <= now && (b.ownerId ?? room.ownerId) === playerId);
+  return mine.find((b) => b.type === 'cabin') ?? mine[0];
+}
+
+export function moveToRoom(game: Game, s: Session, room: Room, at?: { x: number; z: number; r?: number; door?: string }) {
   const from = s.room;
   s.room?.leave(s);
   room.join(s, at);
@@ -67,7 +83,7 @@ export function travel(game: Game, s: Session, to: TravelTarget): void {
       const parent = game.rooms.get(pid) ?? (pid.startsWith('shared_') ? sharedRoom(game, pid.slice(7)) : islandRoom(game, pid));
       if (!parent) return travel(game, s, { kind: 'home' });
       const b = parent.buildings.get(room.interior.buildingId);
-      const at = b ? { x: b.x + b.w / 2, z: b.z + b.h + 0.45, r: 0 } : undefined;
+      const at = b ? doorstep(b) : undefined;
       return moveToRoom(game, s, parent, at);
     }
     case 'home':

@@ -1,5 +1,6 @@
 declare module 'three' {
   export const TextureLoader: any; export type TextureLoader = any;
+  export const DefaultLoadingManager: any; export type DefaultLoadingManager = any;
   export const LoopOnce: any; export type LoopOnce = any;
   export const AnimationAction: any; export type AnimationAction = any;
   export const NumberKeyframeTrack: any; export type NumberKeyframeTrack = any;

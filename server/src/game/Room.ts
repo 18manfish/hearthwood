@@ -243,16 +243,17 @@ export class Room {
   }
 
   /** Join the room, optionally at a given position (e.g. in front of a door). */
-  join(s: Session, at?: { x: number; z: number; r?: number }) {
-    const sp = at && this.grid.walkable(at.x, at.z) ? at : this.layout.spawn;
+  join(s: Session, at?: { x: number; z: number; r?: number; door?: string }) {
+    const ok = !!at && this.grid.walkable(at.x, at.z);
+    const sp = ok ? at! : this.layout.spawn;
     s.x = sp.x;
     s.z = sp.z;
-    s.r = at?.r ?? Math.PI;
+    s.r = ok ? at!.r ?? Math.PI : Math.PI;
     s.room = this;
     s.lastMoveAt = Date.now();
     this.broadcast({ t: 'pAdd', p: this.playerView(s) }, s);
     this.sessions.add(s);
-    s.send({ t: 'room', room: this.view(s), env: this.env() });
+    s.send({ t: 'room', room: this.view(s), env: this.env(), ...(ok && at!.door ? { door: at!.door } : {}) });
   }
 
   leave(s: Session) {

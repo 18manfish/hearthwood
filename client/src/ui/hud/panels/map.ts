@@ -5,6 +5,7 @@ import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { clear, h } from '../../dom.ts';
 import { BIOME_ICON, renderWorldMap } from '../../map.ts';
+import { showLoading } from '../../loading.ts';
 import type { Hud } from '../../hud.ts';
 
 export function mapPanel(hud: Hud, b: HTMLElement) {
@@ -37,6 +38,11 @@ export function mapPanel(hud: Hud, b: HTMLElement) {
 }
 
 export function travelTo(hud: Hud, to: TravelTarget) {
+  if (to.kind !== 'enter' && to.kind !== 'exit') {
+    // Off to another island: cover the game until the new one is ready.
+    const where = to.kind === 'home' ? 'Heading home' : to.kind === 'island' && hud.mapSel?.kind === 'island' ? hud.mapSel.isl.name : '';
+    showLoading('Setting sail…', where, true);
+  }
   net.send({ t: 'travel', to });
   hud.close();
 }

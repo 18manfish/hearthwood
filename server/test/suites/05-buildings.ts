@@ -48,6 +48,9 @@ export async function run(ctx: Ctx) {
   A.send({ t: 'travel', to: { kind: 'exit' } });
   await A.wait('room', (m) => m.room.kind === 'island');
   check(A.room.id === islandId && Math.abs(A.z - (tent.z + tent.h + 0.45)) < 0.6, 'exit puts you back in front of the tent');
+  A.send({ t: 'travel', to: { kind: 'home' } });
+  const backHome = await A.wait('room', (m) => m.room.kind === 'island');
+  check(backHome.door === tent.id && Math.abs(A.x - (tent.x + tent.w / 2)) < 0.1 && Math.abs(A.z - (tent.z + tent.h + 0.45)) < 0.1, 'arriving home you step out of your tent');
 
   console.log('Village growth');
   const cab = await A.build('cabin');
@@ -55,6 +58,10 @@ export async function run(ctx: Ctx) {
   check(!(await A.build('town_hall')).ok, 'town hall requires a finished house');
   await A.chat('/finish');
   await sleep(300);
+  A.send({ t: 'travel', to: { kind: 'home' } });
+  const toHouse = await A.wait('room', (m) => m.room.kind === 'island');
+  const house = A.room.buildings.find((b) => b.type === 'cabin');
+  check(!!house && toHouse.door === house.id && Math.abs(A.z - (house.z + house.h + 0.45)) < 0.1, 'once your house is finished you arrive at its door instead of the tent');
   const th = await A.build('town_hall');
   check(th.ok, `town hall construction started ${th.err ?? ''}`);
   await A.chat('/finish');

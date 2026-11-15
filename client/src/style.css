@@ -332,3 +332,23 @@ img.emo { width: 20px; height: 20px; vertical-align: -4px; display: inline-block
   .jr-grid { grid-template-columns: repeat(3, 1fr); }
   .jr-ribbon { right: 30px; }
 }
+
+/* ── Loading screen (arriving on an island / travelling) ───────────────── */
+.loading-screen { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: linear-gradient(#bfe8f5, #e9f7d8); opacity: 1; transition: opacity 0.38s ease; animation: ld-in 0.25s ease; }
+.loading-screen.out { opacity: 0; pointer-events: none; }
+@keyframes ld-in { from { opacity: 0; } to { opacity: 1; } }
+.ld-card { background: var(--paper); border-radius: 26px; box-shadow: var(--shadow); padding: 26px 34px 22px; width: min(440px, 88vw); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+.ld-scene { position: relative; width: 100%; height: 86px; overflow: hidden; border-radius: 16px; background: linear-gradient(#d9f1fb, #bfe6f4); margin-bottom: 8px; }
+.ld-boat { position: absolute; left: 50%; bottom: 20px; font-size: 44px; line-height: 1; transform-origin: 50% 90%; animation: ld-bob 2.4s ease-in-out infinite; }
+.ld-boat img.emo { width: 48px; height: 48px; image-rendering: pixelated; }
+@keyframes ld-bob { 0%, 100% { transform: translateX(-50%) translateY(0) rotate(-4deg); } 50% { transform: translateX(-50%) translateY(-5px) rotate(4deg); } }
+.ld-waves { position: absolute; left: 0; right: 0; bottom: 0; height: 30px; background:
+  radial-gradient(circle at 12px -6px, transparent 13px, var(--sky) 14px) 0 0 / 24px 30px repeat-x; animation: ld-waves 1.6s linear infinite; }
+@keyframes ld-waves { to { background-position: 24px 0; } }
+.ld-title { font-size: 28px; font-weight: 900; color: var(--leaf-dark); line-height: 1.15; }
+.ld-sub { color: var(--muted); font-weight: 700; min-height: 1.3em; }
+.ld-bar { width: 100%; height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 10px; }
+.ld-fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--leaf), #8fd16f); transition: width 0.35s ease; }
+.ld-step { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.ld-tip { margin-top: 10px; font-size: 14px; color: var(--ink); background: var(--cream); border-radius: 12px; padding: 8px 12px; width: 100%; box-sizing: border-box; }
+@media (prefers-reduced-motion: reduce) { .ld-boat, .ld-waves { animation: none; } .ld-boat { transform: translateX(-50%); } }

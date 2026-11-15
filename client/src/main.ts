@@ -7,6 +7,7 @@
 //   audio/            synthesized sound effects and ambience
 
 import './style.css';
+import './game/assets/loads.ts'; // first, so it counts every texture and model load
 import { bindAuth, bindStatus, boot } from './app/boot.ts';
 import { bindMessages } from './app/messages.ts';
 import { bindPad } from './input/pad.ts';

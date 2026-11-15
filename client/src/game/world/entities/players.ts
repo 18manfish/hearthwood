@@ -80,7 +80,22 @@ function driveModel(rig: Rig, dt: number, speed: number, swing: number, fishing:
 export function updateLocal(self: World, dt: number) {
   const me = self.me!;
   let dx = 0, dz = 0;
-  const k = self.keys;
+  const k = self.hold || self.stepping ? new Set<string>() : self.keys;
+  if (self.stepping) {
+    // Walking out of the front door: scripted, and nothing is sent until we're on the doorstep.
+    const st = self.stepping;
+    if (!self.hold) st.t = Math.min(st.dur, st.t + dt); // waits behind the loading screen
+    const z = st.z0 + (st.z1 - st.z0) * (st.t / st.dur);
+    me.speed = Math.abs(z - me.z) / Math.max(dt, 0.001);
+    me.z = z;
+    me.r = 0;
+    if (st.t >= st.dur) self.stepping = null;
+    me.rig.root.position.set(me.x, groundY(self, me.x, me.z), me.z);
+    me.rig.root.rotation.y = me.r;
+    bendLabel(self, me);
+    animateRig(me.rig, dt, me.speed * 0.62, 0);
+    return;
+  }
   if (k.has('KeyW') || k.has('ArrowUp')) dz -= 1;
   if (k.has('KeyS') || k.has('ArrowDown')) dz += 1;
   if (k.has('KeyA') || k.has('ArrowLeft')) dx -= 1;
@@ -88,7 +103,7 @@ export function updateLocal(self: World, dt: number) {
   let amount = 1;
   let running = k.has('ShiftLeft') || k.has('ShiftRight');
   const am = Math.hypot(self.analog.x, self.analog.z);
-  if (am > 0 && !dx && !dz) {
+  if (am > 0 && !dx && !dz && !self.hold) {
     dx = self.analog.x;
     dz = self.analog.z;
     amount = Math.max(0.35, Math.min(1, am));

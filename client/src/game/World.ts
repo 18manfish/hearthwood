@@ -18,6 +18,7 @@ import { disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
 import { windTime } from './bend.ts';
 import { state, watch } from '../state.ts';
+import { pendingLoads, loadsSettled } from './assets/loads.ts';
 import { debug, type RenderInfo, type Mover, type Target, type Tool } from './world/common.ts';
 import { addPlayer, groundY, interp, removeMover, say, swing, updateLocal } from './world/entities/players.ts';
 import { animateVillagers, upsertVillager } from './world/entities/villagers.ts';
@@ -74,6 +75,10 @@ export class World {
   padAim = false;
   target: Target | null = null;
   lastSent = { x: 0, z: 0, r: 0, at: 0 };
+  /** No walking (behind the loading screen). */
+  hold = false;
+  /** Scripted walk out of a front door after arriving: from z0 to z1 over `dur` seconds. */
+  stepping: { t: number; dur: number; z0: number; z1: number } | null = null;
   camDist = 13;
   seasonKey = '';
   clock = new THREE.Clock();
@@ -194,11 +199,46 @@ export class World {
     this.water.visible = room.kind !== 'interior';
     addSealife(this);
     if (debug.grid) toggleGridOverlay(this, true);
+    this.stepping = null;
     this.cast = null;
     this.bobber.visible = false;
     this.fishLine.visible = false;
     cancelGhost(this);
     stopPaint(this);
+  }
+
+  /**
+   * Get the freshly loaded room ready to show: wait for textures and models still
+   * on their way, compile the shaders, and draw a couple of frames (behind the
+   * loading screen) so the first visible frame doesn't stutter.
+   */
+  async warmUp(step: (text: string, frac: number) => void = () => {}) {
+    const room = this.room;
+    if (pendingLoads() > 0) {
+      step('Unpacking textures…', 0.55);
+      await loadsSettled();
+    }
+    if (this.room !== room) return;
+    step('Preparing shaders…', 0.75);
+    const r = this.renderer as unknown as { compileAsync?: (s: THREE.Object3D, c: THREE.PerspectiveCamera) => Promise<unknown>; compile(s: THREE.Object3D, c: THREE.PerspectiveCamera): unknown };
+    try {
+      if (r.compileAsync) await r.compileAsync(this.scene, this.camera);
+      else r.compile(this.scene, this.camera);
+    } catch (e) {
+      console.warn('shader warm-up failed', e);
+    }
+    step('Arriving…', 0.95);
+    for (let i = 0; i < 3; i++) await new Promise((res) => requestAnimationFrame(() => res(null)));
+  }
+
+  /** You arrived by walking out of this building's front door: show the last steps. */
+  stepOut(buildingId: string) {
+    const b = this.buildings.get(buildingId);
+    if (!this.me || !b) return;
+    const z1 = this.me.z;
+    this.stepping = { t: 0, dur: 0.6, z0: Math.max(b.z + b.h - 0.35, z1 - 0.8), z1 };
+    this.me.z = this.stepping.z0;
+    this.me.r = 0;
   }
 
   private clearRoom() {

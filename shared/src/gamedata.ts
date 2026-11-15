@@ -74,7 +74,7 @@ export function applyGameData(d: Partial<GameData>) {
 export interface FieldHint {
   key: string;
   label?: string;
-  type: 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'json' | 'hours' | 'colors' | 'text' | 'outfit';
+  type: 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'json' | 'hours' | 'colors' | 'text' | 'outfit' | 'tier';
   /** For 'colors': a label per colour. */
   parts?: readonly string[];
   options?: readonly string[];
@@ -121,7 +121,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'garment', type: 'enum', options: ALL_GARMENTS, help: 'Clothing cut (default: same as id)' },
       { key: 'color', type: 'color', help: 'Hat colour' },
       { key: 'tool', type: 'json', help: '{"kind":"axe|shovel|rod|net","power":1}' },
-      { key: 'tier', type: 'number', help: 'Shop rarity: 1 common (default), 2 uncommon, 3 rare – how likely it is to be in a shop’s stock on a given day' },
+      { key: 'tier', type: 'tier', help: 'Shop rarity: 1 common (default), 2 uncommon, 3 rare – how likely it is to be in a shop’s stock on a given day' },
     ],
     blank: () => ({ id: 'new_item', name: 'New item', icon: '📦', category: 'furniture', tags: ['furniture'], sell: 50, buy: 250, placeable: true, model: 'crate' }),
   },

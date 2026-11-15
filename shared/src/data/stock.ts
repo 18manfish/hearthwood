@@ -43,21 +43,38 @@ export function msUntilRestock(now: number, tz: string): number {
   return Math.max(60_000, (hours * 60 - lt.minute) * 60_000);
 }
 
+export interface StockOptions {
+  /** The shop's full list (default: SHOP_STOCK). */
+  list?: readonly string[];
+  /** An item's tier (default: from ITEMS). */
+  tierOf?: (id: string) => ItemTier;
+}
+
 /**
  * Today's stock: `slots` items drawn from the shop's list without repeats, each
  * weighted by its tier. Listed in the shop's own order. `seed` is the island.
+ * `opts` lets the game creation tool try unsaved lists and tiers.
  */
-export function dailyStock(shop: BuildingType, seed: string, dayKey: string, level: number): string[] {
-  const all = (SHOP_STOCK[shop] ?? []).filter((id) => ITEMS[id]?.buy !== undefined);
+export function dailyStock(shop: BuildingType, seed: string, dayKey: string, level: number, opts: StockOptions = {}): string[] {
+  const tierOf = opts.tierOf ?? itemTier;
+  const all = (opts.list ?? SHOP_STOCK[shop] ?? []).filter((id) => opts.list || ITEMS[id]?.buy !== undefined);
   const n = stockSlots(shop, level);
-  if (all.length <= n) return all;
+  if (all.length <= n) return [...all];
   const rng = new Rng(hashMany('stock', seed, shop, dayKey));
   const pool = [...all];
   const picked = new Set<string>();
   while (picked.size < n && pool.length) {
-    const id = rng.weighted(pool, (x) => ITEM_TIERS[itemTier(x)].weight)!;
+    const id = rng.weighted(pool, (x) => ITEM_TIERS[tierOf(x)].weight)!;
     picked.add(id);
     pool.splice(pool.indexOf(id), 1);
   }
   return all.filter((id) => picked.has(id));
+}
+
+/** How often each item is out (0–1), estimated over `days` days on one island. */
+export function stockOdds(shop: BuildingType, level: number, opts: StockOptions = {}, days = 1500): Map<string, number> {
+  const seen = new Map<string, number>();
+  for (let d = 0; d < days; d++) for (const id of dailyStock(shop, 'odds', `d${d}`, level, opts)) seen.set(id, (seen.get(id) ?? 0) + 1);
+  for (const [id, n] of seen) seen.set(id, n / days);
+  return seen;
 }

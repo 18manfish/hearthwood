@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import {
   BIRD_BY_ID, BUILDINGS, ITEMS, TABLE_INFO, GAME_TABLES, validateGameData,
   speakerMatches, Grid, Tile, HAIR_STYLES, HOUSE_TIERS, PATHS, tiersOf, villagerDefaultOutfit,
+  ITEM_TIERS, SHOP_OPEN_HOUR, STOCK_SLOTS, dailyStock, stockDayKey, stockOdds, stockSlots, type ItemTier, type StockOptions,
   type Gender, type Look, type Outfit, type PathDef,
   type BirdDef, type DialogueRule, type FieldHint, type GameData, type GameTable, type ItemDef, type VillagerDef, type BuildingType, type Building,
 } from '@hearthwood/shared';
@@ -310,6 +311,12 @@ function fieldEditor(f: FieldHint, value: unknown, locked: boolean): { el: HTMLE
         },
       };
     }
+    case 'tier': {
+      const cur = value === 2 || value === 3 ? value : 1;
+      const sel = h('select', dis, ([1, 2, 3] as ItemTier[]).map((t) =>
+        h('option', { value: String(t), selected: t === cur }, `${t} · ${ITEM_TIERS[t].name} (weight ${ITEM_TIERS[t].weight})`))) as HTMLSelectElement;
+      return { el: sel, get: () => (sel.value === '1' ? undefined : Number(sel.value)) };
+    }
     case 'outfit': {
       // One picker per slot, listing the clothing items for that slot (from the working items table).
       const cur = (value ?? {}) as Record<string, string>;
@@ -480,19 +487,103 @@ function render() {
   window.scrollTo(0, scrollY);
 }
 
-function summaryOf(t: GameTable, r: Row): string {
+function summaryOf(t: GameTable, r: Row, k = keyOf(t, r)): string {
   switch (t) {
-    case 'items': return `${r.category} · sell ${r.sell}${r.buy !== undefined ? ` · buy ${r.buy}` : ''}`;
+    case 'items': return `${r.category} · sell ${r.sell}${r.buy !== undefined ? ` · buy ${r.buy}` : ''}${r.tier === 2 || r.tier === 3 ? ` · ${ITEM_TIERS[r.tier as ItemTier].name.toLowerCase()}` : ''}`;
+    case 'shopStock': return `${stockSlotsText(k as BuildingType)} a day · ${(r.items as string[]).map((i) => ITEMS[i]?.icon ?? i).join(' ')}`;
     case 'fish': return `${r.water} · ${r.sell} · rarity ${r.rarity}`;
     case 'birds': return `${(r.biomes as string[]).join(', ')} · ${r.sell}`;
     case 'recipes': return `${r.station} · ${(r.ingredients as { item?: string; tag?: string; qty: number }[]).map((i) => `${i.qty} ${i.item ?? `any ${i.tag}`}`).join(', ')}`;
-    case 'shopStock': return (r.items as string[]).map((i) => ITEMS[i]?.icon ?? i).join(' ');
     case 'buildings': return `day ${r.minDay} · ${r.buildMinutes} min · ${Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ')}`;
     case 'villagers': return `${r.species} · ${r.personality}`;
     case 'dialogue': return dialogueSummary(r as unknown as DialogueRule, villagerList());
     case 'permits': return `${r.price} coins`;
     case 'paths': return Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ') || 'free';
   }
+}
+
+// ── Daily shop stock (item tiers) ──────────────────────────────────────────
+/** Stock options from the working tables, so unsaved tiers and lists show. */
+function stockOpts(shop: BuildingType, list?: string[]): StockOptions {
+  const tiers = new Map(rows('items').map((it) => [String(it.id), (it.tier === 2 || it.tier === 3 ? it.tier : 1) as ItemTier]));
+  const lists = new Map(rows('shopStock').map((x) => [String(x.shop), x.items as string[]]));
+  return { list: list ?? lists.get(shop) ?? [], tierOf: (id) => tiers.get(id) ?? 1 };
+}
+
+function stockSlotsText(shop: BuildingType) {
+  const s = STOCK_SLOTS[shop];
+  return s ? `${s.join(' / ')} items` : 'everything';
+}
+
+const pct = (x: number | undefined) => (x === undefined ? '–' : `${Math.round(x * 100)}%`);
+const itemName = (id: string) => {
+  const it = rows('items').find((x) => x.id === id);
+  return `${it?.icon ?? ''} ${it?.name ?? id}`;
+};
+let sampleDay = 0;
+let sampleLevel = 1;
+
+/** Shop stock row: how much goes out each day, the odds per tier, the list by tier and a sample day. */
+function shopStockCard(shop: BuildingType, list: string[]) {
+  const opts = stockOpts(shop, list);
+  const card = h('section', { class: 'ed-card' }, h('h4', {}, '🗓️ Daily stock'));
+  const slots = STOCK_SLOTS[shop];
+  card.append(h('p', { class: 'muted', style: 'margin-top:0' }, slots
+    ? `Puts out ${slots.join(' / ')} of its ${list.length} items a day (shop tier ${slots.map((_, i) => i + 1).join(' / ')}), picked by item tier. New stock every morning at ${String(SHOP_OPEN_HOUR).padStart(2, '0')}:00 island time, the same for everyone on an island.`
+    : 'Sells everything on its list every day.'));
+  const levels = slots ? slots.map((_, i) => i + 1) : [1];
+  const odds = levels.map((l) => stockOdds(shop, l, opts));
+  const byTier = ([1, 2, 3] as ItemTier[]).map((t) => list.filter((id) => opts.tierOf!(id) === t));
+  const avg = (m: Map<string, number>, ids: string[]) => (ids.length ? ids.reduce((a, id) => a + (m.get(id) ?? 0), 0) / ids.length : undefined);
+  card.append(h('table', { class: 'stock-tbl' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Item tier'), h('th', {}, 'Items'), h('th', {}, 'Weight'), levels.map((l) => h('th', {}, slots ? `Out · shop tier ${l}` : 'Out')))),
+    h('tbody', {}, ([1, 2, 3] as ItemTier[]).map((t, i) => h('tr', {},
+      h('td', {}, ITEM_TIERS[t].name), h('td', {}, String(byTier[i].length)), h('td', {}, String(ITEM_TIERS[t].weight)),
+      odds.map((m) => h('td', {}, pct(avg(m, byTier[i])))))))));
+  card.append(h('div', { class: 'help' }, '“Out”: the chance that one item of that tier is on the shelves on a given day.'));
+  // A sample day on a made-up island.
+  const sample = h('div', { class: 'col' });
+  const drawSample = () => {
+    const day = stockDayKey(Date.now() + sampleDay * 86_400_000, 'UTC');
+    const today = dailyStock(shop, 'editor-sample', day, sampleLevel, opts);
+    sample.replaceChildren(
+      h('div', { class: 'pv-row' }, h('span', { class: 'muted' }, 'A sample day'),
+        levels.length > 1 ? levels.map((l) => btn(`Shop tier ${l}`, l === sampleLevel, () => { sampleLevel = l; drawSample(); })) : null,
+        btn('↻ Another day', false, () => { sampleDay++; drawSample(); })),
+      h('div', { class: 'stock-sample' }, today.map((id) => {
+        const t = opts.tierOf!(id);
+        return h('span', { class: `pill${t > 1 ? ` t${t}` : ''}`, title: ITEM_TIERS[t].name }, itemName(id));
+      })));
+  };
+  drawSample();
+  card.append(sample);
+  // The list by tier.
+  for (const t of [3, 2, 1] as ItemTier[]) {
+    const ids = byTier[t - 1];
+    if (!ids.length) continue;
+    card.append(h('div', { class: 'stock-tier' }, h('b', {}, `${ITEM_TIERS[t].name} (${ids.length})`), h('span', { class: 'muted' }, ids.map(itemName).join(' · '))));
+  }
+  return card;
+}
+
+/** Item row: which shops sell it and how often it is out. */
+function itemStockCard(r: Row): HTMLElement | null {
+  const id = String(r.id);
+  const shops = rows('shopStock').filter((x) => (x.items as string[]).includes(id));
+  if (!shops.length) return null;
+  const tier = (r.tier === 2 || r.tier === 3 ? r.tier : 1) as ItemTier;
+  const card = h('section', { class: 'ed-card' }, h('h4', {}, '🗓️ In shops'),
+    h('p', { class: 'muted', style: 'margin-top:0' }, `${ITEM_TIERS[tier].name} (weight ${ITEM_TIERS[tier].weight}). How often it is on the shelves on a given day:`));
+  for (const x of shops) {
+    const shop = x.shop as BuildingType;
+    const opts = stockOpts(shop);
+    const base = opts.tierOf!;
+    opts.tierOf = (i) => (i === id ? tier : base(i)); // this row's (applied) tier
+    const levels = STOCK_SLOTS[shop] ? STOCK_SLOTS[shop]!.map((_, i) => i + 1) : [1];
+    card.append(h('div', { class: 'stock-tier' }, h('b', {}, `${BUILDINGS[shop]?.icon ?? '🏪'} ${BUILDINGS[shop]?.name ?? shop}`),
+      h('span', {}, levels.map((l) => `${STOCK_SLOTS[shop] ? `tier ${l}: ` : ''}${pct(stockOdds(shop, l, opts).get(id) ?? 0)}${Number.isFinite(stockSlots(shop, l)) ? '' : ' (always)'}`).join(' · '))));
+  }
+  return card;
 }
 
 function rowEditor(): HTMLElement {
@@ -548,6 +639,11 @@ function rowEditor(): HTMLElement {
       setTimeout(() => previewRow(table, r));
     }
     if (table === 'villagers') aside.append(villagerDialogueCard(r as unknown as VillagerDef));
+    if (table === 'shopStock') aside.append(shopStockCard(r.shop as BuildingType, r.items as string[]));
+    if (table === 'items') {
+      const card = itemStockCard(r);
+      if (card) aside.append(card);
+    }
     body = h('div', { class: `ed-body${aside.childNodes.length ? '' : ' single'}` }, h('section', { class: 'ed-card' }, h('h4', {}, '📝 Attributes'), form), aside.childNodes.length ? aside : null);
   }
 

@@ -33,6 +33,11 @@ SPECIES = {
                     nose=('tri', '#f2a0b0', 0.03), nose_d=(0, -0.97, -0.14), mouth_d=(0, -0.96, -0.28), tail='tiny', fur='plush'),
     'squirrel': dict(R=(0.34, 0.3, 0.29), snout=(0.05, 0.22), pads=True, tufts=True, ears='squirrel',
                      nose=('tri', '#5a3b2e', 0.034), nose_d=(0, -0.97, -0.15), mouth_d=(0, -0.96, -0.3), tail='squirrel', fur='plush'),
+    # Player characters: a round human head on the same body (so every clothing cut fits).
+    'human_m': dict(R=(0.34, 0.31, 0.305), snout=(0.0, 0.3), ears='human', nose=None, eye_d=(0.31, -0.94, 0.06), eye_s=0.74,
+                    mouth_d=(0, -0.95, -0.33), mouth_w=0.8, tail=None, arms='hand', fur='skin', human=True),
+    'human_f': dict(R=(0.34, 0.31, 0.305), snout=(0.0, 0.3), ears='human', nose=None, eye_d=(0.31, -0.94, 0.06), eye_s=0.76,
+                    mouth_d=(0, -0.95, -0.33), mouth_w=0.75, tail=None, arms='hand', fur='skin', human=True, lashes=True),
 }
 
 # Tail centre lines (tube tails): points and radius profile, bevel (thickness).

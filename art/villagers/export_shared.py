@@ -36,7 +36,7 @@ for o in cloth_objs:
     o.hide_render = o.hide_viewport = False
     o.hide_set(False)
     part = o.get('part', 'hat')
-    node = part if part in ('body', 'armL', 'armR') else 'hatSlot'
+    node = part if part in ('body', 'armL', 'armR', 'legL', 'legR') else 'hatSlot'
     o['attach'] = node
     o['origin'] = gl(O[node].matrix_world.translation)
     o['cut'] = o['garment']

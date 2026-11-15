@@ -17,6 +17,10 @@ export interface Rig {
   hatSlot: THREE.Group;
   tool: THREE.Group;
   phase: number;
+  /** The Blender model once it has loaded (players); the boxes above are hidden then. */
+  model?: import('./villagerModels.ts').VillagerModel;
+  /** Last tool swing seen, to start an action clip once per swing. */
+  lastSwing?: number;
 }
 
 function limb(color: string, w: number, h: number, x: number, y: number) {

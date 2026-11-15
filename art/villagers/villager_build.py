@@ -250,6 +250,7 @@ EAR_DEF = {
     'long': (lambda: long_ear(0.44, 0.075, 0.045), lambda: long_ear(0.36, 0.045, 0.02), (0.3, 0.05, 0.95), 0.14, -0.08),
     'deer': (lambda: long_ear(0.24, 0.085, 0.035), lambda: long_ear(0.19, 0.05, 0.015), (0.8, 0.05, 0.5), 1.15, 0.1),
     'floppy': (lambda: long_ear(0.3, 0.095, 0.045), lambda: None, (0.84, 0.02, 0.45), 2.7, 0.15),
+    'human': (lambda: disc_ear(0.058, 0.032), lambda: disc_ear(0.034, 0.014), (0.99, 0.02, -0.12), 1.4, 0.0),
 }
 EAR_PARTS = []
 for s, side in ((-1, 'L'), (1, 'R')):
@@ -293,7 +294,8 @@ for s, side in ((-1, 'L'), (1, 'R')):
         arm_bm = a
     else:
         paw = sphere_bm(20, 14)
-        bmesh.ops.scale(paw, vec=(0.066, 0.064, 0.07), verts=paw.verts)
+        k = 0.85 if SPEC.get('arms') == 'hand' else 1.0  # human hands are a little smaller
+        bmesh.ops.scale(paw, vec=(0.066 * k, 0.064 * k, 0.07 * k), verts=paw.verts)
         bmesh.ops.translate(paw, vec=(ARM_B[0] * s + 0.004 * s, ARM_B[1] - 0.004, ARM_B[2] - 0.012), verts=paw.verts)
         arm_bm = merge(a, paw)
     FUR_PARTS.append(finish('arm' + side, arm_bm, PIV['arm' + side], body, mat=FUR))

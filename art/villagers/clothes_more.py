@@ -217,3 +217,111 @@ for nm_, lst, mt in (('leaves', leaves, leaf_mat), ('centres', centres, centre_m
     GARMENTS['flower_crown'].append(o)
 twig.data.materials.append(flat_mat('flower_twig', '#8a6a44', 0.7))
 twig['fixed'] = True
+
+
+# ── Shoes and gloves (players only; villagers have paws) ──────────────────
+legs = {s: bpy.data.objects['leg' + s] for s in 'LR'}
+FOOT_C, FOOT_R = (0.1, -0.04, 0.058), Vector((0.088, 0.125, 0.062))
+
+
+def foot_shell(s, off, z_top, toe_up=0.0):
+    c = Vector((FOOT_C[0] * s, FOOT_C[1], FOOT_C[2]))
+    b = sphere_bm(32, 20)
+    for v in b.verts:
+        d = v.co.normalized()
+        v.co = c + Vector((d.x * (FOOT_R.x + off), d.y * (FOOT_R.y + off), d.z * (FOOT_R.z + off))) + Vector((0, 0, toe_up * max(0.0, -d.y) ** 3))
+    cut(b, (0, 0, z_top), (0, 0, -1))
+    cut(b, (0, 0, 0.004), (0, 0, 1))
+    return b
+
+
+def sole(s, thick=0.022, grow=0.012):
+    c = Vector((FOOT_C[0] * s, FOOT_C[1], thick / 2 + 0.002))
+    b = sphere_bm(28, 10)
+    for v in b.verts:
+        d = v.co
+        v.co = c + Vector((d.x * (FOOT_R.x + grow), d.y * (FOOT_R.y + grow), d.z * thick / 2))
+    return b
+
+
+def fixed_part(name, gname, part, bm, parent, pivot, mat):
+    o = finish(name, bm, pivot, parent, subd=1, mat=mat)
+    o['garment'] = gname
+    o['part'] = part
+    o['fixed'] = True
+    GARMENTS[gname].append(o)
+    return o
+
+
+SOLE_WHITE = flat_mat('sole_white', '#f4f1ea', 0.7)
+SOLE_DARK = flat_mat('sole_dark', '#4a3a30', 0.8)
+CUFF_WHITE = flat_mat('cuff_white', '#f7f4ee', 0.9)
+for gname in ('sneakers', 'boots', 'sandals'):
+    parts = []
+    for s, side in ((-1, 'L'), (1, 'R')):
+        piv = legs[side].matrix_world.translation.copy()
+        if gname == 'sneakers':
+            parts.append(('leg' + side, foot_shell(s, 0.012, 0.1), legs[side], piv))
+        elif gname == 'boots':
+            shaft = capsule((0.1 * s, -0.004, 0.08), (0.1 * s, -0.002, 0.27), 0.099, 0.097, 28, 16)
+            cut(shaft, (0, 0, 0.27), (0, 0, -1))
+            cuffb = capsule((0.1 * s, -0.004, 0.25), (0.1 * s, -0.002, 0.29), 0.108, 0.108, 28, 10)
+            cut(cuffb, (0, 0, 0.25), (0, 0, 1)); cut(cuffb, (0, 0, 0.29), (0, 0, -1))
+            parts.append(('leg' + side, merge(foot_shell(s, 0.016, 0.12), shaft, cuffb), legs[side], piv))
+        else:  # sandals: straps over the foot
+            st = merge(*[cut(cut(foot_shell(s, 0.008, 0.11), (0, y0, 0), (0, 1, 0)), (0, y0 + 0.028, 0), (0, -1, 0)) for y0 in (-0.12, -0.03)])
+            parts.append(('leg' + side, st, legs[side], piv))
+    garment(gname, parts)
+    for s, side in ((-1, 'L'), (1, 'R')):
+        piv = legs[side].matrix_world.translation.copy()
+        fixed_part(f'{gname}.sole{side}', gname, 'leg' + side, sole(s, 0.024 if gname == 'boots' else 0.018), legs[side], piv,
+                   SOLE_DARK if gname == 'boots' else SOLE_WHITE)
+    if gname == 'sneakers':  # laces
+        for s, side in ((-1, 'L'), (1, 'R')):
+            piv = legs[side].matrix_world.translation.copy()
+            lb = []
+            for j in range(3):
+                b = sphere_bm(10, 6)
+                bmesh.ops.scale(b, vec=(0.034, 0.008, 0.007), verts=b.verts)
+                bmesh.ops.translate(b, vec=(0.1 * s, -0.1 + j * 0.028, 0.103 + j * 0.006), verts=b.verts)
+                lb.append(b)
+            fixed_part(f'sneakers.laces{side}', 'sneakers', 'leg' + side, merge(*lb), legs[side], piv, SOLE_WHITE)
+
+HAND_K = 0.85  # human hands
+
+
+def hand_shell(s, off, extra=1.0):
+    c = Vector((ARM_B[0] * s + 0.004 * s, ARM_B[1] - 0.004, ARM_B[2] - 0.012))
+    r = Vector((0.066, 0.064, 0.07)) * HAND_K
+    b = sphere_bm(24, 16)
+    for v in b.verts:
+        d = v.co
+        v.co = c + Vector((d.x * (r.x * extra + off), d.y * (r.y * extra + off), d.z * (r.z * extra + off)))
+    return b, c
+
+
+for gname in ('gloves', 'mittens'):
+    parts = []
+    cuffs = []
+    for s, side in ((-1, 'L'), (1, 'R')):
+        a = Vector((ARM_A[0] * s, ARM_A[1], ARM_A[2])); b_ = Vector((ARM_B[0] * s, ARM_B[1], ARM_B[2]))
+        if gname == 'gloves':
+            hb, c = hand_shell(s, 0.008)
+            th = sphere_bm(12, 8)
+            bmesh.ops.scale(th, vec=(0.02, 0.02, 0.03), verts=th.verts)
+            bmesh.ops.translate(th, vec=c + Vector((-0.045 * s, -0.025, 0.012)), verts=th.verts)
+            cuffbm = capsule(a, b_, ARM_R0 + 0.006, ARM_R1 + 0.006, 24, 12)
+            cut(cuffbm, a + (b_ - a) * 0.86, (b_ - a))
+            parts.append(('arm' + side, merge(hb, th, cuffbm), arms[side], arms[side].matrix_world.translation.copy()))
+        else:
+            hb, c = hand_shell(s, 0.016, 1.1)
+            th = sphere_bm(12, 8)
+            bmesh.ops.scale(th, vec=(0.026, 0.026, 0.036), verts=th.verts)
+            bmesh.ops.translate(th, vec=c + Vector((-0.05 * s, -0.025, 0.014)), verts=th.verts)
+            parts.append(('arm' + side, merge(hb, th), arms[side], arms[side].matrix_world.translation.copy()))
+            cb = capsule(a, b_, ARM_R0 + 0.02, ARM_R1 + 0.022, 24, 12)
+            cut(cb, a + (b_ - a) * 0.8, (b_ - a)); cut(cb, a + (b_ - a) * 0.9, -(b_ - a))
+            cuffs.append((side, cb))
+    garment(gname, parts)
+    for side, cb in cuffs:
+        fixed_part(f'mittens.cuff{side}', 'mittens', 'arm' + side, cb, arms[side], arms[side].matrix_world.translation.copy(), CUFF_WHITE)

@@ -14,7 +14,7 @@
 // loaded (or if they are missing) villagers keep their procedural look.
 
 import * as THREE from 'three';
-import { garmentOf, ITEMS, type Outfit, type Species, type VillagerDef } from '@hearthwood/shared';
+import { garmentOf, ITEMS, type Gender, type Look, type Outfit, type Species, type VillagerDef } from '@hearthwood/shared';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { bend, bentDepth } from './bend.ts';
 
@@ -146,7 +146,7 @@ function prepMesh(o: THREE.Object3D) {
 
 // ── One villager ─────────────────────────────────────────────────────────
 
-export type Mode = 'normal' | 'sit' | 'sad' | 'umbrella';
+export type Mode = 'normal' | 'sit' | 'sad' | 'umbrella' | 'fish';
 
 export interface VillagerModel {
   root: THREE.Object3D;
@@ -203,6 +203,11 @@ export async function makeVillagerModel(def: VillagerDef): Promise<VillagerModel
     }
     m.material = mat;
   });
+  return animated(root, sh);
+}
+
+/** Props, mixer and actions for a freshly cloned model (villager or player). */
+function animated(root: THREE.Object3D, sh: Shared): VillagerModel {
   // Props: the umbrella in the right paw, the gift in front of the body.
   if (sh.propScene) {
     for (const [name, info] of Object.entries(sh.props) as [string, AnimJson["props"][string]][]) {
@@ -254,13 +259,13 @@ export async function makeVillagerModel(def: VillagerDef): Promise<VillagerModel
 }
 
 /** Put the outfit on (only rebuilds when it changed). */
-export function dress(vm: VillagerModel, outfit: Outfit | undefined) {
+export function dress(vm: VillagerModel, outfit: Outfit | undefined, slots: readonly (keyof Outfit)[] = ['hat', 'top', 'bottom', 'outer']) {
   const key = JSON.stringify(outfit ?? {});
   if (key === vm.outfitKey) return;
   vm.outfitKey = key;
   for (const c of vm.clothes) c.removeFromParent();
   vm.clothes = [];
-  for (const slot of ['hat', 'top', 'bottom', 'outer'] as const) {
+  for (const slot of slots) {
     const item = outfit?.[slot];
     if (!item) continue;
     const cut = PATTERN_CUTS.has(item) ? item : garmentOf(item);
@@ -344,15 +349,20 @@ function playLocked(vm: VillagerModel, name: string) {
   vm.lock = Math.max(0, d - 0.18);
 }
 
-const ENTER: Record<Mode, string | null> = { normal: null, sit: 'sit_ground_down', sad: 'sad_in', umbrella: 'umbrella_open' };
-const EXIT: Record<Mode, string | null> = { normal: null, sit: 'sit_ground_up', sad: 'sad_out', umbrella: 'umbrella_close' };
+const ENTER: Record<Mode, string | null> = { normal: null, sit: 'sit_ground_down', sad: 'sad_in', umbrella: 'umbrella_open', fish: 'cast' };
+const EXIT: Record<Mode, string | null> = { normal: null, sit: 'sit_ground_up', sad: 'sad_out', umbrella: 'umbrella_close', fish: null };
 
 export interface Drive {
   speed: number;
   rain: boolean;
-  /** Personality decides whether a jog is a run or a playful chase, and how often they sit. */
-  def: VillagerDef;
+  /** Personality decides whether a jog is a run or a playful chase, and how often they sit (villagers only). */
+  def?: VillagerDef;
   now: number;
+  /** Holding a cast fishing line (players). */
+  fishing?: boolean;
+  /** Ground speed the walk clip is made for, and where walking turns into running. */
+  walkRef?: number;
+  runAt?: number;
 }
 
 /**
@@ -365,11 +375,12 @@ export function drive(vm: VillagerModel, dt: number, d: Drive) {
   const raw = d.speed > 8 ? vm.speed : Math.min(d.speed, 5); // > 8: a teleport or a frame hitch
   vm.speed += (raw - vm.speed) * (1 - Math.exp(-dt * 8));
   vm.moving = vm.moving ? vm.speed > 0.12 : vm.speed > 0.3;
-  vm.running = vm.running ? vm.speed > 1.9 : vm.speed > 2.3;
+  const runAt = d.runAt ?? 2.3;
+  vm.running = vm.running ? vm.speed > runAt - 0.4 : vm.speed > runAt;
   const moving = vm.moving;
   vm.idleFor = moving ? 0 : vm.idleFor + dt;
   if (moving) vm.wantSit = false;
-  else if (vm.idleFor > 3.5 && !vm.wantSit && vm.mode === 'normal' && !vm.queue.length) {
+  else if (d.def && vm.idleFor > 3.5 && !vm.wantSit && vm.mode === 'normal' && !vm.queue.length) {
     // now and then they plop down for a rest (lazy ones more often)
     const p = d.def.personality === 'lazy' ? 0.5 : d.def.personality === 'sporty' ? 0.08 : 0.2;
     vm.wantSit = Math.random() < p;
@@ -386,7 +397,7 @@ function choose(vm: VillagerModel, dt: number, d: Drive) {
     vm.lock -= dt;
     if (vm.lock > 0) return;
   }
-  const want: Mode = vm.queue.length ? 'normal' : d.rain ? 'umbrella' : d.now < vm.sadUntil ? 'sad' : vm.wantSit ? 'sit' : 'normal';
+  const want: Mode = vm.queue.length ? 'normal' : d.fishing ? 'fish' : d.rain ? 'umbrella' : d.now < vm.sadUntil ? 'sad' : vm.wantSit ? 'sit' : 'normal';
   if (want !== vm.mode) {
     const exit = EXIT[vm.mode];
     vm.mode = want;
@@ -396,14 +407,17 @@ function choose(vm: VillagerModel, dt: number, d: Drive) {
   if (enter && !inMode(vm)) return playLocked(vm, enter);
   if (vm.mode === 'normal' && vm.queue.length) return playLocked(vm, vm.queue.shift()!);
   const sp = vm.speed;
+  const wr = d.walkRef ?? 1.3;
+  const chase = d.def && (d.def.personality === 'cheerful' || d.def.personality === 'sporty');
   switch (vm.mode) {
+    case 'fish': play(vm, 'fish', 0.3); break;
     case 'sit': play(vm, 'sit_ground'); break;
     case 'sad': moving ? play(vm, 'walk_sad', 0.3, clamp(sp / 0.9, 0.6, 1.6)) : play(vm, 'sad', 0.3); break;
-    case 'umbrella': moving ? play(vm, 'umbrella_walk', 0.25, clamp(sp / 1.3, 0.6, 1.8)) : play(vm, 'umbrella_hold', 0.3); break;
+    case 'umbrella': moving ? play(vm, 'umbrella_walk', 0.25, clamp(sp / wr, 0.6, 1.8)) : play(vm, 'umbrella_hold', 0.3); break;
     default:
       if (!moving) play(vm, 'idle', 0.3);
-      else if (vm.running) play(vm, d.def.personality === 'cheerful' || d.def.personality === 'sporty' ? 'chase' : 'run', 0.2, clamp(sp / 3, 0.7, 1.5));
-      else play(vm, 'walk', 0.25, clamp(sp / 1.3, 0.5, 1.8));
+      else if (vm.running) play(vm, chase ? 'chase' : 'run', 0.2, clamp(sp / ((d.runAt ?? 2.3) + 0.7), 0.7, 1.5));
+      else play(vm, 'walk', 0.25, clamp(sp / wr, 0.5, 1.8));
   }
 }
 
@@ -414,6 +428,7 @@ function inMode(vm: VillagerModel) {
     case 'sit': return n === 'sit_ground' || n === 'sit_ground_down';
     case 'sad': return n === 'sad' || n === 'walk_sad' || n === 'sad_in';
     case 'umbrella': return n.startsWith('umbrella_') && n !== 'umbrella_close';
+    case 'fish': return n === 'fish' || n === 'cast';
     default: return true;
   }
 }
@@ -432,3 +447,97 @@ export function react(vm: VillagerModel, kind: 'laugh' | 'surprised' | 'gift' | 
   vm.wantSit = false;
   if (vm.queue.length < 2) vm.queue.push(kind);
 }
+
+/** A one-shot action clip (players: chop, dig, net, pickup). */
+export function act(vm: VillagerModel, clip: string) {
+  if (!vm.actions.has(clip)) return;
+  vm.wantSit = false;
+  vm.queue = [clip];
+  if (vm.mode === 'normal') vm.lock = 0; // start right away
+}
+
+// ── Players ──────────────────────────────────────────────────────────────
+
+const playerAssets = new Map<string, Promise<THREE.Object3D | null>>();
+
+function loadPlayer(g: 'm' | 'f') {
+  let p = playerAssets.get(g);
+  if (!p) {
+    p = loadGltf(BASE + `player_${g}.glb`);
+    playerAssets.set(g, p);
+  }
+  return p;
+}
+
+function shade(hex: string, f: number) {
+  const c = new THREE.Color(hex);
+  return c.multiplyScalar(f);
+}
+
+/** Which of the model's alternatives a look shows (eyes, brows, nose, mouth, cheeks, hair). */
+export function lookVisible(name: string, look: Look): boolean | null {
+  const eye = look.eyeShape ?? 'round';
+  const part = name.split('_')[1];
+  if (name.startsWith('eye_')) {
+    const side = name.endsWith('_R') ? 'R' : 'L';
+    const want = eye === 'wink' ? (side === 'R' ? 'happy' : 'round') : eye;
+    return part === want;
+  }
+  if (name.startsWith('shine')) {
+    if (eye === 'wink') return name.startsWith('shineL');
+    return eye === 'round' || eye === 'wide';
+  }
+  if (name.startsWith('lookbrow_')) return part === (look.brows ?? 'soft');
+  if (name.startsWith('nose_')) return part === (look.nose ?? 'dot');
+  if (name.startsWith('mouth_')) return part === (look.mouth ?? 'smile');
+  if (name.startsWith('cheek_')) return part === (look.cheeks ?? 'blush');
+  if (name.startsWith('hair_')) return part === look.hair;
+  return null;
+}
+
+/** The player's model in their look; clothes go on with dress(..., PLAYER_SLOTS). */
+export async function makePlayerModel(gender: Gender, look: Look): Promise<VillagerModel | null> {
+  const [sh, src] = await Promise.all([loadShared(), loadPlayer(gender === 'girl' ? 'f' : 'm')]);
+  if (!sh || !src) return null;
+  const root = src.clone(true);
+  root.name = 'player';
+  const colour: Record<string, THREE.Color> = {
+    skin: new THREE.Color(look.skin),
+    skin_in: shade(look.skin, 0.88),
+    shirt: new THREE.Color(look.shirt),
+    pants: new THREE.Color(look.pants),
+    eye: new THREE.Color(look.eyes),
+    brow: shade(look.hairColor, 0.8),
+    hair: new THREE.Color(look.hairColor),
+    hair_tie: new THREE.Color('#e86fae'),
+    nose: shade(look.skin, 0.86),
+    freckle: shade(look.skin, 0.72),
+  };
+  const mats = new Map<THREE.Material, THREE.Material>();
+  const hide: THREE.Object3D[] = [];
+  root.traverse((o: THREE.Object3D) => {
+    // GLTFLoader names the meshes of a multi-material node after the node, so look at
+    // the nearest named ancestor for the alternatives
+    const vis = lookVisible(o.name, look);
+    if (vis === false) hide.push(o);
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    prepMesh(m);
+    const list = Array.isArray(m.material) ? m.material : [m.material];
+    const out = list.map((src: THREE.Material) => {
+      let mat = mats.get(src);
+      if (!mat) {
+        mat = bentClone(src);
+        const c = colour[src.name.replace(/\.\d+$/, '')];
+        if (c) (mat as THREE.MeshStandardMaterial).color.copy(c);
+        mats.set(src, mat);
+      }
+      return mat;
+    });
+    m.material = Array.isArray(m.material) ? out : out[0];
+  });
+  for (const o of hide) o.visible = false;
+  return animated(root, sh);
+}
+
+export const PLAYER_SLOTS = ['hat', 'top', 'bottom', 'outer', 'shoes', 'gloves'] as const;

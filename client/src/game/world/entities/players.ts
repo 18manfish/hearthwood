@@ -9,6 +9,8 @@ import { state } from '../../../state.ts';
 import { bendDrop } from '../../bend.ts';
 import { animateRig, setTool } from '../../characters.ts';
 import { makePlayer } from '../../player.ts';
+import { act, drive } from '../../villagerModels.ts';
+import type { Rig } from '../../characters.ts';
 import { mat } from '../../models.ts';
 import { Mover, PLAYER_SPEED, round2 } from '../common.ts';
 import { endCast } from '../tools/fishing.ts';
@@ -58,6 +60,21 @@ export function interp(self: World, m: Mover, dt: number) {
   wadeRipple(self, m.rig.root, m.speed);
   bendLabel(self, m);
   animateRig(m.rig, dt, m.speed, m.swing);
+  driveModel(m.rig, dt, m.speed, m.swing, false);
+}
+
+/** Blender players: walk / run with the speed, a clip per tool action, fishing. */
+function driveModel(rig: Rig, dt: number, speed: number, swing: number, fishing: boolean, net = false) {
+  const vm = rig.model;
+  if (!vm) return;
+  if (swing > (rig.lastSwing ?? 0) + 0.2) {
+    const kind = rig.tool.userData.kind as string | undefined;
+    act(vm, kind === 'axe' ? 'chop' : kind === 'shovel' ? 'dig' : net ? 'net' : 'pickup');
+  }
+  rig.lastSwing = swing;
+  // the rod is modelled for a hanging arm; the fishing pose holds the arm out in front
+  rig.tool.rotation.x = String(rig.tool.userData.kind ?? '').startsWith('rod') ? 0.85 : 0;
+  drive(vm, dt, { speed, rain: false, now: Date.now(), fishing, walkRef: 2.0, runAt: 3.3 });
 }
 
 export function updateLocal(self: World, dt: number) {
@@ -101,6 +118,7 @@ export function updateLocal(self: World, dt: number) {
   bendLabel(self, me);
   me.swing = Math.max(0, me.swing - dt * 2.5);
   animateRig(me.rig, dt, me.speed, me.swing);
+  driveModel(me.rig, dt, me.speed, me.swing, !!self.cast, self.tool === 'net');
   setTool(me.rig, self.tool === 'axe' && (state.inv.stone_axe || state.inv.iron_axe) ? 'axe' : self.tool === 'shovel' && (state.inv.shovel || state.inv.iron_shovel) ? 'shovel' : self.cast ? (state.inv.pro_rod ? 'rod_pro' : 'rod') : null);
 
   const now = performance.now();

@@ -22,8 +22,13 @@ def step(name, files, extra=None):
     json.dump(log, open(EXP + r'\progress.json', 'w'), default=str)
 
 
-if not globals().get('SHARED_ONLY'):
-    for sp in globals().get('ONLY') or list(species.SPECIES):
+for sp in globals().get('PLAYERS', ['human_m', 'human_f']):
+    step(sp, ['villager_build.py', 'player_build.py', 'player_paint.py', 'export_player.py'], {'SPECIES_NAME': sp})
+if globals().get('PLAYERS_ONLY'):
+    pass
+elif not globals().get('SHARED_ONLY'):
+    for sp in globals().get('ONLY') or [k for k in species.SPECIES if not k.startswith('human')]:
         step(sp, ['villager_build.py', 'villager_fur.py', 'export_species.py'], {'SPECIES_NAME': sp})
-step('shared', ['villager_build.py', 'clothes.py', 'cat_anim.py', 'anim_export.py', 'export_shared.py'], {'SPECIES_NAME': 'cat'})
+if not globals().get('PLAYERS_ONLY'):
+    step('shared', ['villager_build.py', 'clothes.py', 'cat_anim.py', 'player_anim.py', 'anim_export.py', 'export_shared.py'], {'SPECIES_NAME': 'cat'})
 result = log

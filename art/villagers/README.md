@@ -19,3 +19,16 @@ The `.blend` files are the saved results: `species_<species>.blend` (model with 
 of that species painted, as built by `lineup_coats.py`) and `cat_animated.blend` (the
 example cat with clothes, props and all clips as actions, plus the showreel timeline).
 Their textures are written next to the scripts when the pipeline runs.
+
+## Players
+
+The player characters use the same body (so every clothing cut and clip fits) with a
+round human head: `species.py` has `human_m` and `human_f`.
+
+- `player_build.py` – skin / undershirt / trousers materials and every option a player
+  can pick (eye shapes, brows, nose, mouth, cheeks, the eight hair styles), plus eyelashes
+  on `human_f` and a `toolSlot` in the right hand
+- `player_paint.py` – the baked shading atlas (tinted in the game), cloth weave, hair strands
+- `player_anim.py` – the player's clips: chop, dig, net, cast, fish, pickup
+- `export_player.py` – `export/player_m.glb`, `export/player_f.glb`
+- `clothes_more.py` also has the shoes (sneakers, boots, sandals) and gloves / mittens

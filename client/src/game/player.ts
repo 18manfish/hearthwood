@@ -6,6 +6,7 @@
 // and shoes walk with the feet.
 
 import * as THREE from 'three';
+import { dress, makePlayerModel, PLAYER_SLOTS } from './villagerModels.ts';
 import { garmentOf, ITEMS, isDress, type Gender, type Look, type Outfit } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 import { mat, part } from './models.ts';
@@ -413,5 +414,24 @@ export function makePlayer(_gender: Gender, look: Look, outfit: Outfit | string 
   if (o.gloves && ITEMS[o.gloves]?.wear === 'gloves') wearGloves(limbs, o.gloves);
   else bareHands(limbs, look.skin);
   setHat(rig, o.hat ?? null);
+  // Swap in the smooth model when it has loaded (the procedural one stays as fallback).
+  void makePlayerModel(_gender, look).then((vm) => {
+    if (!vm) return;
+    for (const c of [...rig.root.children]) if (!(c as { isCSS2DObject?: boolean }).isCSS2DObject && c.name !== 'wade') c.visible = false;
+    rig.root.add(vm.root);
+    rig.model = vm;
+    dress(vm, o, PLAYER_SLOTS);
+    // Hats squash big hair: spiky and curly hair turn into short hair under one.
+    if (o.hat && (look.hair === 'spiky' || look.hair === 'curly')) {
+      vm.root.traverse((c: THREE.Object3D) => {
+        if (c.name.startsWith(`hair_${look.hair}`)) c.visible = false;
+        if (c.name === 'hair_short') c.visible = true;
+      });
+    }
+    vm.root.getObjectByName('toolSlot')?.add(rig.tool);
+    rig.tool.position.set(0, 0, 0);
+    rig.tool.rotation.set(0, 0, 0);
+    rig.tool.visible = true;
+  });
   return rig;
 }

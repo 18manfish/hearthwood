@@ -193,7 +193,7 @@ export function zoom(self: World, delta: number) {
 
 /** Size of the drawing area the renderer was last fitted to (width, height, pixel ratio). */
 const fitted = new WeakMap<World, string>();
-/** The largest drawing area this browser allows, per renderer (looked up once). */
+/** The largest viewport this browser allows, per renderer (looked up once). */
 const limits = new WeakMap<World, number>();
 
 /**
@@ -201,11 +201,16 @@ const limits = new WeakMap<World, number>();
  * the size or pixel ratio changed, so it catches everything a 'resize' event can
  * miss (F11 / fullscreen, docking the window, moving to another monitor).
  *
- * Browsers cap how big the drawing area may be (LibreWolf/Firefox with
- * fingerprinting protection quite low). On a big, sharp screen – e.g. an
- * ultrawide in fullscreen – width × pixel ratio can go past that cap, and the
- * browser then draws only part of the picture. So the pixel ratio is lowered
- * until the drawing area fits: a little less sharp, but always the whole screen.
+ * Browsers cap how big the drawing area may be. On a big, sharp screen – e.g.
+ * fullscreen on a wide monitor – width × pixel ratio can go past that cap, and
+ * the browser then draws only part of the picture. So the pixel ratio is lowered
+ * just enough for the drawing area to fit.
+ *
+ * Only limits the browser really enforces count: MAX_VIEWPORT_DIMS, the drawing
+ * buffer it actually hands out and the viewport it actually applies. Not
+ * MAX_RENDERBUFFER_SIZE – LibreWolf / Firefox with fingerprinting protection
+ * report a fake minimum there (1024) that doesn't limit the screen at all, and
+ * going by it made the game blurry.
  */
 export function resize(self: World) {
   const w = self.container.clientWidth || window.innerWidth;
@@ -218,17 +223,19 @@ export function resize(self: World) {
   let max = limits.get(self);
   if (max === undefined) {
     const vp = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as ArrayLike<number> | null;
-    const rb = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number | null;
-    max = Math.min(vp?.[0] ?? 16384, vp?.[1] ?? 16384, rb || 16384);
+    max = Math.max(1024, Math.min(vp?.[0] ?? 16384, vp?.[1] ?? 16384));
     limits.set(self, max);
   }
   let dpr = Math.min(want, max / w, max / h);
   apply(self, w, h, dpr);
-  // The browser may still hand out a smaller drawing buffer than asked for: shrink to what it gave.
-  const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+  // Shrink further only if the browser actually gave less than asked for:
+  // a smaller drawing buffer, or a viewport clamped below the canvas size.
   const cw = self.renderer.domElement.width, ch = self.renderer.domElement.height;
-  if (bw < cw - 1 || bh < ch - 1) {
-    dpr *= Math.min(bw / cw, bh / ch) * 0.999;
+  const view = gl.getParameter(gl.VIEWPORT) as ArrayLike<number> | null;
+  const gotW = Math.min(gl.drawingBufferWidth, view?.[2] ?? cw);
+  const gotH = Math.min(gl.drawingBufferHeight, view?.[3] ?? ch);
+  if (gotW < cw - 1 || gotH < ch - 1) {
+    dpr *= Math.min(gotW / cw, gotH / ch) * 0.999;
     apply(self, w, h, dpr);
   }
 }

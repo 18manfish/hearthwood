@@ -77,6 +77,7 @@ export function levelUpCheck(game: Game, s: Session, room: Room, defId: string, 
   const it = rewards[Math.min(lvl, rewards.length) - 1];
   if (it && inv.add(s.player!, it, 1)) {
     s.send({ t: 'toast', text: `${def.name} is now your ${friendshipLevel(f.pts).name}! They gave you a ${ITEMS[it].name}.`, kind: 'good' });
+    return it;
   }
 }
 

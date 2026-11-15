@@ -1,4 +1,6 @@
 import type { ItemTag } from './items.ts';
+import { type Outfit, cleanOutfit, equip } from './clothing.ts';
+import { ITEMS } from './items.ts';
 
 export type Species =
   | 'cat' | 'dog' | 'rabbit' | 'bear' | 'fox' | 'owl' | 'deer' | 'frog'
@@ -40,6 +42,42 @@ export const VILLAGERS: VillagerDef[] = [
   { id: 'v_coco', name: 'Coco', species: 'rabbit', personality: 'sporty', color: '#6d4c3d', accent: '#f0d9c5', catchphrase: 'boing', likes: ['fruit', 'clothing'], loves: ['coconut', 'cap'], dislikes: ['mushroom'], birthday: '05-05' },
   { id: 'v_barley', name: 'Barley', species: 'bear', personality: 'artsy', color: '#c9a36b', accent: '#fff0d4', catchphrase: 'grand', likes: ['furniture', 'wood'], loves: ['bench', 'prickly_pear'], dislikes: ['fish'], birthday: '09-01' },
 ];
+
+/** What each villager wears until a player gives them something new. */
+const DEFAULT_OUTFITS: Record<string, Outfit> = {
+  v_maple: { top: 'dress_sunny' },
+  v_bruno: { top: 'shirt_gingham' },
+  v_pip: { top: 'pullover_cream', hat: 'flower_crown' },
+  v_rex: { top: 'tshirt_sky', outer: 'jacket_denim' },
+  v_juno: { top: 'shirt_linen', bottom: 'skirt_pleated' },
+  v_biscuit: { top: 'tshirt_coral', hat: 'cap' },
+  v_saffron: { top: 'dress_meadow', hat: 'straw_hat' },
+  v_hoot: { top: 'shirt_linen', outer: 'coat_wool' },
+  v_fawn: { top: 'dress_meadow' },
+  v_ribbit: { top: 'tshirt_sky', hat: 'bucket_hat' },
+  v_waddle: { top: 'pullover_forest', hat: 'beanie' },
+  v_eucy: { top: 'pullover_cream' },
+  v_puddle: { top: 'dress_sunny', hat: 'sun_hat' },
+  v_nibbles: { top: 'shirt_gingham', bottom: 'skirt_denim' },
+  v_cinder: { top: 'tshirt_coral' },
+  v_tundra: { top: 'pullover_forest', outer: 'coat_navy' },
+  v_coco: { top: 'tshirt_sky', bottom: 'skirt_denim' },
+  v_barley: { top: 'shirt_linen', outer: 'jacket_rain' },
+};
+
+/** Slots villagers can wear (paws and hooves: no shoes or gloves). */
+export const VILLAGER_SLOTS = ['hat', 'top', 'bottom', 'outer'] as const;
+
+export function villagerDefaultOutfit(id: string): Outfit {
+  return { ...(DEFAULT_OUTFITS[id] ?? { top: 'tshirt_sky' }) };
+}
+
+/** A villager's outfit after putting on `item` (null if they cannot wear it). */
+export function villagerWear(outfit: Outfit, item: string): Outfit | null {
+  const it = ITEMS[item];
+  if (!it?.wear || !(VILLAGER_SLOTS as readonly string[]).includes(it.wear)) return null;
+  return cleanOutfit(equip(outfit, item));
+}
 
 /** Villagers spend the evening and night at home (19:00–07:00). */
 export function villagerAtHome(hour: number) {

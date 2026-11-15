@@ -5,7 +5,7 @@
 import {
   TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, applyTerrainAndWater, classifyWater, type TerrainChange, Rng, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
   isTransient, type FishShadow,
-  outfitOf,
+  outfitOf, villagerDefaultOutfit,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
@@ -238,7 +238,8 @@ export class Room {
   }
 
   villagerView(v: VillagerRuntime): VillagerView {
-    return { id: v.id, houseId: v.houseId, x: v.x, z: v.z, r: v.r, home: v.home };
+    const rec = this.record?.villagers.find((x) => x.defId === v.id);
+    return { id: v.id, houseId: v.houseId, x: v.x, z: v.z, r: v.r, home: v.home, outfit: rec?.outfit ?? villagerDefaultOutfit(v.id) };
   }
 
   /** Join the room, optionally at a given position (e.g. in front of a door). */

@@ -1,7 +1,10 @@
 // Villagers walking about (interpolated from the server) and birds hopping.
 
-import { villagerDef, type VillagerView } from '@hearthwood/shared';
+import { type TalkView, villagerDef, type VillagerView } from '@hearthwood/shared';
 import { makeVillager } from '../../characters.ts';
+import { dress, drive, makeVillagerModel, react, type VillagerModel } from '../../villagerModels.ts';
+import { currentEnv } from '../scene/environment.ts';
+import { debug } from '../common.ts';
 import { makeLabel } from './players.ts';
 import type { World } from '../../World.ts';
 
@@ -15,14 +18,50 @@ export function upsertVillager(self: World, v: VillagerView) {
     label.position.set(0, 1.55, 0);
     rig.root.add(label);
     self.world.add(rig.root);
-    m = { rig, label, x: v.x, z: v.z, r: v.r, tx: v.x, tz: v.z, tr: v.r, speed: 0, swing: 0, home: v.home, houseId: v.houseId };
+    m = { rig, label, x: v.x, z: v.z, r: v.r, tx: v.x, tz: v.z, tr: v.r, speed: 0, swing: 0, home: v.home, houseId: v.houseId, outfit: v.outfit };
     self.villagers.set(v.id, m);
+    // Swap in the Blender model once it has loaded (the box villager stays as fallback).
+    const mover = m;
+    void makeVillagerModel(def).then((vm) => {
+      if (!vm || self.villagers.get(def.id) !== mover) return;
+      for (const c of [...mover.rig.root.children]) if (c !== mover.label && !(c as { isCSS2DObject?: boolean }).isCSS2DObject) c.visible = false;
+      mover.rig.root.add(vm.root);
+      mover.model = vm;
+      dress(vm, mover.outfit);
+    });
   }
+  m.outfit = v.outfit;
+  if (m.model) dress(m.model, v.outfit);
   m.tx = v.x;
   m.tz = v.z;
   m.tr = v.r;
   m.home = v.home;
   m.rig.root.visible = !v.home;
+}
+
+/** Blender villagers: pick their clips from how they move, the weather and what just happened. */
+export function animateVillagers(self: World, dt: number) {
+  const env = currentEnv(self);
+  const indoors = self.room?.kind === 'interior';
+  const weather = debug.weather ?? env?.weather;
+  const rain = !indoors && (weather === 'rain' || weather === 'storm');
+  const now = Date.now();
+  for (const [id, v] of self.villagers) {
+    if (!v.model || v.home) continue;
+    const def = villagerDef(id);
+    if (def) drive(v.model, dt, { speed: v.speed, rain, def, now });
+  }
+}
+
+/** A villager reacts to what the player said or gave. */
+export function villagerReact(self: World, t: TalkView) {
+  const vm = self.villagers.get(t.vid)?.model;
+  if (!vm) return;
+  const now = Date.now();
+  if (t.reaction === 'dislike') react(vm, 'sad', now);
+  else if (t.reaction === 'love' || t.reaction === 'like') react(vm, 'laugh', now);
+  else if (t.first) react(vm, 'surprised', now);
+  if (t.gave) react(vm, 'gift', now);
 }
 
 export function animateBirds(self: World, t: number) {

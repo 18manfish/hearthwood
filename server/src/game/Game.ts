@@ -168,7 +168,7 @@ export class Game {
     return resetGameData(this, tables, author);
   }
 
-  levelUpCheck(s: Session, room: Room, defId: string, f: Friendship) {
+  levelUpCheck(s: Session, room: Room, defId: string, f: Friendship): string | undefined {
     return levelUpCheck(this, s, room, defId, f);
   }
 

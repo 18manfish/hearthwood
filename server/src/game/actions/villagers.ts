@@ -1,7 +1,7 @@
 // Talking to villagers and giving them gifts; what dialogue rules can react to.
 
 import {
-  composeDialogue, DIALOGUE, type DialogueContext, type DialogueEvent, FRIENDSHIP_BIRTHDAY_BONUS, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE, FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_MAX, FRIENDSHIP_TALK, friendshipLevel, hashMany, ITEMS, type TalkView, villagerDef, villagerLine,
+  composeDialogue, DIALOGUE, type DialogueContext, type DialogueEvent, FRIENDSHIP_BIRTHDAY_BONUS, FRIENDSHIP_GIFT_DISLIKE, FRIENDSHIP_GIFT_LIKE, FRIENDSHIP_GIFT_LOVE, FRIENDSHIP_GIFT_NEUTRAL, FRIENDSHIP_MAX, FRIENDSHIP_TALK, friendshipLevel, hashMany, ITEMS, type TalkView, villagerDef, villagerDefaultOutfit, villagerLine, villagerWear,
 } from '@hearthwood/shared';
 import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
@@ -37,9 +37,9 @@ export const villagersHandlers: Pick<Handlers, 'talk' | 'gift'> = {
     if (lvl.level > (f.level ?? 0)) flags.push('level_up');
     if (f.giftDay === env.dayKey) flags.push('gifted_today');
     const dlg = composeDialogue(DIALOGUE, dialogueContext(ctx, rec.defId, lvl.level, seed, flags), base);
-    ctx.game.levelUpCheck(ctx.s, ctx.room, rec.defId, f);
+    const gave = ctx.game.levelUpCheck(ctx.s, ctx.room, rec.defId, f);
     ctx.game.store.markIsland(ctx.room.id);
-    sendTalk(ctx, a.vid, dlg.line, f, undefined, dlg.replies);
+    sendTalk(ctx, a.vid, dlg.line, f, undefined, dlg.replies, gave, firstMeeting);
     return { ok: true };
   },
   gift(ctx, a) {
@@ -71,22 +71,29 @@ export const villagersHandlers: Pick<Handlers, 'talk' | 'gift'> = {
       delta += FRIENDSHIP_BIRTHDAY_BONUS;
       line += ' And on my birthday, too!';
     }
+    // Clothes get put on straight away (unless it is something they dislike).
+    const worn = reaction !== 'dislike' ? villagerWear(rec.outfit ?? villagerDefaultOutfit(rec.defId), a.item) : null;
+    if (worn) {
+      rec.outfit = worn;
+      line += ' I’ll put it on right away!';
+    }
     inv.remove(ctx.p, a.item, 1);
     f.giftDay = env.dayKey;
     f.pts = Math.max(0, Math.min(FRIENDSHIP_MAX, f.pts + delta));
-    ctx.game.levelUpCheck(ctx.s, ctx.room, rec.defId, f);
+    const gave = ctx.game.levelUpCheck(ctx.s, ctx.room, rec.defId, f);
     ctx.game.store.markIsland(ctx.room.id);
-    sendTalk(ctx, a.vid, line, f, reaction);
+    sendTalk(ctx, a.vid, line, f, reaction, undefined, gave);
+    if (worn) ctx.room.broadcast({ t: 'vAdd', v: [ctx.room.villagerView(v)] });
     return { ok: true };
   },
 };
 
-function sendTalk(ctx: Ctx, vid: string, line: string, f: { pts: number; talkDay?: string; giftDay?: string }, reaction?: TalkView['reaction'], replies?: TalkView['replies']) {
+function sendTalk(ctx: Ctx, vid: string, line: string, f: { pts: number; talkDay?: string; giftDay?: string }, reaction?: TalkView['reaction'], replies?: TalkView['replies'], gave?: string, first?: boolean) {
   const env = ctx.room.env(ctx.now);
   const lvl = friendshipLevel(f.pts);
   ctx.s.send({
     t: 'talk',
-    v: { vid, line, points: f.pts, level: lvl.level, levelName: lvl.name, next: lvl.next, talkedToday: f.talkDay === env.dayKey, giftedToday: f.giftDay === env.dayKey, reaction, replies },
+    v: { vid, line, points: f.pts, level: lvl.level, levelName: lvl.name, next: lvl.next, talkedToday: f.talkDay === env.dayKey, giftedToday: f.giftDay === env.dayKey, reaction, replies, gave, first },
   });
 }
 

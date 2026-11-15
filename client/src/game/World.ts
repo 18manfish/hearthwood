@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { BIOMES, Grid, decodeTiles, type TerraOp, type Building, type RoomView, type ServerMessage, type WorldObject, type BuildingType } from '@hearthwood/shared';
+import { BIOMES, Grid, decodeTiles, type TerraOp, type Building, type RoomView, type ServerMessage, type WorldObject, type BuildingType, type Outfit } from '@hearthwood/shared';
 import { bendFocusZ, bendStrength } from './bend.ts';
 import { disposePaths } from './paths.ts';
 import { disposeFoliage } from './foliage.ts';
@@ -20,7 +20,8 @@ import { windTime } from './bend.ts';
 import { state, watch } from '../state.ts';
 import { debug, type Mover, type Target, type Tool } from './world/common.ts';
 import { addPlayer, groundY, interp, removeMover, say, swing, updateLocal } from './world/entities/players.ts';
-import { upsertVillager } from './world/entities/villagers.ts';
+import { animateVillagers, upsertVillager } from './world/entities/villagers.ts';
+import type { VillagerModel } from './villagerModels.ts';
 import { handle } from './world/messages.ts';
 import { animateProps, upsertBuildingMesh } from './world/room/objects.ts';
 import { addSealife, animateSealife, clearSealife } from './world/entities/sealife.ts';
@@ -53,7 +54,7 @@ export class World {
   objMeshes = new Map<string, THREE.Object3D>();
   bldMeshes = new Map<string, THREE.Object3D>();
   readonly players = new Map<string, Mover>();
-  villagers = new Map<string, Mover & { home: boolean; houseId: string }>();
+  villagers = new Map<string, Mover & { home: boolean; houseId: string; outfit?: Outfit; model?: VillagerModel }>();
   rain: THREE.Points;
   rainVel: Float32Array;
   flash = 0;
@@ -254,6 +255,7 @@ export class World {
     if (this.room && this.me && this.grid) updateLocal(this, dt);
     for (const p of this.players.values()) if (p !== this.me) interp(this, p, dt);
     for (const v of this.villagers.values()) interp(this, v, dt);
+    animateVillagers(this, dt);
     // Footprints for everyone walking around outside.
     windTime.value = t;
     if (this.grid && this.room?.kind !== 'interior') {

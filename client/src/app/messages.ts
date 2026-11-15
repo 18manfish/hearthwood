@@ -88,6 +88,7 @@ export function bindMessages() {
         return;
       case 'talk':
         game.hud?.onTalk(m.v);
+        game.world?.handle(m);
         return;
       case 'fish':
         fishResult(m.ok);

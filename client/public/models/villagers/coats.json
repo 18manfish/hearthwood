@@ -1,0 +1,74 @@
+{
+"v_bruno": {
+"nose": "#2b211d",
+"inner": "#c99b72"
+},
+"v_barley": {
+"nose": "#3a2a22",
+"inner": "#e9c39a"
+},
+"v_juno": {
+"nose": "#3a2f36",
+"inner": "#9a7f8f"
+},
+"v_cinder": {
+"nose": "#f08c9c",
+"inner": "#f3a3b0"
+},
+"v_fawn": {
+"nose": "#2b211d",
+"inner": "#f1c9b4"
+},
+"v_biscuit": {
+"nose": "#2b211d",
+"inner": "#bf8640"
+},
+"v_puddle": {
+"nose": "#f2a03d",
+"inner": "#f2a03d"
+},
+"v_saffron": {
+"nose": "#2b211d",
+"inner": "#fbe3cf"
+},
+"v_ribbit": {
+"nose": "#3d7a31",
+"inner": "#e8f5c8"
+},
+"v_nibbles": {
+"nose": "#f2a0b0",
+"inner": "#f3b0b8"
+},
+"v_eucy": {
+"nose": "#2f2a2e",
+"inner": "#f2f4f5"
+},
+"v_hoot": {
+"nose": "#d9a441",
+"inner": "#6a4e36"
+},
+"v_waddle": {
+"nose": "#f2a03d",
+"inner": "#f2a03d"
+},
+"v_pip": {
+"nose": "#f2a0b0",
+"inner": "#f6b6c4"
+},
+"v_coco": {
+"nose": "#a85e5a",
+"inner": "#e3b0a2"
+},
+"v_maple": {
+"nose": "#5a3b2e",
+"inner": "#f0b39a"
+},
+"v_rex": {
+"nose": "#2b211d",
+"inner": "#c9b8b8"
+},
+"v_tundra": {
+"nose": "#3b3a40",
+"inner": "#e8c9cf"
+}
+}

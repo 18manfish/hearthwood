@@ -1,5 +1,6 @@
 import {
   Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
+  villagerWear, villagerDefaultOutfit,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
@@ -8,6 +9,11 @@ export async function run(ctx: Ctx) {
   const { A, vAdd, vid } = ctx;
   console.log('Villagers');
   const vs = vAdd.v[0];
+  check(!!vs.outfit?.top, `villagers come dressed (${JSON.stringify(vs.outfit)})`);
+  const w1 = villagerWear(villagerDefaultOutfit('v_maple'), 'skirt_denim');
+  check(!!w1 && w1.bottom === 'skirt_denim' && !w1.top, 'a skirt replaces a dress');
+  check(villagerWear({}, 'sneakers_white') === null && villagerWear({}, 'wood') === null, 'villagers only wear hats, tops, bottoms and outerwear');
+  check(villagerWear({ top: 'tshirt_sky' }, 'beanie')?.hat === 'beanie', 'a hat gift goes on the head');
   await A.walkTo(Math.floor(vs.x), Math.floor(vs.z));
   // Villagers wander; follow the latest broadcast position.
   let talk = null;

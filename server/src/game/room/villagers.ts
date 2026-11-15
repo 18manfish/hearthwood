@@ -12,9 +12,14 @@ export interface VillagerRuntime {
   tx: number;
   tz: number;
   idleUntil: number;
+  /** Walking speed of the current stroll (some strolls are a jog). */
+  speed?: number;
   home: boolean;
   dirty: boolean;
 }
+
+export const VILLAGER_WALK = 1.3;
+export const VILLAGER_RUN = 3.0;
 
 /** Positions go over the wire with two decimals. */
 export function round2(n: number) {
@@ -61,11 +66,12 @@ export function villagerTick(room: Room, dt: number, now: number) {
           if (room.grid.walkable(tx, tz, 0.3, false) && room.grid.level(Math.floor(tx), Math.floor(tz)) === room.grid.level(house.x, house.z)) {
             v.tx = tx;
             v.tz = tz;
+            v.speed = rng() < 0.15 ? VILLAGER_RUN : VILLAGER_WALK;
             break;
           }
         }
       } else {
-        const step = Math.min(d, 1.3 * dt);
+        const step = Math.min(d, (v.speed ?? VILLAGER_WALK) * dt);
         const nx = v.x + (dx / d) * step;
         const nz = v.z + (dz / d) * step;
         if (room.grid.canMove(v.x, v.z, nx, nz, 0.25, false) || !room.grid.walkable(v.x, v.z, 0.25, false)) {

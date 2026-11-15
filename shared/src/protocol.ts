@@ -17,7 +17,7 @@ import {
   type BrowStyle, type CheekStyle, type EyeShape, type MouthStyle, type NoseStyle, type Outfit,
 } from './data/clothing.ts';
 
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;
 
 /**
  * Version of the character model. Characters made with an older one are asked
@@ -194,6 +194,8 @@ export interface VillagerView {
   z: number;
   r: number;
   home: boolean; // indoors (night)
+  /** What they are wearing (gifts of clothing get put on). */
+  outfit?: Outfit;
 }
 
 export interface EnvView {
@@ -348,6 +350,10 @@ export interface TalkView {
   talkedToday: boolean;
   giftedToday: boolean;
   reaction?: 'love' | 'like' | 'neutral' | 'dislike';
+  /** An item the villager just handed over (friendship level-up present). */
+  gave?: string;
+  /** The first time this player talked to them. */
+  first?: boolean;
   /** Answers the player can pick (from a dialogue rule). */
   replies?: { text: string; answer: string }[];
 }

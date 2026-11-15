@@ -67,6 +67,8 @@ export interface VillagerRecord {
   houseId: string;
   movedInAt: number;
   friendship: Record<string, Friendship>;
+  /** Clothes; missing means the villager's default outfit. */
+  outfit?: Outfit;
 }
 
 export interface Respawn {

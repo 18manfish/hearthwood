@@ -1,4 +1,13 @@
 declare module 'three' {
+  export const TextureLoader: any; export type TextureLoader = any;
+  export const LoopOnce: any; export type LoopOnce = any;
+  export const AnimationAction: any; export type AnimationAction = any;
+  export const NumberKeyframeTrack: any; export type NumberKeyframeTrack = any;
+  export const VectorKeyframeTrack: any; export type VectorKeyframeTrack = any;
+  export const QuaternionKeyframeTrack: any; export type QuaternionKeyframeTrack = any;
+  export const PropertyBinding: any; export type PropertyBinding = any;
+  export const KeyframeTrack: any; export type KeyframeTrack = any;
+  export const Texture: any; export type Texture = any;
   export const DataTexture: any; export type DataTexture = any;
   export const Vector4: any; export type Vector4 = any;
   export const RedFormat: any; export type RedFormat = any;

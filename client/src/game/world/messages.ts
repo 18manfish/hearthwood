@@ -4,7 +4,7 @@ import { applyTerrain, type PlayerView, type ServerMessage } from '@hearthwood/s
 import { state } from '../../state.ts';
 import { addPlayer, removeMover } from './entities/players.ts';
 import { showCatch } from './entities/sealife.ts';
-import { upsertVillager } from './entities/villagers.ts';
+import { upsertVillager, villagerReact } from './entities/villagers.ts';
 import { upsertBuildingMesh, upsertObjectMesh } from './room/objects.ts';
 import { scheduleFoliage, schedulePaths, scheduleTerrain } from './room/terrainLayer.ts';
 import { refreshVisuals } from './scene/environment.ts';
@@ -108,6 +108,9 @@ export function handle(self: World, m: ServerMessage) {
         v.rig.root.visible = !v.home;
         if (v.home) { v.x = x; v.z = z; }
       }
+      break;
+    case 'talk':
+      villagerReact(self, m.v);
       break;
     case 'vAdd':
       for (const v of m.v) upsertVillager(self, v);

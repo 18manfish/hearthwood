@@ -2,7 +2,7 @@
 
 import { BUILDINGS, type BuildingType } from '../data/buildings.ts';
 import { Grid } from './grid.ts';
-import { type Building, frontDir, furnitureShape, isBridge, objectTiles } from './objects.ts';
+import { bridgeRunsNS, type Building, frontDir, furnitureShape, isBridge, objectTiles } from './objects.ts';
 import { Tile } from './tiles.ts';
 
 /** Is a building's footprint adjacent to (or under) point px,pz within `reach`? */
@@ -18,7 +18,7 @@ export function nearBuilding(b: Building, px: number, pz: number, reach = 1.6): 
 export function placeError(g: Grid, type: BuildingType, x: number, z: number): string | null {
   const { w, h } = BUILDINGS[type];
   if (!isBridge(type)) return g.canPlace(x, z, w, h) ? null : 'Not enough free space there.';
-  const along = type.startsWith('bridge_ns'); // the bridge runs north–south (along z)
+  const along = bridgeRunsNS(type);
   const len = along ? h : w;
   const lanes = along ? w : h;
   const at = (i: number, k: number) => (along ? [x + k, z + i] : [x + i, z + k]) as [number, number];

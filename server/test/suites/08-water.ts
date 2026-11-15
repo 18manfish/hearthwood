@@ -1,5 +1,5 @@
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
+  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, bridgeRunsNS, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
@@ -119,14 +119,29 @@ export async function run(ctx: Ctx) {
       tg.addBuilding({ id: 'tb', type: 'bridge_ew', x: 2, z: 2, w: 4, h: 2, completeAt: 0 });
       check(tg.walkableTile(3, 2) && tg.stepOk(2, 2, 3, 2) && tg.stepOk(4, 2, 5, 2) && !tg.walkableTile(3, 4), 'a bridge makes its water walkable (only there)');
     }
-    type BT = 'bridge_ns' | 'bridge_ew' | 'bridge_ns_long' | 'bridge_ew_long';
+    // A footbridge: 1 wide, 3 long, over a 1-tile stream.
+    {
+      const n = 8, tiles = new Uint8Array(n * n).fill(Tile.Ground);
+      for (let z = 0; z < n; z++) tiles[z * n + 3] = Tile.River;
+      for (let x = 0; x < n; x++) tiles[6 * n + x] = Tile.River;
+      const tg = new Grid(n, tiles);
+      check(placeError(tg, 'footbridge_ew', 2, 2) === null && placeError(tg, 'footbridge_ns', 2, 2) !== null && placeError(tg, 'footbridge_ew', 1, 2) !== null
+        && placeError(tg, 'footbridge_ns', 1, 5) === null && placeError(tg, 'footbridge_ew', 1, 5) !== null && placeError(tg, 'bridge_ew', 2, 2) !== null,
+        'footbridge placement rules (one tile of water, either direction)');
+      tg.addBuilding({ id: 'fb', type: 'footbridge_ew', x: 2, z: 2, w: 3, h: 1, completeAt: 0 });
+      check(tg.walkableTile(3, 2) && tg.canMove(2.5, 2.5, 3.5, 2.5) && tg.canMove(3.5, 2.5, 4.5, 2.5) && !tg.walkableTile(3, 1) && !tg.walkableTile(3, 3),
+        'a footbridge makes just its one water tile walkable');
+    }
+    type BT = 'bridge_ns' | 'bridge_ew' | 'bridge_ns_long' | 'bridge_ew_long' | 'footbridge_ns' | 'footbridge_ew';
     let bridged: { type: BT; x: number; z: number } | null = null;
     const cands: { type: BT; x: number; z: number }[] = [];
-    for (const type of ['bridge_ns', 'bridge_ew', 'bridge_ns_long', 'bridge_ew_long'] as const)
+    for (const type of ['bridge_ns', 'bridge_ew', 'bridge_ns_long', 'bridge_ew_long', 'footbridge_ns', 'footbridge_ew'] as const)
       for (let z = 1; z < g.size - 5; z++) for (let x = 1; x < g.size - 5; x++) if (!placeError(g, type, x, z)) cands.push({ type, x, z });
-    cands.sort((p, q) => Math.hypot(p.x - A.x, p.z - A.z) - Math.hypot(q.x - A.x, q.z - A.z));
+    // Footbridges first where the river is narrow enough (the wide bridges' rules are covered above).
+    const foot = (c: { type: BT }) => (c.type.startsWith('footbridge') ? 0 : 1);
+    cands.sort((p, q) => foot(p) - foot(q) || Math.hypot(p.x - A.x, p.z - A.z) - Math.hypot(q.x - A.x, q.z - A.z));
     for (const c of cands.slice(0, 25)) {
-      const [sx, sz] = c.type.startsWith('bridge_ns') ? [c.x, c.z - 1] : [c.x - 1, c.z];
+      const [sx, sz] = bridgeRunsNS(c.type) ? [c.x, c.z - 1] : [c.x - 1, c.z];
       if (!(await A.walkTo(sx, sz, false))) continue;
       const r = await A.act({ k: 'build', type: c.type, x: c.x, z: c.z });
       if (r.ok) { bridged = c; break; }
@@ -134,8 +149,8 @@ export async function run(ctx: Ctx) {
     if (!cands.length) console.log('  (no free bridge spot on this island’s river – trees or uneven banks)');
     else check(!!bridged, `built a bridge over the river ${bridged ? `(${bridged.type})` : `(${cands.length} spots)`}`);
     if (bridged) {
-      const len = bridged.type.endsWith('long') ? 5 : 4;
-      const [ex, ez] = bridged.type.startsWith('bridge_ns') ? [bridged.x, bridged.z + len] : [bridged.x + len, bridged.z];
+      const len = BUILDINGS[bridged.type][bridgeRunsNS(bridged.type) ? 'h' : 'w'];
+      const [ex, ez] = bridgeRunsNS(bridged.type) ? [bridged.x, bridged.z + len] : [bridged.x + len, bridged.z];
       const corr0 = A.inbox.filter((m) => m.t === 'corr').length;
       const walked = await A.walkTo(ex, ez, false);
       await sleep(300);

@@ -1,7 +1,7 @@
 // Buildings: tents, cabins, shops, the town hall, bridges, docks… built from primitives.
 
 import * as THREE from 'three';
-import { type Building, buildingLevel, BUILDINGS, hashString, houseLevel, tiersOf } from '@hearthwood/shared';
+import { type Building, bridgeRunsNS, buildingLevel, BUILDINGS, hashString, houseLevel, tiersOf } from '@hearthwood/shared';
 import { kitModel } from '../assets/kit.ts';
 import { gltfHouse, gltfVillagerHouse, type SharedMat, villagerHouseStyle } from '../houseAssets.ts';
 import { bend } from '../bend.ts';
@@ -53,20 +53,29 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
     case 'bridge_ns':
     case 'bridge_ew':
     case 'bridge_ns_long':
-    case 'bridge_ew_long': {
+    case 'bridge_ew_long':
+    case 'footbridge_ns':
+    case 'footbridge_ew': {
       // Deck running along the long axis, planks across it, posts and rails on both sides.
-      const along = b.type.startsWith('bridge_ns');
+      // The narrow footbridge keeps the whole tile for walking: its rails stand at the very
+      // edge, with thinner posts and handrail.
+      const along = bridgeRunsNS(b.type);
       const len = along ? b.h : b.w, wid = along ? b.w : b.h;
+      const narrow = wid === 1;
       const deck = new THREE.Group();
       const deckY = 0.16;
       for (let i = 0; i < len * 4; i++) {
         const o = -len / 2 + 0.125 + i * 0.25;
-        deck.add(part('box', i % 3 === 0 ? '#9c7a52' : i % 3 === 1 ? '#8b6b47' : '#a8875c', wid - 0.1, 0.07, 0.23, 0, deckY - 0.035, o));
+        const p = part('box', i % 3 === 0 ? '#9c7a52' : i % 3 === 1 ? '#8b6b47' : '#a8875c', narrow ? wid - 0.04 : wid - 0.1, 0.07, 0.23, 0, deckY - 0.035, o);
+        if (narrow && i % 4 === 2) p.scale.x = 0.94; // a few shorter planks: hand-laid
+        deck.add(p);
       }
+      const railX = narrow ? wid / 2 - 0.03 : wid / 2 - 0.1;
+      const post = narrow ? 0.07 : 0.09;
       for (const s of [-1, 1]) {
         deck.add(part('box', '#6d4c2f', 0.1, 0.08, len - 0.2, s * (wid / 2 - 0.12), deckY - 0.1, 0));
-        for (let i = 0; i <= len; i++) deck.add(part('box', '#7a5230', 0.09, 0.55, 0.09, s * (wid / 2 - 0.1), deckY + 0.27, -len / 2 + 0.15 + i * ((len - 0.3) / len)));
-        deck.add(part('box', '#a0703f', 0.08, 0.07, len - 0.2, s * (wid / 2 - 0.1), deckY + 0.52, 0));
+        for (let i = 0; i <= len; i++) deck.add(part('box', '#7a5230', post, 0.55, post, s * railX, deckY + 0.27, -len / 2 + 0.15 + i * ((len - 0.3) / len)));
+        deck.add(part('box', '#a0703f', narrow ? 0.06 : 0.08, narrow ? 0.06 : 0.07, len - 0.2, s * railX, deckY + 0.52, 0));
       }
       if (!along) deck.rotation.y = Math.PI / 2;
       g.add(deck);

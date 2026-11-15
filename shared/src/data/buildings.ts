@@ -19,6 +19,8 @@ export type BuildingType =
   | 'bridge_ew'
   | 'bridge_ns_long'
   | 'bridge_ew_long'
+  | 'footbridge_ns'
+  | 'footbridge_ew'
   // Interior fixtures (not buildable)
   | 'exit'
   | 'bed'
@@ -137,6 +139,16 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     type: 'bridge_ew_long', name: 'Long bridge (east–west)', icon: '🌉', w: 5, h: 2,
     cost: { wood: 40, stone: 15 }, requires: ['workbench'], minDay: 1, buildMinutes: 0, max: 8,
     color: '#a0703f', roof: '#7a5230', description: 'Crosses three tiles of water running north–south.',
+  },
+  footbridge_ns: {
+    type: 'footbridge_ns', name: 'Footbridge (north–south)', icon: '🌉', w: 1, h: 3,
+    cost: { wood: 12, stone: 4 }, requires: ['workbench'], minDay: 1, buildMinutes: 0, max: 12,
+    color: '#a0703f', roof: '#7a5230', description: 'A narrow plank bridge over a one-tile stream running east–west. Both ends need flat ground.',
+  },
+  footbridge_ew: {
+    type: 'footbridge_ew', name: 'Footbridge (east–west)', icon: '🌉', w: 3, h: 1,
+    cost: { wood: 12, stone: 4 }, requires: ['workbench'], minDay: 1, buildMinutes: 0, max: 12,
+    color: '#a0703f', roof: '#7a5230', description: 'A narrow plank bridge over a one-tile stream running north–south. Both ends need flat ground.',
   },
   dock: {
     type: 'dock', name: 'Dock', icon: '⚓', w: 2, h: 3, cost: {}, requires: [], minDay: 1, buildMinutes: 0, max: 1,

@@ -115,6 +115,11 @@ export function isFlatDecor(item: string) {
 }
 
 export function isBridge(type: string) {
-  return type.startsWith('bridge_');
+  return type.startsWith('bridge_') || type.startsWith('footbridge_');
+}
+
+/** Does this bridge run north–south (along z)? Otherwise east–west. */
+export function bridgeRunsNS(type: string) {
+  return /_ns(_|$)/.test(type);
 }
 

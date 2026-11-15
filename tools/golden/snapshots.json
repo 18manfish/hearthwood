@@ -39,7 +39,7 @@
   "hash": "75a50af1754a9dba8f527ff5"
  },
  "client/models/buildings": {
-  "hash": "2f1cd83777ec851686d6fc2d"
+  "hash": "ef200f803702b29910012568"
  },
  "client/models/furniture": {
   "hash": "1d4707e7e051c4edcfea84c7",
@@ -169,7 +169,7 @@
   "hash": "2827f601e868f24765271378"
  },
  "data/tables": {
-  "hash": "986acdc24234ac5c9664738f"
+  "hash": "004e39137dc0ccd172b9a181"
  },
  "env": {
   "hash": "395739a506212ed51e8f1d94"
@@ -573,13 +573,13 @@
   "hash": "2608b6b30c510f68fb45d8f9"
  },
  "movement/42/placement": {
-  "hash": "c580c23eb4ef754e80c1d06d"
+  "hash": "b74c663321de8166fc31b6ef"
  },
  "movement/7": {
   "hash": "e99367b3f04fdcae47288896"
  },
  "movement/7/placement": {
-  "hash": "0adb053aeabf4c48bfd46758"
+  "hash": "56e2a3607d3c8b5889da5cf0"
  },
  "terraform/42": {
   "hash": "baa6357cf46c5d6595dbdf8d",

@@ -1,6 +1,6 @@
 // Counters inside buildings: town hall services, shops and their stock.
 
-import { type Building, BUILDINGS, type BuildingType, ENTERABLE, buildingLevel, equip, outfitOf, type Outfit, ITEMS, type Look, tiersOf, villagerDef, MYSTERY_TOUR_COST, PERMITS, SHOP_STOCK } from '@hearthwood/shared';
+import { type Building, BUILDINGS, type BuildingType, ENTERABLE, buildingLevel, equip, outfitOf, type Outfit, ITEMS, type Look, tiersOf, villagerDef, MYSTERY_TOUR_COST, PERMITS, SHOP_STOCK, dailyStock, itemTier, msUntilRestock, SHOP_OPEN_HOUR, stockDayKey } from '@hearthwood/shared';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { lookEditor, Preview } from '../../creator.ts';
@@ -97,8 +97,17 @@ export function openBuilding(hud: Hud, bld: Building) {
 const FURNITURE_PACKS: [string, string][] = [['boho_', '🪺 Bohemian collection'], ['cottage_', '🫖 Cottage collection']];
 
 export function shopPanel(hud: Hud, b: HTMLElement, type: BuildingType) {
-  const stock = SHOP_STOCK[type] ?? [];
+  // Today's shelves: a few things from the shop's list, new every morning at opening time.
+  const info = state.room?.shop?.type === type ? state.room.shop : undefined;
+  const tz = state.env?.geo?.tz ?? 'UTC';
+  const now = net.serverNow();
+  const stock = info ? dailyStock(type, info.seed, stockDayKey(now, tz), info.level) : (SHOP_STOCK[type] ?? []);
   b.append(h('p', { class: 'muted' }, `You have 🪙 ${state.coins.toLocaleString()}`));
+  if (info) {
+    const hrs = Math.round(msUntilRestock(now, tz) / 3_600_000);
+    b.append(h('p', { class: 'muted', style: 'margin-top:-6px' },
+      `🗓️ Today’s stock: ${stock.length} of ${(SHOP_STOCK[type] ?? []).length} things. New stock every morning at ${SHOP_OPEN_HOUR}:00 (${hrs <= 1 ? 'in under an hour' : `in about ${hrs} h`}).`));
+  }
   // Furniture comes in collections (by id prefix); other shops are one plain grid.
   const groups = new Map<string, string[]>();
   for (const id of stock) {
@@ -110,7 +119,10 @@ export function shopPanel(hud: Hud, b: HTMLElement, type: BuildingType) {
     const grid = h('div', { class: 'grid' });
     for (const id of ids) {
       const it = ITEMS[id];
-      grid.append(h('div', { class: 'tile' }, h('span', { class: 'ico' }, it.icon), h('div', { class: 'nm' }, it.name), h('div', { class: 'muted' }, `🪙 ${it.buy}${have(id) ? ` · own ${have(id)}` : ''}`),
+      const tier = itemTier(id);
+      grid.append(h('div', { class: `tile${tier > 1 ? ` tier-${tier}` : ''}` }, h('span', { class: 'ico' }, it.icon), h('div', { class: 'nm' }, it.name),
+        tier > 1 ? h('div', { class: `tier-badge t${tier}` }, tier === 3 ? '✨ Rare' : '⭐ Uncommon') : null,
+        h('div', { class: 'muted' }, `🪙 ${it.buy}${have(id) ? ` · own ${have(id)}` : ''}`),
         h('div', { class: 'row' },
           h('button', { class: 'btn small', disabled: state.coins < (it.buy ?? 0), onclick: () => hud.act({ k: 'buy', shop: type, item: id, n: 1 }) }, 'Buy'),
           it.wear && type === 'clothing_shop' ? h('button', { class: 'btn ghost small', 'data-try': id }, 'Try on') : '')));

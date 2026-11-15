@@ -1,7 +1,7 @@
 // Crafting, permits, shopping and selling, clothes and hairstyles.
 
 import {
-  BUILDINGS, equip, HAIR_STYLES, outfitOf, type Outfit, type WearSlot, buildingLevel, ITEMS, tiersOf, PERMIT_BY_ID, RECIPES, SHOP_STOCK,
+  BUILDINGS, equip, HAIR_STYLES, outfitOf, type Outfit, type WearSlot, buildingLevel, ITEMS, tiersOf, PERMIT_BY_ID, RECIPES, SHOP_STOCK, dailyStock, stockDayKey, SHOP_OPEN_HOUR,
 } from '@hearthwood/shared';
 import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
@@ -91,6 +91,10 @@ export const economyHandlers: Pick<Handlers, 'craft' | 'permit' | 'upgrade' | 'b
     if (!stock || !stock.includes(a.item)) return fail('Not sold here.');
     if (ctx.room.kind !== 'island' && ctx.room.kind !== 'interior') return fail('No shop here.');
     if (!nearCompleted(ctx, [a.shop])) return fail(`Go to the counter inside the ${BUILDINGS[a.shop].name}.`);
+    // Only what's on the shelves today (it changes every morning when the shop opens).
+    const info = ctx.room.shopType() === a.shop ? ctx.room.shopInfo?.() : null;
+    if (info && !dailyStock(a.shop, info.seed, stockDayKey(ctx.now, ctx.room.geo.tz), info.level).includes(a.item))
+      return fail(`${ITEMS[a.item].name} isn’t in stock today – new stock arrives every morning at ${SHOP_OPEN_HOUR}:00.`);
     const price = ITEMS[a.item].buy!;
     if (!inv.canAdd(ctx.p, a.item, a.n)) return fail('You can’t carry that many.');
     if (ctx.p.coins < price * a.n) return fail('Not enough coins.');

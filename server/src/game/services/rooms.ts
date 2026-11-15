@@ -2,7 +2,7 @@
 // and reloading islands, villagers coming home, and old-save upgrades.
 
 import {
-  BIOMES, type Building, BUILDINGS, hashString, houseLevel, interiorSpecFor, LEGACY_ISLAND_SIZE, Rng, sharedLocation, villagerDef,
+  buildingLevel, BIOMES, type Building, BUILDINGS, hashString, houseLevel, interiorSpecFor, LEGACY_ISLAND_SIZE, Rng, sharedLocation, villagerDef,
 } from '@hearthwood/shared';
 import { Room } from '../Room.ts';
 import { Session } from '../Session.ts';
@@ -93,6 +93,11 @@ export function interiorRoom(game: Game, parent: Room, b: Building): Room | null
     ownerId: parent.ownerId, ownerName: parent.ownerName, geo: parent.geo, seed: parent.seed, record: parent.record,
     interior: { spec, buildingId: b.id, parentId: parent.id, houseOwnerId },
   });
+  // Shops: the stock is the island's, and grows with the shop building's tier.
+  room.shopInfo = () => {
+    const pb = parent.buildings.get(b.id);
+    return pb ? { seed: parent.id, level: buildingLevel(pb, Date.now()) } : null;
+  };
   game.rooms.set(id, room);
   syncVillagerAtHome(game, parent, room, b);
   return room;

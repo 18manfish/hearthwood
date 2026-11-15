@@ -17,6 +17,7 @@ export * from './data/paths.ts';
 export * from './data/birds.ts';
 export * from './data/beach.ts';
 export * from './data/permits.ts';
+export * from './data/stock.ts';
 export * from './data/hotbar.ts';
 export * from './data/dialogue.ts';
 export * from './gamedata.ts';

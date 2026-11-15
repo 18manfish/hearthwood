@@ -241,6 +241,8 @@ export interface RoomView {
   canDecorate: boolean;
   /** Your standing here. */
   role: 'owner' | 'resident' | 'builder' | 'visitor';
+  /** Inside a shop with a daily stock: which shop, the island that seeds the stock, the shop's tier. */
+  shop?: { type: BuildingType; seed: string; level: number };
   /** Notes pinned to this location's billboard (if it has one), newest first. */
   board?: BoardPost[];
 }

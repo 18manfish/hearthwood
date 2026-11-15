@@ -5,7 +5,7 @@
 import {
   TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, applyTerrainAndWater, classifyWater, type TerrainChange, Rng, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
   isTransient, type FishShadow,
-  outfitOf, villagerDefaultOutfit,
+  outfitOf, villagerDefaultOutfit, SHOP_STOCK, type BuildingType,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
@@ -76,6 +76,8 @@ export class Room {
   /** Callbacks the game layer hooks into. */
   onBuildingComplete?: (room: Room, b: Building) => void;
   onHouseUpgraded?: (room: Room, b: Building) => void;
+  /** Inside a shop: the island it belongs to (seeds the daily stock) and the shop building's tier. */
+  shopInfo?: () => { seed: string; level: number } | null;
 
   constructor(o: RoomOptions) {
     this.id = o.id;
@@ -229,7 +231,21 @@ export class Room {
       canDecorate: this.canDecorate(pid),
       role: this.roleOf(pid),
       board: this.board ?? undefined,
+      shop: this.shopView(),
     };
+  }
+
+  /** The shop served at this interior's counter, if it has a rotating stock. */
+  shopType(): BuildingType | undefined {
+    if (!this.interior) return undefined;
+    for (const b of this.buildings.values()) if (b.type === 'counter' && b.role && SHOP_STOCK[b.role]) return b.role;
+    return undefined;
+  }
+
+  shopView(): RoomView['shop'] {
+    const type = this.shopType();
+    const info = type ? this.shopInfo?.() : null;
+    return type && info ? { type, ...info } : undefined;
   }
 
   playerView(s: Session) {

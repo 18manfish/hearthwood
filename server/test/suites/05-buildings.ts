@@ -1,6 +1,6 @@
 import {
   Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
-  type RoomView, type ServerMessage, type WorldObject, type BuildingType,
+  type RoomView, type ServerMessage, type WorldObject, type BuildingType, dailyStock, stockDayKey, stockSlots, SHOP_STOCK,
 } from '@hearthwood/shared';
 import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
 
@@ -105,13 +105,25 @@ export async function run(ctx: Ctx) {
   if (store) {
     const outside = await A.act({ k: 'buy', shop: 'tool_store', item: 'sapling', n: 1 });
     check(!outside.ok, 'shops no longer serve you from outside');
-    const sIn2 = await enterAndBack(A, store);
+    await A.walkTo(store.x + Math.floor(store.w / 2), store.z + store.h, false);
+    A.send({ t: 'travel', to: { kind: 'enter', id: store.id } });
+    const inMsg = await A.wait('room', (m) => m.room.kind === 'interior').catch(() => null);
+    const sIn2 = inMsg?.room ?? null;
     const ctr = sIn2?.buildings.find((b) => b.type === 'counter');
     check(sIn2?.interior === 'shop' && ctr?.role === 'tool_store', 'tool store interior has a shop counter');
-    if (ctr) {
+    // Daily stock: a few things from the full list, the same for everyone on the island today.
+    const shop = sIn2?.shop;
+    const today = shop ? dailyStock('tool_store', shop.seed, stockDayKey(Date.now(), inMsg!.env.geo.tz), shop.level) : [];
+    check(!!shop && shop.seed === islandId && today.length === stockSlots('tool_store', 1) && today.length < SHOP_STOCK.tool_store!.length,
+      `the tool store puts out ${today.length} of ${SHOP_STOCK.tool_store!.length} things today`);
+    check(JSON.stringify(dailyStock('tool_store', islandId, '2030-01-01', 1)) === JSON.stringify(dailyStock('tool_store', islandId, '2030-01-01', 1)), 'the daily stock is the same all day');
+    if (ctr && today.length) {
       await A.walkTo(ctr.x, ctr.z + 1, false);
-      const bought = await A.act({ k: 'buy', shop: 'tool_store', item: 'sapling', n: 1 });
-      check(bought.ok, `bought a sapling at the counter ${bought.err ?? ''}`);
+      const bought = await A.act({ k: 'buy', shop: 'tool_store', item: today[0], n: 1 });
+      check(bought.ok, `bought today’s ${today[0]} at the counter ${bought.err ?? ''}`);
+      const missing = SHOP_STOCK.tool_store!.find((id) => !today.includes(id))!;
+      const refused = await A.act({ k: 'buy', shop: 'tool_store', item: missing, n: 1 });
+      check(!refused.ok && /in stock today/.test(refused.err ?? ''), `${missing} isn’t sold today (${refused.err ?? 'sold!'})`);
     }
     await exitTo(A);
 

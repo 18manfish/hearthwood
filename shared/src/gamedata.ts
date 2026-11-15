@@ -121,6 +121,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'garment', type: 'enum', options: ALL_GARMENTS, help: 'Clothing cut (default: same as id)' },
       { key: 'color', type: 'color', help: 'Hat colour' },
       { key: 'tool', type: 'json', help: '{"kind":"axe|shovel|rod|net","power":1}' },
+      { key: 'tier', type: 'number', help: 'Shop rarity: 1 common (default), 2 uncommon, 3 rare – how likely it is to be in a shop’s stock on a given day' },
     ],
     blank: () => ({ id: 'new_item', name: 'New item', icon: '📦', category: 'furniture', tags: ['furniture'], sell: 50, buy: 250, placeable: true, model: 'crate' }),
   },
@@ -170,7 +171,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
   },
   shopStock: {
     label: 'Shop stock', icon: '🏪', shape: 'map', key: 'shop', canAdd: false,
-    fields: [{ key: 'items', type: 'json', help: 'Item ids sold here (price = the item’s buy price)' }],
+    fields: [{ key: 'items', type: 'json', help: 'Everything this shop can sell (price = the item’s buy price). Each morning it puts out a few of these, picked by item tier.' }],
   },
   buildings: {
     label: 'Buildings', icon: '🏠', shape: 'map', key: 'type', canAdd: false,
@@ -272,6 +273,7 @@ export function validateGameData(d: GameData): string[] {
     if (!ID_RE.test(i.id)) err(`items: bad id "${i.id}"`);
     if ((i.id.startsWith('fish_') || i.id.startsWith('bird_')) && !DEFAULT_GAME_DATA.items.some((x) => x.id === i.id)) err(`items: "${i.id}" – fish_ and bird_ ids belong in the Fish / Birds tables`);
     if (!isStr(i.name, 60) || !isStr(i.icon, 16)) err(`items: "${i.id}" needs a name and an icon`);
+    if (i.tier !== undefined && ![1, 2, 3].includes(i.tier)) err(`items: "${i.id}" tier must be 1, 2 or 3`);
     if (!(ITEM_CATEGORIES as string[]).includes(i.category)) err(`items: "${i.id}" has an unknown category`);
     if (!isArr(i.tags) || i.tags.some((t) => !(ITEM_TAGS as string[]).includes(t))) err(`items: "${i.id}" has unknown tags`);
     if (!isNum(i.sell)) err(`items: "${i.id}" sell price must be ≥ 0`);

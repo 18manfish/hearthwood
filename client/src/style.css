@@ -148,6 +148,10 @@ img.emo { width: 20px; height: 20px; vertical-align: -4px; display: inline-block
 .ico.pix { display: inline-flex; width: 1.25em; height: 1.25em; align-items: center; justify-content: center; line-height: 1; }
 .ico.pix img { width: 32px; height: 32px; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
 .tile .nm { font-weight: 800; }
+.tile .tier-badge { align-self: flex-start; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+.tile .tier-badge.t2 { background: #e3f1fb; color: #2d6f9e; }
+.tile .tier-badge.t3 { background: #fff1c9; color: #9a6a00; }
+.tile.tier-3 { border-color: #f1d27a; }
 .tile.locked { opacity: 0.6; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .list .item { background: white; border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; justify-content: space-between; }

@@ -4,8 +4,9 @@
 import * as THREE from 'three';
 import { bend } from '../../bend.ts';
 import { buildFoliage, disposeFoliage } from '../../foliage.ts';
-import { buildPaths, disposePaths, setPathSnow } from '../../paths.ts';
-import { buildDocks, buildTerrainMesh, waterColor } from '../../terrain.ts';
+import { buildPaths, disposePaths } from '../../paths.ts';
+import { buildPuddles, disposePuddles } from '../../puddles.ts';
+import { buildDocks, buildTerrainMesh, invalidateTerrainCache, waterColor } from '../../terrain.ts';
 import { buildDockModels, buildStairs } from '../../tileAssets.ts';
 import { buildWater, seaColor } from '../../water.ts';
 import { currentVisual } from '../scene/environment.ts';
@@ -18,7 +19,8 @@ export function buildTerrain(self: World) {
     self.world.remove(self.terrain);
     self.terrain.geometry.dispose();
   }
-  const m = buildTerrainMesh(self.grid, { biome: self.room.biome, ...currentVisual(self), interior: self.room.interior, theme: self.room.theme });
+  const v = currentVisual(self);
+  const m = buildTerrainMesh(self.grid, { biome: self.room.biome, season: v.season, vs: v.vs, snowy: v.snowy, interior: self.room.interior, theme: self.room.theme }, v.look);
   m.add(buildDockModels(self.grid) ?? buildDocks(self.grid)); // boardwalks & piers ride along with the terrain mesh
   m.add(buildStairs(self.grid));
   self.waterFx = self.room.kind !== 'interior' ? buildWater(self.grid, waterColor(self.room.biome)) : null; // depth, rivers, waterfalls, surf
@@ -33,6 +35,7 @@ export function scheduleTerrain(self: World) {
   if (self.terrainTimer) clearTimeout(self.terrainTimer);
   self.terrainTimer = setTimeout(() => {
     self.terrainTimer = null;
+    if (self.grid) invalidateTerrainCache(self.grid);
     buildTerrain(self);
     rebuildPaths(self);
     rebuildFoliage(self);
@@ -49,7 +52,7 @@ export function rebuildPaths(self: World) {
   }
   self.pathLayer = buildPaths(self.grid);
   self.world.add(self.pathLayer);
-  setPathSnow(currentVisual(self).snowy);
+  rebuildPuddles(self); // puddles keep off paths
 }
 
 export function schedulePaths(self: World) {
@@ -68,9 +71,21 @@ export function rebuildFoliage(self: World) {
     self.foliage = null;
   }
   if (self.room.kind === 'interior') return;
-  const v = currentVisual(self);
-  self.foliage = buildFoliage(self.grid, self.room.biome, v.season, v.vs, v.snowy, self.objects.values());
+  self.foliage = buildFoliage(self.grid, self.room.biome, currentVisual(self).look, self.objects.values());
   self.world.add(self.foliage);
+  rebuildPuddles(self); // puddles keep clear of what grows and stands on the ground
+}
+
+/** Rain puddles on the open ground (see puddles.ts); they fill and dry with the weather. */
+export function rebuildPuddles(self: World) {
+  if (self.puddles) {
+    self.world.remove(self.puddles);
+    disposePuddles(self.puddles);
+    self.puddles = null;
+  }
+  if (!self.grid || !self.room || self.room.kind === 'interior') return;
+  self.puddles = buildPuddles(self.grid, self.room.id);
+  if (self.puddles) self.world.add(self.puddles);
 }
 
 /** Debounced: many world changes can arrive in a burst. */

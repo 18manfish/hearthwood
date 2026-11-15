@@ -52,6 +52,9 @@ export const debug = {
   timeOffsetH: 0, // shift the sun (visual only)
   weather: null as Weather | null, // visual override
   season: null as Season | null, // visual override
+  seasonBlend: null as number | null, // preview the change into the next season, 0 … 1 (visual only)
+  freshSnow: null as number | null, // override snow from recent snowfall, 0 … 1
+  wet: null as number | null, // override how wet the ground is (puddles), 0 … 1
   shadows: true,
   labels: true,
   grid: false,

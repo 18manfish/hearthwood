@@ -35,6 +35,9 @@ export function debugPanel(hud: Hud) {
     const inp = h('input', { type: 'range', min, max, step, value: String(get()), style: 'flex:1', oninput: (e: Event) => { const v = Number((e.target as HTMLInputElement).value); set(v); out.textContent = fmt(v); } });
     return h('div', { class: 'row' }, h('b', { style: 'width:150px' }, label), inp, out);
   };
+  /** 0 … 1, with a notch below 0 meaning "not overridden" (null). */
+  const optSlider = (label: string, get: () => number | null, set: (v: number | null) => void, fmt: (v: number) => string) =>
+    slider(label, -0.05, 1, 0.01, () => get() ?? -0.05, (v) => set(v < 0 ? null : v), (v) => (v < 0 ? '(real)' : fmt(v)));
   const toggle = (label: string, get: () => boolean, set: (v: boolean) => void) =>
     h('label', { class: 'row', style: 'cursor:pointer' }, h('input', { type: 'checkbox', checked: get(), onchange: (e: Event) => set((e.target as HTMLInputElement).checked) }), label);
   const weathers: Weather[] = ['clear', 'cloudy', 'rain', 'storm', 'snow', 'fog', 'sandstorm', 'heatwave'];
@@ -63,6 +66,10 @@ export function debugPanel(hud: Hud) {
     h('h3', {}, 'Season'),
     seasonRow,
     h('h3', {}, 'Client (visual only)'),
+    // Ground: slide to the far left for the real value.
+    optSlider('Change to next season', () => debug.seasonBlend, (v) => (debug.seasonBlend = v), (v) => `${Math.round(v * 100)}% (≈ day ${(v * 6).toFixed(1)} of 6)`),
+    optSlider('Fresh snow', () => debug.freshSnow, (v) => (debug.freshSnow = v), (v) => `${Math.round(v * 100)}%`),
+    optSlider('Wet ground (puddles)', () => debug.wet, (v) => (debug.wet = v), (v) => `${Math.round(v * 100)}%`),
     slider('World bend', 0, 0.03, 0.0005, () => debug.bend, (v) => (debug.bend = v)),
     slider('Time of day shift', -12, 12, 0.25, () => debug.timeOffsetH, (v) => (debug.timeOffsetH = v), (v) => `${v >= 0 ? '+' : ''}${v}h`),
     h('div', { class: 'row' }, h('b', { style: 'width:150px' }, 'Weather preview'), visWeather),

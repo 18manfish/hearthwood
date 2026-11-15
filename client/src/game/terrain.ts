@@ -7,13 +7,14 @@
 //   terrain/docks.ts     plank docks (no dock models)
 
 import * as THREE from 'three';
-import { Tile, hashString, type BiomeId, type Grid } from '@hearthwood/shared';
+import { Tile, hashString, visualSeason, type BiomeId, type Grid, type Season } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
 import { hasTileset } from './tileAssets.ts';
 import { createTerrainCtx, type TerrainOptions } from './terrain/context.ts';
 import { makeCoastTile } from './terrain/coast.ts';
 import { makeEdgeFaces } from './terrain/fallback.ts';
 import { makeTiledTile } from './terrain/tiles.ts';
+import { isUniform, seasonAt, snowAt, type GroundLook } from './groundLook.ts';
 
 export type { TerrainOptions } from './terrain/context.ts';
 export { buildDocks } from './terrain/docks.ts';
@@ -56,9 +57,58 @@ export function buildTerrainGeometry(g0: Grid, o: TerrainOptions): { pos: number
   return { pos: out.pos, col: out.col };
 }
 
+// ── Season changes and snow ────────────────────────────────────────────────
+// The geometry doesn't depend on the season, only the colours do. So for a ground
+// half-way between two looks, build it in each (old season, new season, snowy) and
+// blend the colours vertex by vertex with the patch fields from groundLook.ts.
+// Builds are cached per grid until the terrain changes, so snow settling or melting
+// only re-blends colours.
+
+type Geo = { pos: number[]; col: number[] };
+const cache = new WeakMap<Grid, Map<string, Geo>>();
+
+/** The terrain changed shape: forget the cached builds for this grid. */
+export function invalidateTerrainCache(g0: Grid) {
+  cache.delete(g0);
+}
+
+function variant(g0: Grid, o: TerrainOptions, season: Season, snowy: boolean): Geo {
+  let m = cache.get(g0);
+  if (!m) cache.set(g0, (m = new Map()));
+  const key = `${o.biome}|${o.interior ?? ''}|${o.pad ?? ''}|${hasTileset()}|${season}|${snowy}`;
+  let v = m.get(key);
+  if (!v) m.set(key, (v = buildTerrainGeometry(g0, { ...o, season, vs: visualSeason(season), snowy })));
+  return v;
+}
+
+function blendedGeometry(g0: Grid, o: TerrainOptions, look: GroundLook): Geo {
+  if (o.interior) return buildTerrainGeometry(g0, o);
+  const steady = look.t >= 1 ? look.to : look.from;
+  if (isUniform(look)) return variant(g0, o, steady, look.snowFrom === 1 && look.snowTo === 1);
+  const a = variant(g0, o, look.from, false);
+  const b = look.from !== look.to && look.t > 0 ? variant(g0, o, look.to, false) : null;
+  const anySnow = look.snowFrom > 0 || look.snowTo > 0 || look.fresh > 0;
+  const s = anySnow ? variant(g0, o, look.to, true) : null;
+  if ((b && b.pos.length !== a.pos.length) || (s && s.pos.length !== a.pos.length)) return a; // shouldn't happen: colours only
+  const col = new Array<number>(a.col.length);
+  const { pos } = a;
+  for (let i = 0; i < pos.length; i += 3) {
+    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+    const w = b ? seasonAt(look, x, z) : 0;
+    const sn = s ? snowAt(look, x, y, z) : 0;
+    for (let k = 0; k < 3; k++) {
+      let c = a.col[i + k];
+      if (b) c += (b.col[i + k] - c) * w;
+      if (s) c += (s.col[i + k] - c) * sn;
+      col[i + k] = c;
+    }
+  }
+  return { pos, col };
+}
+
 /** One merged, vertex-coloured mesh: tile tops, cliff faces and ramps. */
-export function buildTerrainMesh(g0: Grid, o: TerrainOptions): THREE.Mesh {
-  const { pos, col } = buildTerrainGeometry(g0, o);
+export function buildTerrainMesh(g0: Grid, o: TerrainOptions, look?: GroundLook): THREE.Mesh {
+  const { pos, col } = look ? blendedGeometry(g0, o, look) : buildTerrainGeometry(g0, o);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));

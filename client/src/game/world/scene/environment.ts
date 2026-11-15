@@ -64,13 +64,14 @@ export function updateEnvironment(self: World, dt: number, t: number) {
 
   const w = env.weather;
   updateSeaState(w, env.intensity, dt);
-  const overcast = { clear: 0, cloudy: 0.45, rain: 0.6, storm: 0.75, snow: 0.5, fog: 0.5, sandstorm: 0.55, heatwave: 0 }[w] * env.intensity;
+  const overcast = { clear: 0, cloudy: 0.86, rain: 0.9, storm: 0.95, snow: 0.86, fog: 0.5, sandstorm: 0.55, heatwave: 0 }[w] * (0.4 + 0.6 * env.intensity);
   const twilight = Math.max(0, 1 - Math.abs(sp.elevation) / 8);
 
   const dayCol = new THREE.Color(w === 'heatwave' ? '#ffe2a8' : '#8fd3f4');
   const nightCol = new THREE.Color('#0d1836');
   const duskCol = new THREE.Color('#f59e6b');
-  const grey = new THREE.Color(w === 'sandstorm' ? '#d8b77a' : '#aab4bd');
+  // A clouded-over sky is grey and dull; rain and storms darkest, snow the palest of them.
+  const grey = new THREE.Color(w === 'sandstorm' ? '#d8b77a' : w === 'storm' ? '#575d63' : w === 'rain' ? '#6f767c' : w === 'snow' ? '#8b9399' : w === 'cloudy' ? '#7e868d' : '#aab4bd');
   const sky = nightCol.clone().lerp(dayCol, d);
   sky.lerp(duskCol, twilight * 0.55 * (1 - overcast));
   sky.lerp(grey.clone().multiplyScalar(0.25 + d * 0.75), overcast);
@@ -166,9 +167,9 @@ function lightning(self: World, dt: number, weather: string, intensity: number) 
 }
 
 /** How much of the sky the clouds cover, by weather (scaled by its intensity). */
-const CLOUD_COVER: Partial<Record<Weather, number>> = { cloudy: 0.6, rain: 0.92, storm: 1, snow: 0.85 };
+const CLOUD_COVER: Partial<Record<Weather, number>> = { cloudy: 0.72, rain: 1, storm: 1, snow: 0.9 };
 /** How dark the clouds are (1 = white fluff) and how fast they drift. */
-const CLOUD_SHADE: Partial<Record<Weather, number>> = { cloudy: 0.95, rain: 0.68, storm: 0.48, snow: 0.9 };
+const CLOUD_SHADE: Partial<Record<Weather, number>> = { cloudy: 0.66, rain: 0.38, storm: 0.22, snow: 0.7 };
 const CLOUD_WIND: Partial<Record<Weather, number>> = { cloudy: 0.8, rain: 1.6, storm: 3.4, snow: 0.9 };
 const CLOUD_DAY = new THREE.Color('#f6f8fb'), CLOUD_NIGHT = new THREE.Color('#2c3447'), CLOUD_DUSK = new THREE.Color('#f2a57c');
 
@@ -179,7 +180,7 @@ const CLOUD_DAY = new THREE.Color('#f6f8fb'), CLOUD_NIGHT = new THREE.Color('#2c
  */
 function updateClouds(self: World, dt: number, w: Weather, intensity: number, d: number, twilight: number) {
   const g = self.clouds;
-  const target = (CLOUD_COVER[w] ?? 0) * (0.6 + 0.4 * intensity);
+  const target = (CLOUD_COVER[w] ?? 0) * (0.75 + 0.25 * intensity);
   const cover = ((g.userData.cover as number | undefined) ?? target) + (target - ((g.userData.cover as number | undefined) ?? target)) * Math.min(1, dt * 0.35);
   g.userData.cover = cover;
   g.visible = cover > 0.01;
@@ -188,14 +189,14 @@ function updateClouds(self: World, dt: number, w: Weather, intensity: number, d:
   if (CLOUD_WIND[w] !== undefined) g.userData.wind = CLOUD_WIND[w];
   const shade = (g.userData.shade as number | undefined) ?? 0.9;
   const wind = (g.userData.wind as number | undefined) ?? 0.8;
-  const col = CLOUD_NIGHT.clone().lerp(CLOUD_DAY, d).multiplyScalar(0.55 + 0.45 * shade);
+  const col = CLOUD_NIGHT.clone().lerp(CLOUD_DAY, d).multiplyScalar(0.35 + 0.65 * shade); // rain clouds: dark grey
   col.lerp(CLOUD_DUSK, twilight * 0.45 * shade);
   if (self.flash > 0) col.lerp(new THREE.Color('#ffffff'), Math.min(1, self.flash * 1.2));
   for (const c of g.children) {
     const m = c as THREE.Mesh;
     const mm = m.material as THREE.MeshBasicMaterial;
     if (m.userData.bank) {
-      mm.opacity = Math.max(0, Math.min(0.9, (cover - 0.45) * 1.8));
+      mm.opacity = Math.max(0, Math.min(0.95, (cover - 0.4) * 2));
       mm.color.copy(col).multiplyScalar(0.86);
       if (mm.map) mm.map.offset.x = (mm.map.offset.x + wind * dt * 0.0006) % 1;
       continue;

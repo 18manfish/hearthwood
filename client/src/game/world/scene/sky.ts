@@ -182,9 +182,9 @@ export function createClouds(): THREE.Group {
   bank.frustumCulled = false;
   bank.userData.bank = true;
   clouds.add(bank);
-  const N = 30;
+  const N = 48;
   for (let i = 0; i < N; i++) {
-    const w = 46 + Math.random() * 60;
+    const w = 50 + Math.random() * 64;
     const far = Math.random(); // 0 near … 1 far: higher up, smaller, slower
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(w, w * 0.5),

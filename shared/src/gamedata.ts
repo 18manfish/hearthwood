@@ -7,7 +7,7 @@ import { BIRDS, rebuildBirds, type BirdDef } from './data/birds.ts';
 import { ALL_GARMENTS, GARMENTS, WEAR_SLOTS } from './data/clothing.ts';
 import { RECIPES, type RecipeDef } from './data/recipes.ts';
 import { BUILDINGS, SHOP_STOCK, rebuildBuildable, type BuildingDef } from './data/buildings.ts';
-import { VILLAGERS, type VillagerDef } from './data/villagers.ts';
+import { VILLAGER_SLOTS, VILLAGERS, type VillagerDef } from './data/villagers.ts';
 import { PERMITS, rebuildPermits, type PermitDef } from './data/permits.ts';
 import { PATHS, type PathDef } from './data/paths.ts';
 import { BIOME_IDS } from './data/biomes.ts';
@@ -74,7 +74,7 @@ export function applyGameData(d: Partial<GameData>) {
 export interface FieldHint {
   key: string;
   label?: string;
-  type: 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'json' | 'hours' | 'colors' | 'text';
+  type: 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'json' | 'hours' | 'colors' | 'text' | 'outfit';
   /** For 'colors': a label per colour. */
   parts?: readonly string[];
   options?: readonly string[];
@@ -183,8 +183,8 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'minDay', type: 'number', help: 'Island day it unlocks' },
       { key: 'buildMinutes', type: 'number' },
       { key: 'max', type: 'number' },
-      { key: 'color', type: 'color' },
-      { key: 'roof', type: 'color' },
+      { key: 'color', type: 'color', help: 'Simple models only – houses, shops and the town hall use their tier models' },
+      { key: 'roof', type: 'color', help: 'Simple models only' },
     ],
   },
   villagers: {
@@ -194,13 +194,14 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'name', type: 'string', required: true },
       { key: 'species', type: 'enum', options: SPECIES, required: true, help: 'Picks the 3D model' },
       { key: 'personality', type: 'enum', options: PERSONALITIES, required: true },
-      { key: 'color', type: 'color', required: true },
+      { key: 'color', type: 'color', required: true, help: 'Fur of new villagers (built-in ones have a painted coat)' },
       { key: 'accent', type: 'color', required: true },
       { key: 'catchphrase', type: 'string', required: true, help: 'Used as {cp} in dialogue' },
       { key: 'likes', type: 'tags', options: ITEM_TAGS },
       { key: 'loves', type: 'json', help: 'Item ids, e.g. ["apple","bench"]' },
       { key: 'dislikes', type: 'tags', options: ITEM_TAGS },
       { key: 'birthday', type: 'string', required: true, help: 'MM-DD' },
+      { key: 'outfit', type: 'outfit', options: VILLAGER_SLOTS, help: 'What they wear until a player gives them clothes' },
     ],
     blank: () => ({ id: 'v_new', name: 'Newbie', species: 'cat', personality: 'cheerful', color: '#d9a35b', accent: '#fff3dc', catchphrase: 'hiya', likes: ['fruit'], loves: ['apple'], dislikes: ['mineral'], birthday: '01-01' }),
   },
@@ -224,7 +225,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'name', type: 'string', required: true },
       { key: 'icon', type: 'string', required: true },
       { key: 'cost', type: 'json', help: 'Per tile, e.g. {"stone":1}' },
-      { key: 'color', type: 'color', required: true },
+      { key: 'color', type: 'color', required: true, help: 'Swatch in the build menu (the path pieces have their own colours)' },
     ],
   },
 };
@@ -266,6 +267,7 @@ export function validateGameData(d: GameData): string[] {
   if (d.paths.length !== DEFAULT_GAME_DATA.paths.length) err('paths: can’t add path types');
 
   const itemIds = new Set<string>([...d.items.map((i) => i.id), ...d.fish.map((f) => f.id), ...d.birds.map((b) => b.id)]);
+  const wearOf = new Map<string, string | undefined>(d.items.map((i) => [i.id, i.wear]));
   for (const i of d.items) {
     if (!ID_RE.test(i.id)) err(`items: bad id "${i.id}"`);
     if ((i.id.startsWith('fish_') || i.id.startsWith('bird_')) && !DEFAULT_GAME_DATA.items.some((x) => x.id === i.id)) err(`items: "${i.id}" – fish_ and bird_ ids belong in the Fish / Birds tables`);
@@ -341,6 +343,13 @@ export function validateGameData(d: GameData): string[] {
     if (![...(v.likes ?? []), ...(v.dislikes ?? [])].every((t) => (ITEM_TAGS as string[]).includes(t))) err(`villagers: "${v.id}" likes/dislikes use unknown tags`);
     if (!isArr(v.loves) || v.loves.some((id) => !itemIds.has(id))) err(`villagers: "${v.id}" loves unknown items`);
     if (!/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v.birthday)) err(`villagers: "${v.id}" birthday must be MM-DD`);
+    if (v.outfit !== undefined) {
+      if (!v.outfit || typeof v.outfit !== 'object' || Array.isArray(v.outfit)) err(`villagers: "${v.id}" outfit must be an object`);
+      else for (const [slot, id] of Object.entries(v.outfit)) {
+        if (!(VILLAGER_SLOTS as readonly string[]).includes(slot)) err(`villagers: "${v.id}" can’t wear anything as "${slot}" (only ${VILLAGER_SLOTS.join(', ')})`);
+        else if (wearOf.get(id as string) !== slot) err(`villagers: "${v.id}" outfit: "${id}" isn’t a ${slot}`);
+      }
+    }
   }
   keepDefaults('dialogue', d.dialogue, (r) => r.id, []);
   const villagerIds = new Set(d.villagers.map((v) => v.id));

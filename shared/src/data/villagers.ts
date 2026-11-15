@@ -20,6 +20,8 @@ export interface VillagerDef {
   loves: string[]; // specific item ids
   dislikes: ItemTag[];
   birthday: string; // MM-DD
+  /** What they wear until a player gives them something new (hat, top, bottom, outer). */
+  outfit?: Outfit;
 }
 
 export const VILLAGERS: VillagerDef[] = [
@@ -65,11 +67,15 @@ const DEFAULT_OUTFITS: Record<string, Outfit> = {
   v_barley: { top: 'shirt_linen', outer: 'jacket_rain' },
 };
 
+// Built-in villagers start with their default outfit in their data (editable in the game creation tool).
+for (const v of VILLAGERS) if (!v.outfit && DEFAULT_OUTFITS[v.id]) v.outfit = { ...DEFAULT_OUTFITS[v.id] };
+
 /** Slots villagers can wear (paws and hooves: no shoes or gloves). */
 export const VILLAGER_SLOTS = ['hat', 'top', 'bottom', 'outer'] as const;
 
 export function villagerDefaultOutfit(id: string): Outfit {
-  return { ...(DEFAULT_OUTFITS[id] ?? { top: 'tshirt_sky' }) };
+  const def = VILLAGERS.find((v) => v.id === id);
+  return { ...(def?.outfit ?? DEFAULT_OUTFITS[id] ?? { top: 'tshirt_sky' }) };
 }
 
 /** A villager's outfit after putting on `item` (null if they cannot wear it). */

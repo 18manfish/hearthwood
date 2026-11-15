@@ -98,6 +98,14 @@ table.data tr.sel td { background: #e9f6df; }
 .colorin input[type='color'] { flex: none; }
 .colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 14px; }
 .colorpart > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+.outfit-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 14px; }
+.outfit-pick select { width: 100%; }
+.pv-controls { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.pv-controls:empty { display: none; }
+.pv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.pv-row > .muted:first-child { min-width: 70px; font-size: 12px; }
+.pv-row .btn.small { padding: 4px 9px; font-size: 12px; }
+.pv-note { font-size: 12px; line-height: 1.35; }
 .switch { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chips.locked { pointer-events: none; opacity: 0.6; }

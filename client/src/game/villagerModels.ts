@@ -180,6 +180,7 @@ export async function makeVillagerModel(def: VillagerDef): Promise<VillagerModel
   const furMat = bend(new THREE.MeshStandardMaterial({ map: fur, normalMap: sp.normal, roughness: 0.85, metalness: 0 }));
   if (sp.normal) furMat.normalScale.set(0.8, 0.8);
   if (def.species === 'frog') furMat.roughness = 0.45;
+  if (!fur) furMat.color.set(def.color); // no painted coat (e.g. made in the game creation tool): their colour
   const coat = sh.coats[def.id];
   const cache = new Map<THREE.Material, THREE.Material>();
   root.traverse((o: THREE.Object3D) => {

@@ -119,7 +119,8 @@ export function updateLocal(self: World, dt: number) {
     const run = (running ? 1 : 0.62) * amount;
     const step = PLAYER_SPEED * run * dt;
     const res = slideMove(self.grid!, me.x, me.z, dx * step, dz * step);
-    me.speed = Math.hypot(res.x - me.x, res.z - me.z) / dt;
+    // (dt can be 0 with a coarse browser clock: keep the last speed then, never 0/0)
+    if (dt > 0) me.speed = Math.hypot(res.x - me.x, res.z - me.z) / dt;
     me.x = res.x;
     me.z = res.z;
     const want = Math.atan2(dx, dz);

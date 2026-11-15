@@ -376,7 +376,10 @@ export interface Drive {
 export function drive(vm: VillagerModel, dt: number, d: Drive) {
   // Smooth the speed (it comes from interpolated network positions) and switch gaits
   // with some hysteresis, so a villager doesn't flicker between clips.
-  const raw = d.speed > 8 ? vm.speed : Math.min(d.speed, 5); // > 8: a teleport or a frame hitch
+  // > 8: a teleport or a frame hitch. Not a number: a frame with no time (browsers with a
+  // coarse clock, e.g. LibreWolf, hand out dt = 0 now and then).
+  const raw = !Number.isFinite(d.speed) || d.speed > 8 ? vm.speed : Math.min(d.speed, 5);
+  if (!Number.isFinite(vm.speed)) vm.speed = 0;
   vm.speed += (raw - vm.speed) * (1 - Math.exp(-dt * 8));
   vm.moving = vm.moving ? vm.speed > 0.12 : vm.speed > 0.3;
   const runAt = d.runAt ?? 2.3;

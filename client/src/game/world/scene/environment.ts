@@ -2,7 +2,7 @@
 // rain and snow, lightning, cosy interiors; also the camera zoom and canvas size.
 
 import * as THREE from 'three';
-import { BIOMES, daylight, type EnvView, sunPosition, visualSeason } from '@hearthwood/shared';
+import { BIOMES, daylight, type EnvView, sunPosition, visualSeason, type Weather } from '@hearthwood/shared';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { mat } from '../../models.ts';
@@ -12,6 +12,7 @@ import { upsertObjectMesh } from '../room/objects.ts';
 import { buildTerrain, rebuildFoliage } from '../room/terrainLayer.ts';
 import { updateSeaState } from '../../water.ts';
 import { surfLight } from '../../water/surf.ts';
+import { CLOUD_SPAN } from './sky.ts';
 import type { World } from '../../World.ts';
 
 const SURF_DAY = new THREE.Color(1, 1, 1);
@@ -116,6 +117,7 @@ export function updateEnvironment(self: World, dt: number, t: number) {
     }
     pos.needsUpdate = true;
   }
+  updateClouds(self, dt, w, env.intensity, d, twilight);
   // A faint green glow on the land under a strong aurora.
   if (auroraOn > 0) self.hemi.color.lerp(new THREE.Color('#7dffb2'), auroraOn * 0.35);
 
@@ -163,6 +165,49 @@ function lightning(self: World, dt: number, weather: string, intensity: number) 
   self.flash = Math.max(0, self.flash - dt * 4);
 }
 
+/** How much of the sky the clouds cover, by weather (scaled by its intensity). */
+const CLOUD_COVER: Partial<Record<Weather, number>> = { cloudy: 0.6, rain: 0.92, storm: 1, snow: 0.85 };
+/** How dark the clouds are (1 = white fluff) and how fast they drift. */
+const CLOUD_SHADE: Partial<Record<Weather, number>> = { cloudy: 0.95, rain: 0.68, storm: 0.48, snow: 0.9 };
+const CLOUD_WIND: Partial<Record<Weather, number>> = { cloudy: 0.8, rain: 1.6, storm: 3.4, snow: 0.9 };
+const CLOUD_DAY = new THREE.Color('#f6f8fb'), CLOUD_NIGHT = new THREE.Color('#2c3447'), CLOUD_DUSK = new THREE.Color('#f2a57c');
+
+/**
+ * Clouds when it's overcast, raining, storming or snowing: they gather and clear
+ * over a few seconds, take the light of the moment (white by day, dusky at sunset,
+ * dark at night, lit up by lightning) and drift with the wind.
+ */
+function updateClouds(self: World, dt: number, w: Weather, intensity: number, d: number, twilight: number) {
+  const g = self.clouds;
+  const target = (CLOUD_COVER[w] ?? 0) * (0.6 + 0.4 * intensity);
+  const cover = ((g.userData.cover as number | undefined) ?? target) + (target - ((g.userData.cover as number | undefined) ?? target)) * Math.min(1, dt * 0.35);
+  g.userData.cover = cover;
+  g.visible = cover > 0.01;
+  if (!g.visible) return;
+  if (CLOUD_SHADE[w] !== undefined) g.userData.shade = CLOUD_SHADE[w];
+  if (CLOUD_WIND[w] !== undefined) g.userData.wind = CLOUD_WIND[w];
+  const shade = (g.userData.shade as number | undefined) ?? 0.9;
+  const wind = (g.userData.wind as number | undefined) ?? 0.8;
+  const col = CLOUD_NIGHT.clone().lerp(CLOUD_DAY, d).multiplyScalar(0.55 + 0.45 * shade);
+  col.lerp(CLOUD_DUSK, twilight * 0.45 * shade);
+  if (self.flash > 0) col.lerp(new THREE.Color('#ffffff'), Math.min(1, self.flash * 1.2));
+  for (const c of g.children) {
+    const m = c as THREE.Mesh;
+    const mm = m.material as THREE.MeshBasicMaterial;
+    if (m.userData.bank) {
+      mm.opacity = Math.max(0, Math.min(0.9, (cover - 0.45) * 1.8));
+      mm.color.copy(col).multiplyScalar(0.86);
+      if (mm.map) mm.map.offset.x = (mm.map.offset.x + wind * dt * 0.0006) % 1;
+      continue;
+    }
+    const far = m.userData.far as number;
+    mm.opacity = Math.max(0, Math.min(1, (cover - (m.userData.rank as number)) * 5)) * (0.95 - far * 0.25);
+    mm.color.copy(col).multiplyScalar(1 - far * 0.06);
+    m.position.x += wind * (1 - far * 0.5) * dt;
+    if (m.position.x > CLOUD_SPAN) m.position.x -= CLOUD_SPAN * 2;
+  }
+}
+
 /** Warm, cosy, weather-free light indoors. */
 export function interiorLighting(self: World, t: number) {
   const tent = self.room?.interior === 'tent';
@@ -183,6 +228,7 @@ export function interiorLighting(self: World, t: number) {
   (self.stars.material as THREE.PointsMaterial).opacity = 0;
   for (const a of self.aurora.children) ((a as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0;
   self.rain.visible = false;
+  self.clouds.visible = false;
   self.water.visible = false;
   mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }).emissiveIntensity = 0.8;
 }

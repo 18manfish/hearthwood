@@ -33,7 +33,7 @@ import { endCast, startCast, updateFishing } from './world/tools/fishing.ts';
 import { bobberModel, fishingLineModel } from './models/fishing.ts';
 import { cancelGhost, rotateGhost, startBuildGhost, startMoveGhost, startPlaceGhost, updateGhost } from './world/tools/ghost.ts';
 import { paintFacing, paintHere, startPaint, startTerra, stopPaint, updatePaintGhost } from './world/tools/paint.ts';
-import { createAurora, createRain, createSea, createStars } from './world/scene/sky.ts';
+import { createAurora, createClouds, createRain, createSea, createStars } from './world/scene/sky.ts';
 import { bindPointer } from './world/tools/pointer.ts';
 
 export { PLAYER_SPEED, debug, type Tool, type Target } from './world/common.ts';
@@ -48,6 +48,8 @@ export class World {
   hemi = new THREE.HemisphereLight('#d8f0ff', '#6b8f4a', 0.6);
   stars: THREE.Points;
   aurora: THREE.Group;
+  /** Clouds in the sky band for grey weather (scene/sky.ts, faded in by scene/environment.ts). */
+  clouds: THREE.Group;
   water: THREE.Mesh;
   terrain: THREE.Mesh | null = null;
   waterFx: THREE.Group | null = null;
@@ -144,6 +146,8 @@ export class World {
 
     this.aurora = createAurora();
     this.camera.add(this.aurora);
+    this.clouds = createClouds();
+    this.camera.add(this.clouds);
     this.scene.add(this.camera);
 
     // Weather particles.

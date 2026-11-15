@@ -2,16 +2,17 @@
 // rain and snow, lightning, cosy interiors; also the camera zoom and canvas size.
 
 import * as THREE from 'three';
-import { BIOMES, daylight, type EnvView, sunPosition, visualSeason, type Weather } from '@hearthwood/shared';
+import { BIOMES, daylight, nextSeason, seasonTransition, type EnvView, sunPosition, visualSeason, type Weather } from '@hearthwood/shared';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { mat } from '../../models.ts';
-import { setPathSnow } from '../../paths.ts';
+import { dominantSeason, groundWeather, overallSnow, seasonSnow, stepGroundWeather, type GroundLook } from '../../groundLook.ts';
 import { debug, WATER_Y } from '../common.ts';
 import { upsertObjectMesh } from '../room/objects.ts';
 import { buildTerrain, rebuildFoliage } from '../room/terrainLayer.ts';
 import { updateSeaState } from '../../water.ts';
 import { surfLight } from '../../water/surf.ts';
+import { puddleUniforms } from '../../puddles.ts';
 import { CLOUD_SPAN } from './sky.ts';
 import type { World } from '../../World.ts';
 
@@ -21,26 +22,53 @@ export function currentEnv(self: World): EnvView | null {
   return state.env;
 }
 
-export function currentVisual(self: World) {
+/** Where the ground is between seasons, how much snow lies and how wet it is (see groundLook.ts). */
+export function currentLook(self: World): GroundLook {
   const env = currentEnv(self);
   const season = debug.season ?? env?.season ?? 'summer';
-  const vs = visualSeason(season);
-  const weather = debug.weather ?? env?.weather;
-  const snowy = self.room?.kind !== 'interior' && ((vs === 'winter' && self.room != null && ['temperate', 'boreal'].includes(BIOMES[self.room.biome].seasonModel)) || weather === 'snow');
-  return { season, vs, snowy };
+  const biome = self.room?.biome ?? 'grassland';
+  const model = BIOMES[biome].seasonModel;
+  let from = season, to = season, t = 1;
+  if (debug.seasonBlend != null) {
+    to = nextSeason(model, season);
+    t = debug.seasonBlend;
+  } else if (env && !debug.season) {
+    const tr = seasonTransition(net.serverNow(), model, env.geo.lat, env.geo.tz);
+    if (tr.from === season || tr.to === season) ({ from, to, t } = tr);
+  }
+  const outside = self.room?.kind !== 'interior';
+  const gw = groundWeather();
+  return {
+    from, to,
+    t: Math.round(t * 48) / 48, // in steps of about 3 hours of a 6-day change: rebuilds stay rare
+    snowFrom: outside ? seasonSnow(biome, from) : 0,
+    snowTo: outside ? seasonSnow(biome, to) : 0,
+    fresh: outside ? Math.round((debug.freshSnow ?? gw.fresh) * 10) / 10 : 0,
+    wet: outside ? debug.wet ?? gw.wet : 0,
+  };
+}
+
+export function currentVisual(self: World) {
+  const look = currentLook(self);
+  const season = dominantSeason(look);
+  return { season, vs: visualSeason(season), snowy: overallSnow(look) > 0.5, look };
 }
 
 /** Rebuild terrain + vegetation when the season (or snow cover) changes. */
 export function refreshVisuals(self: World, force = false) {
   if (!self.room) return;
   const v = currentVisual(self);
-  const key = `${v.season}|${v.snowy}`;
+  const l = v.look;
+  const key = `${l.from}|${l.to}|${l.t}|${l.snowFrom}|${l.snowTo}|${l.fresh}`;
+  const objKey = `${v.season}|${v.snowy}`;
   if (!force && key === self.seasonKey) return;
   self.seasonKey = key;
   buildTerrain(self);
-  for (const o of self.objects.values()) upsertObjectMesh(self, o);
   rebuildFoliage(self);
-  setPathSnow(v.snowy);
+  if (force || objKey !== self.objectLookKey) {
+    self.objectLookKey = objKey;
+    for (const o of self.objects.values()) upsertObjectMesh(self, o);
+  }
 }
 
 export function updateEnvironment(self: World, dt: number, t: number) {
@@ -48,6 +76,7 @@ export function updateEnvironment(self: World, dt: number, t: number) {
   if (!env0) return;
   const env = debug.weather ? { ...env0, weather: debug.weather, intensity: 1 } : env0;
   lightning(self, dt, env.weather, env.intensity); // indoors too: no flash in there, but you hear the thunder
+  stepGroundWeather(dt, env.weather, env.tempC); // outside keeps getting wet (or snowed on) while you're indoors
   if (self.room?.kind === 'interior') return interiorLighting(self, t);
   self.water.visible = true;
   const sp = sunPosition(net.serverNow() + debug.timeOffsetH * 3600_000, env.geo.lat, env.geo.lon);
@@ -90,6 +119,14 @@ export function updateEnvironment(self: World, dt: number, t: number) {
   self.renderer.toneMappingExposure = 0.85 + d * 0.25;
   // Surf foam is unlit, so it takes the light of the moment from here (else it glows white at night).
   surfLight.value.set('#5d6c91').lerp(SURF_DAY, d).multiplyScalar(1 - overcast * 0.3).lerp(SURF_DAY, self.flash);
+  // Puddles reflect the sky and fill/dry with the rain.
+  const wet = debug.wet ?? groundWeather().wet;
+  puddleUniforms.uTime.value = t;
+  puddleUniforms.uWet.value = wet;
+  puddleUniforms.uRain.value = w === 'rain' || w === 'storm' ? Math.max(0.4, env.intensity) : 0;
+  puddleUniforms.uSky.value.copy(sky);
+  puddleUniforms.uLight.value.copy(surfLight.value);
+  if (self.puddles) self.puddles.visible = wet > 0.001;
 
   // Night lights.
   mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }).emissiveIntensity = (1 - d) * 1.3;

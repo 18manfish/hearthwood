@@ -44,7 +44,10 @@ export function createTerrainCtx(g0: Grid, o: TerrainOptions): TerrainCtx {
   const { season, vs, snowy } = o;
   const interior = !!o.interior;
   const tent = o.interior === 'tent';
-  const groundHex = snowy ? '#eef3f7' : def.ground[season] ?? def.ground[vs] ?? def.ground.default ?? '#79b84c';
+  const snowModel = def.seasonModel === 'temperate' || def.seasonModel === 'boreal';
+  // Winter without its snow (patches between the snow while it comes and goes): faded, wintry grass.
+  const bareWinter = () => '#' + new THREE.Color(def.ground.autumn ?? def.ground.default ?? '#a7a650').lerp(new THREE.Color('#8e9478'), 0.6).getHexString();
+  const groundHex = snowy ? '#eef3f7' : vs === 'winter' && snowModel ? bareWinter() : def.ground[season] ?? def.ground[vs] ?? def.ground.default ?? '#79b84c';
   const colors: Partial<Record<Tile, THREE.Color>> = {
     [Tile.Ground]: new THREE.Color(groundHex),
     [Tile.Ramp]: new THREE.Color(groundHex).offsetHSL(0, -0.05, -0.04),

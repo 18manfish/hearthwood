@@ -126,12 +126,6 @@ function pathMaterial(id: number) {
   return m;
 }
 
-/** Tint paths when the ground is snowy (they peek through a light dusting). */
-export function setPathSnow(snowy: boolean) {
-  for (const m of materials.values()) m.color.set(snowy ? '#e7eef5' : '#ffffff');
-  kitMat.color.set(snowy ? '#e7eef5' : '#ffffff');
-}
-
 // ── Kit paths (art/kit/paths.py → paths.glb) ─────────────────────────────────
 // Low-poly quarter pieces in the ground's flat-shaded style: every path tile is
 // four quarters, each a `full`, `edge` (one side open to the grass) or `outer`

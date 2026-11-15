@@ -57,7 +57,7 @@ export class Footprints {
   }
 
   /** Call every frame for each moving character. */
-  track(id: string, x: number, z: number, grid: Grid, snowy: boolean, now: number) {
+  track(id: string, x: number, z: number, grid: Grid, snowy: boolean | ((x: number, z: number) => boolean), now: number) {
     let t = this.trackers.get(id);
     if (!t) {
       this.trackers.set(id, { x, z, left: false });
@@ -78,7 +78,7 @@ export class Footprints {
     const tx = Math.floor(x), tz = Math.floor(z);
     const tile = grid.tile(tx, tz);
     const onSand = tile === Tile.Shore && grid.surfaceY(x, z) > SEA_LEVEL + 0.01; // not under water
-    const onSnow = snowy && (tile === Tile.Ground || tile === Tile.Ramp) && grid.path(tx, tz) === 0;
+    const onSnow = (typeof snowy === 'function' ? snowy(x, z) : snowy) && (tile === Tile.Ground || tile === Tile.Ramp) && grid.path(tx, tz) === 0;
     if (!onSand && !onSnow) return;
     const ang = Math.atan2(dx, dz);
     // Offset sideways for left/right feet.

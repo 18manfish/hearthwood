@@ -119,6 +119,45 @@ export function seasonFor(model: SeasonModel, month: number, lat: number): Seaso
   }
 }
 
+/** How many days the look of the ground takes to change from one season to the next. */
+export const SEASON_TRANSITION_DAYS = 6;
+
+export interface SeasonTransition {
+  from: Season;
+  to: Season;
+  /** 0 = all `from`, 1 = all `to`. */
+  t: number;
+}
+
+/**
+ * Where the island is in the change between seasons (visual only; `seasonFor` stays
+ * the season for game rules). The change runs over SEASON_TRANSITION_DAYS centred on
+ * the first of the month that starts the new season, by local time on the island.
+ */
+export function seasonTransition(ms: number, model: SeasonModel, lat: number, tz: string): SeasonTransition {
+  const lt = localTime(ms, tz);
+  const cur = seasonFor(model, lt.month, lat);
+  const half = SEASON_TRANSITION_DAYS / 2;
+  const daysInMonth = new Date(Date.UTC(lt.year, lt.month, 0)).getUTCDate();
+  const pos = lt.day - 1 + (lt.hour + lt.minute / 60) / 24; // days since the 1st, local time
+  if (pos >= daysInMonth - half) {
+    const next = seasonFor(model, (lt.month % 12) + 1, lat);
+    if (next !== cur) return { from: cur, to: next, t: (pos - daysInMonth + half) / SEASON_TRANSITION_DAYS };
+  }
+  if (pos < half) {
+    const prev = seasonFor(model, lt.month === 1 ? 12 : lt.month - 1, lat);
+    if (prev !== cur) return { from: prev, to: cur, t: (pos + half) / SEASON_TRANSITION_DAYS };
+  }
+  return { from: cur, to: cur, t: 1 };
+}
+
+/** The season after `s` in its climate's cycle (itself if the climate has no such season). */
+export function nextSeason(model: SeasonModel, s: Season): Season {
+  const list = SEASONS_BY_MODEL[model];
+  const i = list.indexOf(s);
+  return i < 0 ? s : list[(i + 1) % list.length];
+}
+
 /** The seasons each climate model cycles through. */
 export const SEASONS_BY_MODEL: Record<SeasonModel, Season[]> = {
   temperate: ['spring', 'summer', 'autumn', 'winter'],

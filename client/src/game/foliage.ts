@@ -5,7 +5,8 @@
 // wind and follows the world bend.
 
 import * as THREE from 'three';
-import { isFreshWater, BIOMES, Tile, hashString, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
+import { isFreshWater, BIOMES, Tile, hashString, visualSeason, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
+import { dominantSeason, seasonAt, snowAt, type GroundLook } from './groundLook.ts';
 import { kitGeometry, kitGeometryByColor } from './assets/kit.ts';
 import { bend } from './bend.ts';
 
@@ -177,8 +178,12 @@ interface Inst {
   color: string;
 }
 
-export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis, snowy: boolean, objects: Iterable<WorldObject>): THREE.Group {
-  const pal = palette(biome, season, vs, snowy);
+export function buildFoliage(grid: Grid, biome: BiomeId, look: GroundLook, objects: Iterable<WorldObject>): THREE.Group {
+  // Each tile takes the palette of the season (and snow) its patch of ground is in.
+  const palFrom = palette(biome, look.from, visualSeason(look.from), false);
+  const palTo = palette(biome, look.to, visualSeason(look.to), false);
+  const palSnow = palette(biome, 'winter', 'winter', true);
+  const main = dominantSeason(look) === look.from ? palFrom : palTo;
   const out: Record<Kind, Inst[]> = { grass: [], tall: [], reed: [], fern: [], flower: [], leaf: [], snow: [], stem: [], clover: [], pebbles: [], wild: [] };
   const kit = !!kitFor('grass', false);
   const size = grid.size;
@@ -201,6 +206,8 @@ export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis
       const i = z * size + x;
       if (grid.occupied[i] || grid.paths[i]) continue;
       if (t !== Tile.Ground && !(t === Tile.Shore && tropicalBeach) && t !== Tile.Ramp) continue;
+      const cy = grid.surfaceY(x + 0.5, z + 0.5);
+      const pal = snowAt(look, x + 0.5, cy, z + 0.5) > 0.5 ? palSnow : seasonAt(look, x + 0.5, z + 0.5) > 0.5 ? palTo : palFrom;
       let h = hashString(`${x}:${z}:fol`);
       const r = () => {
         h = Math.imul(h ^ (h >>> 15), 2246822507) ^ Math.imul(h ^ (h >>> 13), 3266489909);
@@ -252,7 +259,7 @@ export function buildFoliage(grid: Grid, biome: BiomeId, season: Season, vs: Vis
   for (const kind of Object.keys(out) as Kind[]) {
     const list = out[kind];
     if (!list.length) continue;
-    const parts: KitPart[] = kitFor(kind, pal.dry) ?? (GEO[kind] ? [{ geo: GEO[kind]!, color: null }] : []);
+    const parts: KitPart[] = kitFor(kind, main.dry) ?? (GEO[kind] ? [{ geo: GEO[kind]!, color: null }] : []);
     // Every colour of a model is its own instanced mesh with the same placements.
     for (const part of parts) {
       const mesh = new THREE.InstancedMesh(part.geo, material(kind, part.color), list.length);

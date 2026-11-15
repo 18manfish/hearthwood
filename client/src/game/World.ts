@@ -10,6 +10,8 @@
 //   world/messages.ts            server messages that change the view
 
 import * as THREE from 'three';
+import { resetGroundWeather, snowAt } from './groundLook.ts';
+import { disposePuddles } from './puddles.ts';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { BIOMES, Grid, decodeTiles, type TerraOp, type Building, type RoomView, type ServerMessage, type WorldObject, type BuildingType, type Outfit } from '@hearthwood/shared';
 import { bendFocusZ, bendStrength } from './bend.ts';
@@ -83,6 +85,9 @@ export class World {
   stepping: { t: number; dur: number; z0: number; z1: number } | null = null;
   camDist = 13;
   seasonKey = '';
+  objectLookKey = '';
+  outdoorRoomId = '';
+  puddles: THREE.Mesh | null = null;
   clock = new THREE.Clock();
   bobber: THREE.Group;
   /** The fishing line from the rod tip to the float. */
@@ -181,6 +186,12 @@ export class World {
     for (const b of room.buildings) this.buildings.set(b.id, b);
     this.grid.rebuild(this.objects.values(), this.buildings.values());
     this.seasonKey = '';
+    this.objectLookKey = '';
+    if (room.kind !== 'interior' && room.id !== this.outdoorRoomId) {
+      // A different island: its ground starts from its own weather (houses keep the island's).
+      this.outdoorRoomId = room.id;
+      resetGroundWeather();
+    }
     this.footprints.clear();
     this.footprints.sandColor.set(BIOMES[room.biome].shore);
     refreshVisuals(this, true);
@@ -274,6 +285,11 @@ export class World {
       disposeFoliage(this.foliage);
       this.foliage = null;
     }
+    if (this.puddles) {
+      this.world.remove(this.puddles);
+      disposePuddles(this.puddles);
+      this.puddles = null;
+    }
   }
 
   // ── Paths & foliage ─────────────────────────────────────────────────────
@@ -305,9 +321,10 @@ export class World {
     // Footprints for everyone walking around outside.
     windTime.value = t;
     if (this.grid && this.room?.kind !== 'interior') {
-      const snowy = currentVisual(this).snowy;
-      for (const [id, p] of this.players) this.footprints.track(id, p.x, p.z, this.grid, snowy, t);
-      for (const [id, v] of this.villagers) if (!v.home) this.footprints.track(`v:${id}`, v.x, v.z, this.grid, snowy, t);
+      const look = currentVisual(this).look, g = this.grid;
+      const snowy = (x: number, z: number) => snowAt(look, x, g.surfaceY(x, z), z) > 0.5; // only in the snowy patches
+      for (const [id, p] of this.players) this.footprints.track(id, p.x, p.z, g, snowy, t);
+      for (const [id, v] of this.villagers) if (!v.home) this.footprints.track(`v:${id}`, v.x, v.z, g, snowy, t);
     }
     this.footprints.update(t);
     if (this.me) {

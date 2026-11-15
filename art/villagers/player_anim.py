@@ -93,3 +93,30 @@ CLIPS.update({
     'fish': (72, True, fish),
     'pickup': (22, False, pickup),
 })
+
+
+# The player's own walk and run: livelier than the villagers' stroll (bigger arm swing,
+# a bounce on every step, a little sway) so the gait reads from the high game camera.
+def pwalk(f, n=16):
+    ph = f / n * 2 * PI
+    s, c = math.sin(ph), math.cos(ph)
+    p = pose()
+    add(p, legL__rx=-0.75 * s, legR__rx=0.75 * s, armL__rx=0.85 * s, armR__rx=-0.85 * s,
+        body__lz=0.045 * abs(c) - 0.012, body__ry=0.08 * s, body__rz=0.07 * s, body__rx=0.07,
+        head__rz=-0.06 * s, head__ry=-0.05 * s, head__rx=-0.04 * abs(c))
+    sym_arms(p, 0.0, -0.1)
+    return p
+
+
+def prun(f, n=12):
+    ph = f / n * 2 * PI
+    s, c = math.sin(ph), math.cos(ph)
+    p = pose(face='excited')
+    add(p, legL__rx=-1.05 * s, legR__rx=1.05 * s, armL__rx=1.1 * s - 0.35, armR__rx=-1.1 * s - 0.35,
+        body__lz=0.07 * abs(c) - 0.01, body__rx=0.2, body__rz=0.08 * s, body__ry=0.1 * s,
+        head__rx=-0.14, head__rz=-0.06 * s)
+    sym_arms(p, 0.0, -0.14)
+    return p
+
+
+CLIPS.update({'pwalk': (16, True, pwalk), 'prun': (12, True, prun)})

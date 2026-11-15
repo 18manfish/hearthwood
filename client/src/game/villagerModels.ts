@@ -294,7 +294,7 @@ export function dress(vm: VillagerModel, outfit: Outfit | undefined, slots: read
 }
 
 /** Loops whose stride lines up: switching between them keeps the step phase. */
-const STRIDES = new Set(['walk', 'run', 'chase', 'walk_sad', 'umbrella_walk']);
+const STRIDES = new Set(['walk', 'run', 'chase', 'walk_sad', 'umbrella_walk', 'pwalk', 'prun']);
 
 /**
  * Make `name` the clip to blend towards. Weights are managed here (not with three's
@@ -363,6 +363,9 @@ export interface Drive {
   /** Ground speed the walk clip is made for, and where walking turns into running. */
   walkRef?: number;
   runAt?: number;
+  /** Gait clips (players have livelier ones than villagers). */
+  walkClip?: string;
+  runClip?: string;
 }
 
 /**
@@ -416,8 +419,8 @@ function choose(vm: VillagerModel, dt: number, d: Drive) {
     case 'umbrella': moving ? play(vm, 'umbrella_walk', 0.25, clamp(sp / wr, 0.6, 1.8)) : play(vm, 'umbrella_hold', 0.3); break;
     default:
       if (!moving) play(vm, 'idle', 0.3);
-      else if (vm.running) play(vm, chase ? 'chase' : 'run', 0.2, clamp(sp / ((d.runAt ?? 2.3) + 0.7), 0.7, 1.5));
-      else play(vm, 'walk', 0.25, clamp(sp / wr, 0.5, 1.8));
+      else if (vm.running) play(vm, d.runClip ?? (chase ? 'chase' : 'run'), 0.2, clamp(sp / ((d.runAt ?? 2.3) + 0.7), 0.7, 1.5));
+      else play(vm, d.walkClip ?? 'walk', 0.25, clamp(sp / wr, 0.5, 1.8));
   }
 }
 

@@ -74,7 +74,7 @@ function driveModel(rig: Rig, dt: number, speed: number, swing: number, fishing:
   rig.lastSwing = swing;
   // the rod is modelled for a hanging arm; the fishing pose holds the arm out in front
   rig.tool.rotation.x = String(rig.tool.userData.kind ?? '').startsWith('rod') ? 0.85 : 0;
-  drive(vm, dt, { speed, rain: false, now: Date.now(), fishing, walkRef: 2.0, runAt: 3.3 });
+  drive(vm, dt, { speed, rain: false, now: Date.now(), fishing, walkRef: 2.6, runAt: 3.3, walkClip: 'pwalk', runClip: 'prun' });
 }
 
 export function updateLocal(self: World, dt: number) {

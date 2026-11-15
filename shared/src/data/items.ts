@@ -1,6 +1,7 @@
 // Every item in the game. The server is the only authority on who owns what;
 // the client uses this table for names, icons and tooltips.
 
+import type { Rarity } from './rarity.ts';
 import { BIRDS } from './birds.ts';
 import type { WearSlot } from './clothing.ts';
 
@@ -237,7 +238,8 @@ export interface FishDef {
   name: string;
   icon: string;
   sell: number;
-  rarity: number; // weight – higher is more common
+  /** How rare it is (see data/rarity.ts for how often each rarity bites). */
+  rarity: Rarity;
   /** Where it bites: the sea, rivers (connected to the sea) or ponds. */
   water: 'sea' | 'river' | 'pond';
   /** Active hours (island local), inclusive start, exclusive end. Wraps past midnight. */
@@ -267,36 +269,36 @@ const ALL_BIOMES = ['grassland', 'tropical', 'nordic', 'forest_edge', 'oasis', '
 
 export const FISH: FishDef[] = [
   // Freshwater
-  { id: 'fish_carp', name: 'Carp', icon: '🐟', sell: 60, rarity: 10, water: 'pond' },
-  { id: 'fish_perch', name: 'Perch', icon: '🐟', sell: 90, rarity: 8, water: 'river' },
-  { id: 'fish_pike', name: 'Pike', icon: '🐟', sell: 300, rarity: 2, water: 'river', hours: [16, 9] },
-  { id: 'fish_trout', name: 'Rainbow Trout', icon: '🐟', sell: 200, rarity: 5, water: 'river', seasons: ['spring', 'autumn', 'winter'] },
-  { id: 'fish_salmon', name: 'Salmon', icon: '🐟', sell: 350, rarity: 3, water: 'river', seasons: ['summer', 'autumn'] },
-  { id: 'fish_char', name: 'Arctic Char', icon: '🐟', sell: 450, rarity: 2, water: 'river', seasons: ['winter', 'spring'] },
-  { id: 'fish_tilapia', name: 'Tilapia', icon: '🐟', sell: 80, rarity: 10, water: 'pond' },
-  { id: 'fish_koi', name: 'Golden Koi', icon: '🐠', sell: 900, rarity: 1, water: 'pond', hours: [16, 9] },
-  { id: 'fish_catfish', name: 'Catfish', icon: '🐟', sell: 200, rarity: 6, water: 'pond', hours: [16, 9] },
-  { id: 'fish_piranha', name: 'Piranha', icon: '🐟', sell: 500, rarity: 3, water: 'river', hours: [9, 16] },
-  { id: 'fish_bitterling', name: 'Bitterling', icon: '🐟', sell: 50, rarity: 12, water: 'pond', biomes: ALL_BIOMES },
-  { id: 'fish_goldfish', name: 'Goldfish', icon: '🐠', sell: 400, rarity: 1, water: 'pond', biomes: ALL_BIOMES },
-  { id: 'fish_frog', name: 'Pond Frog', icon: '🐸', sell: 120, rarity: 5, water: 'pond', biomes: ALL_BIOMES, seasons: ['spring', 'summer', 'wet'] },
-  { id: 'fish_dace', name: 'Dace', icon: '🐟', sell: 60, rarity: 12, water: 'river', biomes: ALL_BIOMES },
-  { id: 'fish_eel', name: 'River Eel', icon: '🐍', sell: 320, rarity: 3, water: 'river', biomes: ALL_BIOMES, hours: [18, 6] },
-  { id: 'fish_sweetfish', name: 'Sweetfish', icon: '🐟', sell: 240, rarity: 4, water: 'river', biomes: ['nordic', 'forest_edge', 'grassland'], seasons: ['summer'] },
-  { id: 'fish_sturgeon', name: 'Sturgeon', icon: '🐟', sell: 1000, rarity: 0.8, water: 'river', biomes: ['nordic', 'forest_edge', 'grassland', 'jungle'] },
-  { id: 'fish_arowana', name: 'Arowana', icon: '🐉', sell: 1200, rarity: 1, water: 'river', hours: [16, 9] },
+  { id: 'fish_carp', name: 'Carp', icon: '🐟', sell: 60, rarity: 'common', water: 'pond' },
+  { id: 'fish_perch', name: 'Perch', icon: '🐟', sell: 90, rarity: 'common', water: 'river' },
+  { id: 'fish_pike', name: 'Pike', icon: '🐟', sell: 300, rarity: 'rare', water: 'river', hours: [16, 9] },
+  { id: 'fish_trout', name: 'Rainbow Trout', icon: '🐟', sell: 200, rarity: 'uncommon', water: 'river', seasons: ['spring', 'autumn', 'winter'] },
+  { id: 'fish_salmon', name: 'Salmon', icon: '🐟', sell: 350, rarity: 'rare', water: 'river', seasons: ['summer', 'autumn'] },
+  { id: 'fish_char', name: 'Arctic Char', icon: '🐟', sell: 450, rarity: 'rare', water: 'river', seasons: ['winter', 'spring'] },
+  { id: 'fish_tilapia', name: 'Tilapia', icon: '🐟', sell: 80, rarity: 'common', water: 'pond' },
+  { id: 'fish_koi', name: 'Golden Koi', icon: '🐠', sell: 900, rarity: 'very_rare', water: 'pond', hours: [16, 9] },
+  { id: 'fish_catfish', name: 'Catfish', icon: '🐟', sell: 200, rarity: 'uncommon', water: 'pond', hours: [16, 9] },
+  { id: 'fish_piranha', name: 'Piranha', icon: '🐟', sell: 500, rarity: 'rare', water: 'river', hours: [9, 16] },
+  { id: 'fish_bitterling', name: 'Bitterling', icon: '🐟', sell: 50, rarity: 'common', water: 'pond', biomes: ALL_BIOMES },
+  { id: 'fish_goldfish', name: 'Goldfish', icon: '🐠', sell: 400, rarity: 'very_rare', water: 'pond', biomes: ALL_BIOMES },
+  { id: 'fish_frog', name: 'Pond Frog', icon: '🐸', sell: 120, rarity: 'uncommon', water: 'pond', biomes: ALL_BIOMES, seasons: ['spring', 'summer', 'wet'] },
+  { id: 'fish_dace', name: 'Dace', icon: '🐟', sell: 60, rarity: 'common', water: 'river', biomes: ALL_BIOMES },
+  { id: 'fish_eel', name: 'River Eel', icon: '🐍', sell: 320, rarity: 'rare', water: 'river', biomes: ALL_BIOMES, hours: [18, 6] },
+  { id: 'fish_sweetfish', name: 'Sweetfish', icon: '🐟', sell: 240, rarity: 'uncommon', water: 'river', biomes: ['nordic', 'forest_edge', 'grassland'], seasons: ['summer'] },
+  { id: 'fish_sturgeon', name: 'Sturgeon', icon: '🐟', sell: 1000, rarity: 'very_rare', water: 'river', biomes: ['nordic', 'forest_edge', 'grassland', 'jungle'] },
+  { id: 'fish_arowana', name: 'Arowana', icon: '🐉', sell: 1200, rarity: 'very_rare', water: 'river', hours: [16, 9] },
   // Sea
-  { id: 'fish_sardine', name: 'Sardine', icon: '🐟', sell: 40, rarity: 12, water: 'sea', shadow: 'small' },
-  { id: 'fish_mackerel', name: 'Mackerel', icon: '🐟', sell: 120, rarity: 8, water: 'sea', shadow: 'medium' },
-  { id: 'fish_seabass', name: 'Sea Bass', icon: '🐟', sell: 160, rarity: 7, water: 'sea', shadow: 'medium' },
-  { id: 'fish_cod', name: 'Cod', icon: '🐟', sell: 180, rarity: 6, water: 'sea', shadow: 'large', seasons: ['autumn', 'winter', 'spring'] },
-  { id: 'fish_herring', name: 'Herring', icon: '🐟', sell: 70, rarity: 9, water: 'sea', shadow: 'small' },
-  { id: 'fish_clownfish', name: 'Clownfish', icon: '🐠', sell: 250, rarity: 5, water: 'sea', shadow: 'small' },
-  { id: 'fish_butterfly', name: 'Butterflyfish', icon: '🐠', sell: 220, rarity: 6, water: 'sea', shadow: 'small' },
-  { id: 'fish_tuna', name: 'Tuna', icon: '🐟', sell: 700, rarity: 2, water: 'sea', shadow: 'large' },
-  { id: 'fish_mahi', name: 'Mahi-Mahi', icon: '🐟', sell: 600, rarity: 2, water: 'sea', shadow: 'large', seasons: ['summer', 'wet'] },
-  { id: 'fish_seabream', name: 'Sea Bream', icon: '🐟', sell: 150, rarity: 7, water: 'sea', shadow: 'medium' },
-  { id: 'fish_oarfish', name: 'Oarfish', icon: '🐉', sell: 1500, rarity: 0.5, water: 'sea', shadow: 'large', hours: [21, 5] },
+  { id: 'fish_sardine', name: 'Sardine', icon: '🐟', sell: 40, rarity: 'common', water: 'sea', shadow: 'small' },
+  { id: 'fish_mackerel', name: 'Mackerel', icon: '🐟', sell: 120, rarity: 'common', water: 'sea', shadow: 'medium' },
+  { id: 'fish_seabass', name: 'Sea Bass', icon: '🐟', sell: 160, rarity: 'uncommon', water: 'sea', shadow: 'medium' },
+  { id: 'fish_cod', name: 'Cod', icon: '🐟', sell: 180, rarity: 'uncommon', water: 'sea', shadow: 'large', seasons: ['autumn', 'winter', 'spring'] },
+  { id: 'fish_herring', name: 'Herring', icon: '🐟', sell: 70, rarity: 'common', water: 'sea', shadow: 'small' },
+  { id: 'fish_clownfish', name: 'Clownfish', icon: '🐠', sell: 250, rarity: 'uncommon', water: 'sea', shadow: 'small' },
+  { id: 'fish_butterfly', name: 'Butterflyfish', icon: '🐠', sell: 220, rarity: 'uncommon', water: 'sea', shadow: 'small' },
+  { id: 'fish_tuna', name: 'Tuna', icon: '🐟', sell: 700, rarity: 'rare', water: 'sea', shadow: 'large' },
+  { id: 'fish_mahi', name: 'Mahi-Mahi', icon: '🐟', sell: 600, rarity: 'rare', water: 'sea', shadow: 'large', seasons: ['summer', 'wet'] },
+  { id: 'fish_seabream', name: 'Sea Bream', icon: '🐟', sell: 150, rarity: 'uncommon', water: 'sea', shadow: 'medium' },
+  { id: 'fish_oarfish', name: 'Oarfish', icon: '🐉', sell: 1500, rarity: 'very_rare', water: 'sea', shadow: 'large', hours: [21, 5] },
 ];
 
 export const ITEMS: Record<string, ItemDef> = {};

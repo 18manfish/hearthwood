@@ -1,6 +1,6 @@
 // Fishing (cast and reel) and catching birds.
 
-import { BIRD_BY_ID, birdCatchChance, distToTile, isWaterTile, ITEMS } from '@hearthwood/shared';
+import { BIRD_BY_ID, birdCatchChance, distToTile, isWaterTile, ITEMS, spawnWeight } from '@hearthwood/shared';
 import type { Session } from '../Session.ts';
 import { config } from '../../config.ts';
 import { spotAt, spotPool } from '../room/fish.ts';
@@ -19,8 +19,8 @@ export const fishingBirdsHandlers: Pick<Handlers, 'cast' | 'reel' | 'catch'> = {
     const env = ctx.room.env(ctx.now);
     const pool = spotPool(ctx.room, spot, env);
     const rng = rngFor(ctx);
-    // Rain makes fish hungrier.
-    const fish = rng.weighted(pool, (f) => f.rarity * (env.weather === 'rain' && f.rarity < 3 ? 2 : 1))?.id ?? null;
+    // How often each fish bites: the spawn rate of its rarity. Rain makes the rare ones hungrier.
+    const fish = rng.weighted(pool, (f) => spawnWeight('fish', f.rarity) * (env.weather === 'rain' && (f.rarity === 'rare' || f.rarity === 'very_rare') ? 2 : 1))?.id ?? null;
     const power = inv.toolPower(ctx.p, 'rod');
     const cast = {
       id: ctx.room.newId('c'),

@@ -1,6 +1,6 @@
 // Birds land, hop around for a few minutes and fly off. They are never saved.
 
-import { BIRD_BY_ID, BIRDS, birdsFor, DIRS, type EnvView, Tile } from '@hearthwood/shared';
+import { BIRD_BY_ID, BIRDS, birdsFor, DIRS, type EnvView, Tile, spawnWeight } from '@hearthwood/shared';
 import type { Room } from '../Room.ts';
 
 /** Birds land, hop around for a few minutes and fly off. They are never saved. */
@@ -20,7 +20,8 @@ export function birdTick(room: Room, now: number, env: EnvView) {
   if (!room.sessions.size || !here.length) return;
   const max = Math.max(2, Math.round((room.layout.size * room.layout.size) / 700));
   if (birds.length >= max || !room.birdRng.chance(0.15)) return;
-  const def = room.birdRng.weighted(here, (b) => b.rarity)!;
+  const def = room.birdRng.weighted(here, (b) => spawnWeight('birds', b.rarity));
+  if (!def) return; // every rarity that could land here is switched off
   for (let tries = 0; tries < 30; tries++) {
     const x = room.birdRng.int(1, room.layout.size - 2);
     const z = room.birdRng.int(1, room.layout.size - 2);

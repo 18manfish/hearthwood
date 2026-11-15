@@ -3,7 +3,7 @@
 
 import {
   ACCESS_LEVELS, BIOME_IDS, BUILDINGS, DEFAULT_GAME_DATA, GAME_TABLES, HOTBAR_TOOLS, ITEMS, PERMITS, PROTOCOL_VERSION, VILLAGERS, FRIENDSHIP_MAX,
-  applyGameData, decodeTiles, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
+  applyGameData, migrateGameData, decodeTiles, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
   type Access, type Building, type GameData, type GameTable, type WorldObject,
   cleanOutfit, outfitOf,
 } from '@hearthwood/shared';
@@ -347,6 +347,7 @@ export function buildApi(game: Game, store: Store): Router {
     const body = await readJson(req);
     const data = body.data as Partial<GameData>;
     if (!data || typeof data !== 'object') throw new HttpError(400, 'Expected { data: {...} }');
+    migrateGameData(data); // files exported by an older version
     const tables = GAME_TABLES.filter((t) => t in data);
     const next = { ...snapshotGameData(), ...data } as GameData;
     const errors = validateGameData(next);

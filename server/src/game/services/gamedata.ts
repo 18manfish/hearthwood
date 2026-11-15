@@ -1,7 +1,7 @@
 // Game data overrides from the game creation tool: load, change, reset, announce.
 
 import {
-  applyGameData, DEFAULT_GAME_DATA, GAME_TABLES, type GameData, type GameTable, snapshotGameData, validateGameData,
+  applyGameData, DEFAULT_GAME_DATA, GAME_TABLES, type GameData, type GameTable, migrateGameData, snapshotGameData, validateGameData,
 } from '@hearthwood/shared';
 import { logger } from '../../log.ts';
 import type { Game } from '../Game.ts';
@@ -10,7 +10,7 @@ const log = logger('game');
 
 /** Apply stored overrides at startup (invalid ones are skipped and logged). */
 export function loadGameData(game: Game) {
-  const stored = game.store.gameData() as Partial<GameData>;
+  const stored = migrateGameData(game.store.gameData() as Partial<GameData>); // older saves: rarity weights → rarities
   const tables = GAME_TABLES.filter((t) => t in stored);
   if (!tables.length) return;
   const merged = { ...snapshotGameData(), ...stored } as GameData;

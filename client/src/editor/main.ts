@@ -491,8 +491,9 @@ function summaryOf(t: GameTable, r: Row, k = keyOf(t, r)): string {
   switch (t) {
     case 'items': return `${r.category} · sell ${r.sell}${r.buy !== undefined ? ` · buy ${r.buy}` : ''}${r.tier === 2 || r.tier === 3 ? ` · ${ITEM_TIERS[r.tier as ItemTier].name.toLowerCase()}` : ''}`;
     case 'shopStock': return `${stockSlotsText(k as BuildingType)} a day · ${(r.items as string[]).map((i) => ITEMS[i]?.icon ?? i).join(' ')}`;
-    case 'fish': return `${r.water} · ${r.sell} · rarity ${r.rarity}`;
-    case 'birds': return `${(r.biomes as string[]).join(', ')} · ${r.sell}`;
+    case 'fish': return `${r.water} · ${r.sell} · ${rarityLabel(r.rarity)}`;
+    case 'birds': return `${(r.biomes as string[]).join(', ')} · ${r.sell} · ${rarityLabel(r.rarity)}`;
+    case 'rarities': return `fish ${r.fish} · birds ${r.birds}`;
     case 'recipes': return `${r.station} · ${(r.ingredients as { item?: string; tag?: string; qty: number }[]).map((i) => `${i.qty} ${i.item ?? `any ${i.tag}`}`).join(', ')}`;
     case 'buildings': return `day ${r.minDay} · ${r.buildMinutes} min · ${Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ')}`;
     case 'villagers': return `${r.species} · ${r.personality}`;
@@ -500,6 +501,26 @@ function summaryOf(t: GameTable, r: Row, k = keyOf(t, r)): string {
     case 'permits': return `${r.price} coins`;
     case 'paths': return Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ') || 'free';
   }
+}
+
+// ── Rarities (fish and birds) ───────────────────────────────────────────────
+/** A rarity's name from the working Rarities table. */
+const rarityLabel = (r: unknown) => String(rows('rarities').find((x) => x.id === r)?.name ?? r ?? '–').toLowerCase();
+
+/** Rarities row: how its spawn rates compare, and which fish and birds have it. */
+function rarityCard(r: Row): HTMLElement {
+  const common = rows('rarities').find((x) => x.id === 'common');
+  const rel = (k: 'fish' | 'birds') => {
+    const base = Number(common?.[k] ?? 0), v = Number(r[k] ?? 0);
+    return base > 0 ? `${Math.round((v / base) * 100)}% as often as a common one` : '–';
+  };
+  const fish = rows('fish').filter((f) => f.rarity === r.id);
+  const birds = rows('birds').filter((b) => b.rarity === r.id);
+  const names = (list: Row[]) => (list.length ? list.map((x) => `${x.icon ?? ''} ${x.name ?? x.id}`).join(' · ') : 'none');
+  return h('section', { class: 'ed-card' }, h('h4', {}, `💎 ${String(r.name ?? r.id)}`),
+    h('p', { class: 'muted', style: 'margin-top:0' }, 'A spawn rate is a weight: among the fish (or birds) that could turn up at that place, time and season, each one is picked in proportion to the rate of its rarity. Rain makes rare and very rare fish bite twice as eagerly.'),
+    h('div', { class: 'stock-tier' }, h('b', {}, `🐟 Fish (${fish.length}) · ${r.id === 'common' ? 'the baseline' : rel('fish')}`), h('span', { class: 'muted' }, names(fish))),
+    h('div', { class: 'stock-tier' }, h('b', {}, `🐦 Birds (${birds.length}) · ${r.id === 'common' ? 'the baseline' : rel('birds')}`), h('span', { class: 'muted' }, names(birds))));
 }
 
 // ── Daily shop stock (item tiers) ──────────────────────────────────────────
@@ -640,6 +661,7 @@ function rowEditor(): HTMLElement {
     }
     if (table === 'villagers') aside.append(villagerDialogueCard(r as unknown as VillagerDef));
     if (table === 'shopStock') aside.append(shopStockCard(r.shop as BuildingType, r.items as string[]));
+    if (table === 'rarities') aside.append(rarityCard(r));
     if (table === 'items') {
       const card = itemStockCard(r);
       if (card) aside.append(card);

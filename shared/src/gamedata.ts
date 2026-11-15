@@ -10,6 +10,7 @@ import { BUILDINGS, SHOP_STOCK, rebuildBuildable, type BuildingDef } from './dat
 import { VILLAGER_SLOTS, VILLAGERS, type VillagerDef } from './data/villagers.ts';
 import { PERMITS, rebuildPermits, type PermitDef } from './data/permits.ts';
 import { PATHS, type PathDef } from './data/paths.ts';
+import { isRarity, RARITIES, RARITY_IDS, rarityFromWeight, type RarityDef } from './data/rarity.ts';
 import { BIOME_IDS } from './data/biomes.ts';
 import { DIALOGUE, DIALOGUE_EVENT_IDS, type DialogueRule, type DialogueTrigger } from './data/dialogue.ts';
 
@@ -24,10 +25,11 @@ export interface GameData {
   permits: PermitDef[];
   paths: PathDef[];
   dialogue: DialogueRule[];
+  rarities: RarityDef[];
 }
 
 export type GameTable = keyof GameData;
-export const GAME_TABLES: GameTable[] = ['items', 'fish', 'birds', 'recipes', 'shopStock', 'buildings', 'villagers', 'dialogue', 'permits', 'paths'];
+export const GAME_TABLES: GameTable[] = ['items', 'fish', 'birds', 'recipes', 'shopStock', 'buildings', 'villagers', 'dialogue', 'permits', 'paths', 'rarities'];
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -35,7 +37,7 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 export function snapshotGameData(): GameData {
   return clone({
     items: BASE_ITEMS, fish: FISH, birds: BIRDS, recipes: RECIPES, shopStock: SHOP_STOCK as Record<string, string[]>,
-    buildings: BUILDINGS as Record<string, BuildingDef>, villagers: VILLAGERS, permits: PERMITS, paths: PATHS, dialogue: DIALOGUE,
+    buildings: BUILDINGS as Record<string, BuildingDef>, villagers: VILLAGERS, permits: PERMITS, paths: PATHS, dialogue: DIALOGUE, rarities: RARITIES,
   });
 }
 
@@ -63,10 +65,23 @@ export function applyGameData(d: Partial<GameData>) {
   if (d.permits) replaceArray(PERMITS, d.permits);
   if (d.paths) replaceArray(PATHS, d.paths);
   if (d.dialogue) replaceArray(DIALOGUE, d.dialogue);
+  if (d.rarities) replaceArray(RARITIES, d.rarities);
   rebuildBirds();
   rebuildItems();
   rebuildPermits();
   rebuildBuildable();
+}
+
+/**
+ * Bring data saved by an older version up to date (in place): fish and birds used
+ * to give rarity as a weight (higher = more common).
+ */
+export function migrateGameData(d: Partial<GameData>): Partial<GameData> {
+  for (const list of [d.fish, d.birds]) {
+    if (!Array.isArray(list)) continue;
+    for (const x of list as { rarity: unknown }[]) if (typeof x.rarity === 'number') x.rarity = rarityFromWeight(x.rarity);
+  }
+  return d;
 }
 
 // ── Editor hints ────────────────────────────────────────────────────────────
@@ -132,14 +147,14 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'name', type: 'string', required: true },
       { key: 'icon', type: 'string', required: true },
       { key: 'sell', type: 'number', required: true },
-      { key: 'rarity', type: 'number', required: true, help: 'Weight – higher is more common' },
+      { key: 'rarity', type: 'enum', options: RARITY_IDS, required: true, help: 'How often it bites is set per rarity in the Rarities table' },
       { key: 'water', type: 'enum', options: ['sea', 'river', 'pond'], required: true, help: 'Rivers connect to the sea, ponds don’t' },
       { key: 'shadow', type: 'enum', options: FISH_SHADOWS, help: 'Sea fish: size of the shadow it bites from (default medium). Rivers and ponds only have medium shadows.' },
       { key: 'hours', type: 'hours', help: 'Local hours it can be caught; leave empty for all day. Wraps past midnight (e.g. 16 → 9).' },
       { key: 'seasons', type: 'tags', options: SEASON_NAMES },
       { key: 'biomes', type: 'tags', options: BIOME_IDS, help: 'Extra biomes (on top of each biome’s fish list)' },
     ],
-    blank: () => ({ id: 'fish_new', name: 'New fish', icon: '🐟', sell: 100, rarity: 5, water: 'river', biomes: ['grassland'] }),
+    blank: () => ({ id: 'fish_new', name: 'New fish', icon: '🐟', sell: 100, rarity: 'uncommon', water: 'river', biomes: ['grassland'] }),
   },
   birds: {
     label: 'Birds', icon: '🐦', shape: 'list', key: 'id', canAdd: true,
@@ -148,7 +163,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'name', type: 'string', required: true },
       { key: 'icon', type: 'string', required: true },
       { key: 'sell', type: 'number', required: true },
-      { key: 'rarity', type: 'number', required: true },
+      { key: 'rarity', type: 'enum', options: RARITY_IDS, required: true, help: 'How often it lands is set per rarity in the Rarities table' },
       { key: 'biomes', type: 'tags', options: BIOME_IDS, required: true },
       { key: 'hours', type: 'hours', help: 'Local hours it shows up; leave empty for all day.' },
       { key: 'seasons', type: 'tags', options: SEASON_NAMES },
@@ -156,7 +171,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'colors', type: 'colors', parts: ['body', 'wing', 'belly', 'beak'], required: true },
       { key: 'size', type: 'number', required: true, help: 'Model scale, 1 = sparrow' },
     ],
-    blank: () => ({ id: 'bird_new', name: 'New bird', icon: '🐦', sell: 150, rarity: 5, biomes: ['grassland'], hours: [6, 19], colors: ['#8d6e4f', '#5d4330', '#d7c4a3', '#3e2f22'], size: 1 }),
+    blank: () => ({ id: 'bird_new', name: 'New bird', icon: '🐦', sell: 150, rarity: 'uncommon', biomes: ['grassland'], hours: [6, 19], colors: ['#8d6e4f', '#5d4330', '#d7c4a3', '#3e2f22'], size: 1 }),
   },
   recipes: {
     label: 'Recipes', icon: '🛠️', shape: 'list', key: 'id', canAdd: true,
@@ -229,6 +244,15 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'color', type: 'color', required: true, help: 'Swatch in the build menu (the path pieces have their own colours)' },
     ],
   },
+  rarities: {
+    label: 'Rarities', icon: '💎', shape: 'list', key: 'id', canAdd: false,
+    fields: [
+      { key: 'id', type: 'string', required: true },
+      { key: 'name', type: 'string', required: true, help: 'Shown in the journal' },
+      { key: 'fish', type: 'number', required: true, help: 'Spawn rate of fish of this rarity: a weight against the other fish that could bite there (0 = never)' },
+      { key: 'birds', type: 'number', required: true, help: 'Spawn rate of birds of this rarity: a weight against the other birds that could land (0 = never)' },
+    ],
+  },
 };
 
 // ── Validation ──────────────────────────────────────────────────────────────
@@ -254,7 +278,8 @@ export function validateGameData(d: GameData): string[] {
     }
   };
   d.dialogue ??= [];
-  for (const t of ['items', 'fish', 'birds', 'recipes', 'villagers', 'dialogue', 'permits', 'paths'] as const) if (!isArr(d[t])) err(`${t}: must be a list`);
+  d.rarities ??= clone(DEFAULT_GAME_DATA.rarities);
+  for (const t of ['items', 'fish', 'birds', 'recipes', 'villagers', 'dialogue', 'permits', 'paths', 'rarities'] as const) if (!isArr(d[t])) err(`${t}: must be a list`);
   if (errs.length) return errs;
 
   keepDefaults('items', d.items, (r) => r.id, DEFAULT_GAME_DATA.items);
@@ -266,6 +291,13 @@ export function validateGameData(d: GameData): string[] {
   keepDefaults('paths', d.paths, (r) => r.id, DEFAULT_GAME_DATA.paths);
   if (d.permits.length !== DEFAULT_GAME_DATA.permits.length) err('permits: can’t add permits (each one unlocks code)');
   if (d.paths.length !== DEFAULT_GAME_DATA.paths.length) err('paths: can’t add path types');
+  keepDefaults('rarities', d.rarities, (r) => r.id, DEFAULT_GAME_DATA.rarities);
+  if (d.rarities.length !== RARITY_IDS.length) err('rarities: can’t add rarities');
+  for (const r of d.rarities) {
+    if (!isRarity(r.id)) err(`rarities: unknown rarity "${r.id}"`);
+    if (!isStr(r.name, 30)) err(`rarities: "${r.id}" needs a name`);
+    if (!isNum(r.fish) || !isNum(r.birds) || r.fish > 1000 || r.birds > 1000) err(`rarities: "${r.id}" spawn rates must be between 0 and 1000`);
+  }
 
   const itemIds = new Set<string>([...d.items.map((i) => i.id), ...d.fish.map((f) => f.id), ...d.birds.map((b) => b.id)]);
   const wearOf = new Map<string, string | undefined>(d.items.map((i) => [i.id, i.wear]));
@@ -288,7 +320,7 @@ export function validateGameData(d: GameData): string[] {
   const hoursOk = (h: unknown) => h === undefined || (isArr(h) && (h as unknown[]).length === 2 && (h as unknown[]).every((x) => isNum(x) && (x as number) <= 24));
   for (const f of d.fish) {
     if (!f.id.startsWith('fish_') || !ID_RE.test(f.id)) err(`fish: id "${f.id}" must start with fish_`);
-    if (!isStr(f.name, 60) || !isStr(f.icon, 16) || !isNum(f.sell) || !isNum(f.rarity) || f.rarity <= 0) err(`fish: "${f.id}" needs name, icon, sell ≥ 0 and rarity > 0`);
+    if (!isStr(f.name, 60) || !isStr(f.icon, 16) || !isNum(f.sell) || !isRarity(f.rarity)) err(`fish: "${f.id}" needs name, icon, sell ≥ 0 and a rarity (${RARITY_IDS.join(', ')})`);
     if (!['sea', 'river', 'pond'].includes(f.water)) err(`fish: "${f.id}" water must be sea, river or pond`);
     if (!hoursOk(f.hours)) err(`fish: "${f.id}" hours must be [from, to]`);
     if (f.shadow !== undefined && !FISH_SHADOWS.includes(f.shadow)) err(`fish: "${f.id}" shadow must be small, medium or large`);
@@ -296,7 +328,7 @@ export function validateGameData(d: GameData): string[] {
   }
   for (const b of d.birds) {
     if (!b.id.startsWith('bird_') || !ID_RE.test(b.id)) err(`birds: id "${b.id}" must start with bird_`);
-    if (!isStr(b.name, 60) || !isStr(b.icon, 16) || !isNum(b.sell) || !isNum(b.rarity) || b.rarity <= 0 || !isNum(b.size) || b.size <= 0) err(`birds: "${b.id}" needs name, icon, sell, rarity > 0 and size > 0`);
+    if (!isStr(b.name, 60) || !isStr(b.icon, 16) || !isNum(b.sell) || !isRarity(b.rarity) || !isNum(b.size) || b.size <= 0) err(`birds: "${b.id}" needs name, icon, sell, a rarity (${RARITY_IDS.join(', ')}) and size > 0`);
     if (!isArr(b.biomes) || !b.biomes.length || b.biomes.some((x) => !(BIOME_IDS as string[]).includes(x))) err(`birds: "${b.id}" needs valid biomes`);
     if (!isArr(b.colors) || b.colors.length !== 4 || b.colors.some((c) => !COLOR_RE.test(c))) err(`birds: "${b.id}" needs 4 colours (#rrggbb)`);
     if (!hoursOk(b.hours)) err(`birds: "${b.id}" hours must be [from, to]`);

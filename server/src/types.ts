@@ -8,6 +8,10 @@ export interface MailRecord {
   item?: string;
   n?: number;
   at: number;
+  /** A gift letter from the game (the gift rule's id, or 'manual'). */
+  giftId?: string;
+  items?: { item: string; n: number }[];
+  coins?: number;
 }
 
 export interface PlayerRecord {
@@ -53,6 +57,8 @@ export interface PlayerRecord {
   lastBottleAt?: number;
   /** Caught fish and birds. */
   album?: Album;
+  /** Automatic gifts received: rule id → the period it was last sent for ('once', a day or week key). */
+  gifts?: Record<string, string>;
 }
 
 export interface Friendship {

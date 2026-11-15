@@ -6,6 +6,7 @@ import {
 import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
 import { type ActionResult, type Ctx, fail, getObj, give, type Handlers, harvestGuard, isResult, log, rngFor } from './context.ts';
+import { mailList } from '../services/gifts.ts';
 
 export const gatherHandlers: Pick<Handlers, 'shake' | 'chop' | 'dig' | 'hit' | 'forage' | 'plant'> = {
   shake(ctx, a) {
@@ -159,7 +160,7 @@ function openBottle(ctx: Ctx, o: WorldObject): ActionResult {
   ctx.p.mail.push({ id: `m${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`, from: '', fromName: `${b.fromName} (🍾 message in a bottle)`, text: b.text, at: ctx.now });
   ctx.game.store.bottleOpened(b.id);
   ctx.game.store.markIsland(rec.id);
-  ctx.s.send({ t: 'mail', list: ctx.p.mail });
+  ctx.s.send({ t: 'mail', list: mailList(ctx.p) });
   log.info('bottle opened', { bottle: b.id, by: ctx.p.id });
   return { ok: true, gained, msg: `🍾 A message in a bottle from ${b.fromName}! It’s in your letters (L).` };
 }

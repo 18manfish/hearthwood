@@ -20,6 +20,7 @@ import { disconnect } from './router.ts';
 import { pushFriendsToFriendsOf, sanitize, sendFriends } from './social.ts';
 import { enterIsland, travel } from './travel.ts';
 import { selfView } from './views.ts';
+import { checkGifts, mailList } from './gifts.ts';
 
 const log = logger('game');
 
@@ -147,9 +148,10 @@ export function hello(game: Game, s: Session, token: string, v: number) {
   s.send({ t: 'welcome', you: p.created ? selfView(game, p) : null, serverTime: Date.now(), dev: config.devFast });
   if (p.created) {
     sendFriends(game, s);
-    s.send({ t: 'mail', list: p.mail });
+    s.send({ t: 'mail', list: mailList(p) });
     pushFriendsToFriendsOf(game, p);
     enterIsland(game, s, p.homeIslandId!);
+    checkGifts(game, p, 'login');
   }
 }
 
@@ -171,9 +173,10 @@ export function recreateCharacter(game: Game, s: Session, m: Extract<ClientMessa
   log.info('character recreated', { player: p.id });
   s.send({ t: 'welcome', you: selfView(game, p), serverTime: Date.now(), dev: config.devFast });
   sendFriends(game, s);
-  s.send({ t: 'mail', list: p.mail });
+  s.send({ t: 'mail', list: mailList(p) });
   pushFriendsToFriendsOf(game, p);
   enterIsland(game, s, p.homeIslandId!);
+  checkGifts(game, p, 'login');
 }
 
 /** Give a starter set (keep anything you already own) and wear it. */
@@ -232,9 +235,11 @@ export function createCharacter(game: Game, s: Session, m: Extract<ClientMessage
   game.store.markPlayer(p.id);
   s.send({ t: 'welcome', you: selfView(game, p), serverTime: now, dev: config.devFast });
   sendFriends(game, s);
-  s.send({ t: 'mail', list: p.mail });
+  s.send({ t: 'mail', list: mailList(p) });
   enterIsland(game, s, island.id);
   s.send({ t: 'toast', text: `Welcome to ${island.name}! Check your goals (G).`, kind: 'good' });
+  checkGifts(game, p, 'created');
+  checkGifts(game, p, 'login');
 }
 
 /** Remove a player for good: their island goes too; friends forget them. */

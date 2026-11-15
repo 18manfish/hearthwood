@@ -10,6 +10,7 @@ import * as inv from '../inventory.ts';
 import type { Friendship, PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
 import { islandRoom } from './rooms.ts';
+import { checkGifts } from './gifts.ts';
 import { sendInv, sendSelf } from './views.ts';
 
 const log = logger('game');
@@ -20,6 +21,7 @@ export function afterAction(game: Game, s: Session, kind: string) {
   if (s.room?.record) game.store.markIsland(s.room.id);
   sendInv(game, s);
   if (kind === 'craft' || kind === 'build' || kind === 'demolish') sendQuest(game, s);
+  if (kind === 'build') checkGifts(game, p, 'progress');
   if (kind === 'wear' || kind === 'restyle') sendSelf(game, s);
 }
 
@@ -65,6 +67,8 @@ export function buildingCompleted(game: Game, room: Room, b: Building) {
     if (owner?.room === room && BUILDINGS[b.type].buildMinutes > 0) owner.send({ t: 'toast', text: `${BUILDINGS[b.type].name} is finished!`, kind: 'good' });
   }
   if (owner) sendQuest(game, owner);
+  const ownerRec = room.ownerId ? game.store.players.get(room.ownerId) : undefined;
+  if (ownerRec && b.completeAt > 0) checkGifts(game, ownerRec, 'progress');
 }
 
 export function levelUpCheck(game: Game, s: Session, room: Room, defId: string, f: Friendship) {
@@ -109,6 +113,7 @@ export function sendQuest(game: Game, s: Session) {
       s.send({ t: 'toast', text: `Chapter complete: ${c.title}! +${c.reward.coins} coins`, kind: 'good' });
       game.store.markPlayer(p.id);
       sendInv(game, s);
+      checkGifts(game, p, 'progress');
     }
     chapter = c.id + 1;
   }

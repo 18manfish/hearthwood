@@ -9,6 +9,7 @@ import { Session } from '../Session.ts';
 import type { PlayerRecord } from '../../types.ts';
 import type { Game } from '../Game.ts';
 import { devCommand } from './dev.ts';
+import { checkGifts } from './gifts.ts';
 
 export function friendView(game: Game, id: string): FriendView | null {
   const f = game.store.players.get(id);
@@ -44,6 +45,8 @@ export function friendOp(game: Game, s: Session, op: 'request' | 'accept' | 'dec
     if (!other.friends.includes(p.id)) other.friends.push(p.id);
     s.send({ t: 'toast', text: `You and ${other.name} are now friends!`, kind: 'good' });
     game.online.get(other.id)?.send({ t: 'toast', text: `You and ${p.name} are now friends!`, kind: 'good' });
+    checkGifts(game, p, 'progress');
+    checkGifts(game, other, 'progress');
   };
   switch (op) {
     case 'request':

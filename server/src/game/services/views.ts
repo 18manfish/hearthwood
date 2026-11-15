@@ -13,6 +13,7 @@ import type { Game } from '../Game.ts';
 import { isAdmin } from './accounts.ts';
 import { sendQuest } from './progress.ts';
 import { homeIsland } from './travel.ts';
+import { mailList } from './gifts.ts';
 
 /** The player's album (created on first use). */
 export function albumOf(p: PlayerRecord): Album {
@@ -50,7 +51,7 @@ export function broadcastLook(game: Game, s: Session) {
 export function notifyMail(game: Game, playerId: string) {
   const s = game.online.get(playerId);
   if (!s) return;
-  s.send({ t: 'mail', list: s.player!.mail });
+  s.send({ t: 'mail', list: mailList(s.player!) });
   s.send({ t: 'toast', text: 'You’ve got mail! 📬', kind: 'good' });
 }
 

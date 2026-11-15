@@ -20,9 +20,20 @@ export function mailPanel(hud: Hud, b: HTMLElement, compose: boolean) {
   }
   b.append(h('h3', {}, `Inbox (${state.mail.length})`));
   if (!state.mail.length) b.append(h('p', { class: 'muted' }, 'No letters yet.'));
-  b.append(h('div', { class: 'list' }, state.mail.map((m) => h('div', { class: 'item' },
-    h('div', {}, h('b', {}, `From ${m.fromName}`), h('div', {}, m.text || h('i', { class: 'muted' }, '(no message)')), m.item ? h('div', { class: 'muted' }, `Gift: ${ITEMS[m.item]?.icon} ${m.n}× ${ITEMS[m.item]?.name}`) : null),
-    h('button', { class: 'btn small', onclick: () => hud.act({ k: 'takeMail', mailId: m.id }) }, m.item ? 'Take gift' : 'Discard')))));
+  // Gift letters from the game first (newest first), then letters from friends.
+  const letters = [...state.mail].sort((a, b) => Number(!!b.gift) - Number(!!a.gift) || b.at - a.at);
+  b.append(h('div', { class: 'list' }, letters.map((m) => {
+    const parts = [...(m.item && m.n ? [{ item: m.item, n: m.n }] : []), ...(m.items ?? [])];
+    const has = parts.length > 0 || !!m.coins;
+    return h('div', { class: `item${m.gift ? ' gift-letter' : ''}` },
+      h('div', { class: 'col', style: 'gap:4px;min-width:0' },
+        h('b', {}, m.gift ? `🎁 From ${m.fromName}` : `From ${m.fromName}`),
+        m.text ? h('div', { style: 'white-space:pre-wrap;word-break:break-word' }, m.text) : h('i', { class: 'muted' }, '(no message)'),
+        has ? h('div', { class: 'gift-items' },
+          parts.map((it) => h('span', { class: 'gift-chip', title: ITEMS[it.item]?.name ?? it.item }, `${ITEMS[it.item]?.icon ?? '❓'} ${it.n > 1 ? `${it.n}× ` : ''}${ITEMS[it.item]?.name ?? it.item}`)),
+          m.coins ? h('span', { class: 'gift-chip' }, `🪙 ${m.coins.toLocaleString()} coins`) : null) : null),
+      h('button', { class: `btn small${has ? '' : ' ghost'}`, onclick: () => hud.act({ k: 'takeMail', mailId: m.id }) }, has ? (parts.length + (m.coins ? 1 : 0) > 1 ? 'Take gifts' : 'Take gift') : 'Discard'));
+  })));
 }
 
 /** The town billboard: read notes, pin your own, take yours down. */

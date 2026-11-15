@@ -12,6 +12,7 @@ import { albumOf } from '../Game.ts';
 import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
 import { logger } from '../../log.ts';
+import { checkGifts } from '../services/gifts.ts';
 
 export const log = logger('action');
 
@@ -23,7 +24,7 @@ export interface ActionResult {
 }
 
 /** The parts of the game the action handlers may use (narrower than all of Game). */
-export type GameApi = Pick<Game, 'store' | 'sanitize' | 'levelUpCheck' | 'broadcastLook' | 'sendSelf' | 'notifyMail' | 'rooms' | 'sendQuest'>;
+export type GameApi = Pick<Game, 'store' | 'sanitize' | 'levelUpCheck' | 'broadcastLook' | 'sendSelf' | 'notifyMail' | 'rooms' | 'sendQuest' | 'online'>;
 
 export interface Ctx {
   game: GameApi;
@@ -89,6 +90,7 @@ export function recordCatch(ctx: Ctx, kind: 'fish' | 'birds', id: string): boole
   else album[kind][id] = { n: 1, first: ctx.now, biome: ctx.room.biome };
   ctx.game.store.markPlayer(ctx.p.id);
   ctx.s.send({ t: 'album', album });
+  if (!e) checkGifts(ctx.game, ctx.p, 'progress', ctx.now);
   return !e;
 }
 

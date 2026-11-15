@@ -193,19 +193,47 @@ export function zoom(self: World, delta: number) {
 
 /** Size of the drawing area the renderer was last fitted to (width, height, pixel ratio). */
 const fitted = new WeakMap<World, string>();
+/** The largest drawing area this browser allows, per renderer (looked up once). */
+const limits = new WeakMap<World, number>();
 
 /**
  * Fit the renderer to its container. Called every frame: it only does work when
  * the size or pixel ratio changed, so it catches everything a 'resize' event can
  * miss (F11 / fullscreen, docking the window, moving to another monitor).
+ *
+ * Browsers cap how big the drawing area may be (LibreWolf/Firefox with
+ * fingerprinting protection quite low). On a big, sharp screen – e.g. an
+ * ultrawide in fullscreen – width × pixel ratio can go past that cap, and the
+ * browser then draws only part of the picture. So the pixel ratio is lowered
+ * until the drawing area fits: a little less sharp, but always the whole screen.
  */
 export function resize(self: World) {
   const w = self.container.clientWidth || window.innerWidth;
   const h = self.container.clientHeight || window.innerHeight;
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const key = `${w}x${h}@${dpr}`;
+  const want = Math.min(2, window.devicePixelRatio || 1);
+  const key = `${w}x${h}@${want}`;
   if (fitted.get(self) === key) return;
   fitted.set(self, key);
+  const gl = self.renderer.getContext();
+  let max = limits.get(self);
+  if (max === undefined) {
+    const vp = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as ArrayLike<number> | null;
+    const rb = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number | null;
+    max = Math.min(vp?.[0] ?? 16384, vp?.[1] ?? 16384, rb || 16384);
+    limits.set(self, max);
+  }
+  let dpr = Math.min(want, max / w, max / h);
+  apply(self, w, h, dpr);
+  // The browser may still hand out a smaller drawing buffer than asked for: shrink to what it gave.
+  const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+  const cw = self.renderer.domElement.width, ch = self.renderer.domElement.height;
+  if (bw < cw - 1 || bh < ch - 1) {
+    dpr *= Math.min(bw / cw, bh / ch) * 0.999;
+    apply(self, w, h, dpr);
+  }
+}
+
+function apply(self: World, w: number, h: number, dpr: number) {
   if (self.renderer.getPixelRatio() !== dpr) self.renderer.setPixelRatio(dpr);
   self.renderer.setSize(w, h);
   self.labels.setSize(w, h);

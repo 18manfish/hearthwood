@@ -218,11 +218,11 @@ export class Bot {
     await sleep(150);
   }
 
-  async create(biome: string, name: string) {
+  async create(biome: string, name: string, birthday = '1990-03-14') {
     this.send({
       t: 'create', name, islandName: `${name} Isle`, gender: 'girl', biome, outfit: 'summer',
       look: { skin: '#f1c27d', hair: 'ponytail', hairColor: '#5a3a1e', eyes: '#2b1d14', shirt: '#e74c3c', pants: '#34495e', shoes: '#8d6e63', eyeShape: 'happy', mouth: 'grin' },
-      geo: { lat: 47.37, lon: 8.54, tz: 'Europe/Zurich' },
+      geo: { lat: 47.37, lon: 8.54, tz: 'Europe/Zurich' }, birthday,
     });
     const w = await this.wait('welcome', (m) => !!m.you);
     this.you = w.you;

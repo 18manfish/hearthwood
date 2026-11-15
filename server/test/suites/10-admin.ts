@@ -27,6 +27,9 @@ export async function run(ctx: Ctx) {
     check(list.status === 200 && (list.body.players as { id: string }[]).some((p) => p.id === A.self.id), 'admin lists players (everyone is admin in dev mode)');
     const r1 = await http('PATCH', `/api/admin/players/${A.self.id}`, { coins: 12345, inv: { wood: 7, bogus_item: 1 } }, A.token);
     check(r1.status === 400, 'admin edits are validated (unknown item)');
+    check((await http('PATCH', `/api/admin/players/${A.self.id}`, { birthday: '1990-13-01' }, A.token)).status === 400, 'admin birthday edits are validated');
+    await http('PATCH', `/api/admin/players/${A.self.id}`, { birthday: '1985-07-04' }, A.token);
+    check(((await http('GET', `/api/admin/players/${A.self.id}`, undefined, A.token)).body.player as { birthday: string }).birthday === '1985-07-04', 'admin can set a birthday');
     await http('PATCH', `/api/admin/players/${A.self.id}`, { coins: 12345 }, A.token);
     const invMsg = await A.wait('inv', (m) => m.coins === 12345).catch(() => null);
     check(!!invMsg, 'online player sees admin coin change immediately');

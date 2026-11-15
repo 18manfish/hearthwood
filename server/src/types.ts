@@ -53,6 +53,8 @@ export interface PlayerRecord {
   lastBottleAt?: number;
   /** Caught fish and birds. */
   album?: Album;
+  /** 'YYYY-MM-DD'; set when the character is made (older characters got DEFAULT_BIRTHDAY). */
+  birthday?: string;
 }
 
 export interface Friendship {

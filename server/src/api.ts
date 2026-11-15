@@ -3,7 +3,7 @@
 
 import {
   ACCESS_LEVELS, BIOME_IDS, BUILDINGS, DEFAULT_GAME_DATA, GAME_TABLES, HOTBAR_TOOLS, ITEMS, PERMITS, PROTOCOL_VERSION, VILLAGERS, FRIENDSHIP_MAX,
-  applyGameData, decodeTiles, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
+  applyGameData, decodeTiles, isValidBirthday, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
   type Access, type Building, type GameData, type GameTable, type WorldObject,
   cleanOutfit, outfitOf,
 } from '@hearthwood/shared';
@@ -455,6 +455,10 @@ function applyPlayerPatch(game: Game, store: Store, p: PlayerRecord, b: Record<s
     game.kick(p.id, `You were banned: ${p.banned.reason || 'no reason given'}`);
   });
   set('chapterRewarded', () => (p.chapterRewarded = int(b.chapterRewarded, 0, 99, 'Chapter')));
+  set('birthday', () => {
+    if (!isValidBirthday(b.birthday)) throw new HttpError(400, 'Birthday: a date from 1900 until today.');
+    p.birthday = b.birthday;
+  });
   set('mail', () => {
     if (!Array.isArray(b.mail)) throw new HttpError(400, 'Mail must be a list.');
     p.mail = b.mail as PlayerRecord['mail'];

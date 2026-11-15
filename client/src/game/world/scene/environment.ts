@@ -11,7 +11,10 @@ import { debug, WATER_Y } from '../common.ts';
 import { upsertObjectMesh } from '../room/objects.ts';
 import { buildTerrain, rebuildFoliage } from '../room/terrainLayer.ts';
 import { updateSeaState } from '../../water.ts';
+import { surfLight } from '../../water/surf.ts';
 import type { World } from '../../World.ts';
+
+const SURF_DAY = new THREE.Color(1, 1, 1);
 
 export function currentEnv(self: World): EnvView | null {
   return state.env;
@@ -84,6 +87,8 @@ export function updateEnvironment(self: World, dt: number, t: number) {
   self.hemi.intensity = 0.25 + d * 0.65;
   self.hemi.color.set(d > 0.5 ? '#d8f0ff' : '#6f84c9');
   self.renderer.toneMappingExposure = 0.85 + d * 0.25;
+  // Surf foam is unlit, so it takes the light of the moment from here (else it glows white at night).
+  surfLight.value.set('#5d6c91').lerp(SURF_DAY, d).multiplyScalar(1 - overcast * 0.3).lerp(SURF_DAY, self.flash);
 
   // Night lights.
   mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 }).emissiveIntensity = (1 - d) * 1.3;

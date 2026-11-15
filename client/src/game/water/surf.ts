@@ -16,6 +16,9 @@ const FS = 4;
 /** Surf reaches this far out from the water line (tiles). */
 const REACH = 3.2;
 
+/** Foam colour for the light of the moment (environment.ts sets it): white by day, dim blue-grey by night. */
+export const surfLight = { value: new THREE.Color(1, 1, 1) };
+
 /** Shader patch: breaking waves from per-vertex depth, distance to the water line, river damping and time. */
 function surfMaterial(uTime: { value: number }) {
   const m = bend(new THREE.MeshBasicMaterial({ color: '#f2f9fc', transparent: true, depthWrite: false, fog: true }));
@@ -23,6 +26,7 @@ function surfMaterial(uTime: { value: number }) {
   m.onBeforeCompile = (shader: { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string }, r: unknown) => {
     (inner as (s: unknown, r: unknown) => void)(shader, r);
     shader.uniforms.uTime = uTime;
+    shader.uniforms.uSurfLight = surfLight;
     shader.vertexShader = shader.vertexShader.replace(
       'void main() {',
       'attribute float aDepth;\nattribute float aDist;\nattribute float aCalm;\nattribute vec2 aXZ;\nvarying float vDepth;\nvarying float vDist;\nvarying float vCalm;\nvarying vec2 vXZ;\nvoid main() {\n  vDepth = aDepth;\n  vDist = aDist;\n  vCalm = aCalm;\n  vXZ = aXZ;',
@@ -31,6 +35,7 @@ function surfMaterial(uTime: { value: number }) {
       .replace(
         'void main() {',
         `uniform float uTime;
+uniform vec3 uSurfLight;
 varying float vDepth;
 varying float vDist;
 varying float vCalm;
@@ -55,7 +60,7 @@ void main() {`,
           float u = (r + wob) / 1.15 + uTime * 0.1;
           float n = floor(u), f = fract(u);
           // Every crest breaks up into its own pieces (n stays the same while a crest travels).
-          float pieces = smoothstep(0.42, 0.62, hwNoise(vXZ * 0.55 + vec2(n * 3.7, n * 1.9)));
+          float pieces = smoothstep(0.46, 0.68, hwNoise(vXZ * 0.8 + vec2(n * 3.7, n * 1.9)));
           // Faint swells far out, wider white foam where they break close in.
           float near = 1.0 - smoothstep(0.25, 1.5, r);
           float crest = smoothstep(0.0, 0.04, f) * (1.0 - smoothstep(0.04, mix(0.11, 0.22, near), f));
@@ -63,16 +68,22 @@ void main() {`,
           float reach = 1.0 - smoothstep(${(REACH - 1.2).toFixed(2)}, ${REACH.toFixed(2)}, r);
           float wave = (crest * (0.35 + 0.65 * near) * (0.65 + 0.35 * foam) + trail * foam * 0.55 * near) * pieces * reach;
           wave *= smoothstep(0.0, 0.12, r);
-          // The line where the water laps the sand, sliding up and back.
+          // Swash: each wash slides a band of foam up the sand that thins out as it drains back.
+          // Patchy along the shore and ragged across it, so it never traces the whole waterline.
           // (by distance, not depth: the beach shelves so gently that a depth line would smear over the flats)
-          float lap = 0.03 + 0.1 * (0.5 + 0.5 * sin(uTime * 0.55 + hwNoise(vXZ * 0.4) * 6.283));
-          float edge = (1.0 - smoothstep(0.0, 0.07, abs(r - lap))) * (0.5 + 0.5 * foam) * 0.8;
+          float swell = 0.5 + 0.5 * sin(uTime * 0.55 + hwNoise(vXZ * 0.4) * 6.283);
+          float rr = r + (hwNoise(vXZ * 2.3 + 11.0) - 0.5) * 0.14;
+          float lap = 0.03 + 0.1 * swell;
+          float band = 1.0 - smoothstep(0.0, 0.09, abs(rr - lap));
+          float patches = smoothstep(0.26, 0.66, hwNoise(vXZ * 0.7 + vec2(uTime * 0.03, -uTime * 0.02)));
+          float edge = band * patches * smoothstep(0.3, 0.8, foam) * (0.3 + 0.5 * swell);
           float wet = smoothstep(-0.04, 0.0, d);
+          diffuseColor.rgb *= uSurfLight;
           diffuseColor.a *= wet * vCalm * min(1.0, max(wave, edge) * 0.95);
         }`,
       );
   };
-  m.customProgramCacheKey = () => 'hw-surf3';
+  m.customProgramCacheKey = () => 'hw-surf4';
   return m;
 }
 

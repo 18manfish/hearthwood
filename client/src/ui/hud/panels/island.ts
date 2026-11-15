@@ -8,6 +8,7 @@ import { h } from '../../dom.ts';
 import { travelTo } from './map.ts';
 import type { Hud } from '../../hud.ts';
 import { fpsVisible, setFpsVisible } from '../fps.ts';
+import { renderStatsVisible, setRenderStatsVisible } from '../renderStats.ts';
 import { namesVisible, setNamesVisible } from '../names.ts';
 import { audioSettings, setAudioSettings, type AudioSettings } from '../../../audio/engine.ts';
 
@@ -50,7 +51,8 @@ function displayBox(b: HTMLElement) {
   b.append(h('h3', { style: 'margin-top:10px' }, '🖥️ Display'),
     h('div', { class: 'list' },
       toggle('Show names', 'Player and villager names above their heads.', namesVisible(), (v) => setNamesVisible(v)),
-      toggle('Show FPS counter', 'Frames per second, in the bottom-right corner.', fpsVisible(), (v) => setFpsVisible(v))));
+      toggle('Show FPS counter', 'Frames per second, in the bottom-right corner.', fpsVisible(), (v) => setFpsVisible(v)),
+      toggle('Show rendering stats', 'Frame times, draw calls, triangles, GPU memory and more, in the upper-left corner (F4).', renderStatsVisible(), (v) => setRenderStatsVisible(v))));
 }
 
 /** Volumes (this browser only). */

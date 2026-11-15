@@ -1,5 +1,6 @@
 // Keyboard controls.
 
+import { toggleRenderStats } from '../ui/hud/renderStats.ts';
 import type { Hud } from '../ui/hud.ts';
 import { game } from '../app/session.ts';
 import { back, interact } from '../app/actions.ts';
@@ -17,6 +18,10 @@ export function bindKeys() {
     if (e.code === 'F3' || e.code === 'Backquote') {
       e.preventDefault();
       return game.hud.toggle('debug');
+    }
+    if (e.code === 'F4') {
+      e.preventDefault();
+      return toggleRenderStats();
     }
     game.hud.setPadMode(false);
     if (game.world) game.world.padAim = false;

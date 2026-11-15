@@ -109,6 +109,15 @@ h1, h2, h3 { margin: 0; }
 .chat .log div { background: rgba(255, 253, 247, 0.78); padding: 3px 8px; border-radius: 10px; align-self: flex-start; }
 .chat .log .sys { color: #2f6d22; font-weight: 700; }
 .chat input { width: 100%; border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(255, 253, 247, 0.92); box-shadow: var(--shadow); }
+.render-stats { position: absolute; left: 14px; top: 14px; width: 232px; padding: 8px 12px 10px; border-radius: 12px; background: rgba(24, 26, 30, 0.72); color: #e8e8e8; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; pointer-events: none !important; font-variant-numeric: tabular-nums; z-index: 2; }
+.render-stats .rs-row { display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
+.render-stats .rs-row span { color: #a9b0b8; }
+.render-stats .rs-row b { font-weight: 700; color: #fff; text-align: right; }
+.render-stats [data-level='good'] { color: #a8f08a; }
+.render-stats [data-level='ok'] { color: #ffd66b; }
+.render-stats [data-level='bad'] { color: #ff8a8a; }
+.render-stats .rs-gpu { margin-top: 4px; color: #a9b0b8; font-size: 11px; line-height: 1.3; white-space: normal; }
+.render-stats .rs-graph { display: block; width: 208px; height: 36px; margin-top: 6px; image-rendering: pixelated; }
 .fps { position: absolute; right: 14px; bottom: 14px; padding: 4px 10px; border-radius: 999px; background: rgba(30, 30, 30, 0.6); color: #fff; font: 700 13px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; pointer-events: none !important; font-variant-numeric: tabular-nums; }
 .fps[data-level='good'] { color: #a8f08a; }
 .fps[data-level='ok'] { color: #ffd66b; }

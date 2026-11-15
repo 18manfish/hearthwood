@@ -18,7 +18,7 @@ import { disposeFoliage } from './foliage.ts';
 import { Footprints } from './footprints.ts';
 import { windTime } from './bend.ts';
 import { state, watch } from '../state.ts';
-import { debug, type Mover, type Target, type Tool } from './world/common.ts';
+import { debug, type RenderInfo, type Mover, type Target, type Tool } from './world/common.ts';
 import { addPlayer, groundY, interp, removeMover, say, swing, updateLocal } from './world/entities/players.ts';
 import { animateVillagers, upsertVillager } from './world/entities/villagers.ts';
 import type { VillagerModel } from './villagerModels.ts';
@@ -108,6 +108,7 @@ export class World {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
+    debug.renderInfo = () => this.renderInfo();
     this.labels = new CSS2DRenderer();
     this.labels.domElement.style.position = 'absolute';
     this.labels.domElement.style.inset = '0';
@@ -241,6 +242,7 @@ export class World {
   /** Called every frame after the world has updated (audio hooks in here). */
   onFrame: ((dt: number) => void) | null = null;
   private frame() {
+    const cpu0 = performance.now();
     resize(this); // cheap unless the window changed size (F11 doesn't always send 'resize' in time)
     const rawDt = this.clock.getDelta();
     const dt = Math.min(0.1, rawDt);
@@ -300,6 +302,42 @@ export class World {
     this.labels.domElement.style.display = debug.labels ? '' : 'none';
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
+    // Numbers for the rendering stats view.
+    const r = debug.render, info = this.renderer.info.render;
+    r.cpuMs = performance.now() - cpu0;
+    r.frameMs = rawDt * 1000;
+    r.frameMaxMs = Math.max(...this.frameTimes) * 1000;
+    r.calls = info.calls;
+    r.triangles = info.triangles;
+    r.lines = info.lines;
+    r.points = info.points;
+    r.history.push(r.frameMs);
+    if (r.history.length > 120) r.history.shift();
+  }
+
+  /** Scene and GPU numbers for the rendering stats view (walks the scene: call it sparingly). */
+  renderInfo(): RenderInfo {
+    const mem = this.renderer.info.memory;
+    let objects = 0, meshes = 0, visibleMeshes = 0, instances = 0, lights = 0;
+    this.scene.traverse((o: THREE.Object3D) => {
+      objects++;
+      if ((o as unknown as { isLight?: boolean }).isLight) lights++;
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        meshes++;
+        let vis = true;
+        for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) { vis = false; break; }
+        if (vis) visibleMeshes++;
+        if ((o as THREE.InstancedMesh).isInstancedMesh) instances += (o as THREE.InstancedMesh).count;
+      }
+    });
+    const size = this.renderer.getSize(new THREE.Vector2());
+    return {
+      geometries: mem.geometries, textures: mem.textures, programs: this.renderer.info.programs?.length ?? 0,
+      objects, meshes, visibleMeshes, instances, lights, shadows: this.renderer.shadowMap.enabled,
+      width: size.x, height: size.y, pixelRatio: this.renderer.getPixelRatio(), gpu: gpuName(this.renderer),
+      labels: this.labels.domElement.childElementCount,
+    };
   }
 
   /** Birds that took off: they flap up and away, then disappear. */
@@ -392,5 +430,17 @@ export class World {
 
   swing() {
     return swing(this);
+  }
+}
+
+/** The graphics card's name, as far as the browser tells it. */
+function gpuName(r: THREE.WebGLRenderer): string {
+  try {
+    const gl = r.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    return String(name).replace(/^ANGLE \((.*)\)$/, '$1').replace(/ Direct3D.*$/, '').replace(/\s+\(0x[0-9A-Fa-f]+\)/, '');
+  } catch {
+    return 'unknown';
   }
 }

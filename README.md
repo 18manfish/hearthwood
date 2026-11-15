@@ -66,6 +66,7 @@ The server buttons are sent as a schema-checked `dev` message, and the server re
 | Enter | Chat |
 | R / Esc | Rotate placement or switch terraforming tool / cancel |
 | F3 or ` | Developer debug menu |
+| F4 | Rendering stats (upper-left corner) |
 
 ### Controller
 

@@ -56,7 +56,40 @@ export const debug = {
   labels: true,
   grid: false,
   fps: 0,
+  /** Last frame's rendering numbers (for the rendering stats view). */
+  render: {
+    /** Time since the previous frame, and the slowest of the last 60 (ms). */
+    frameMs: 0,
+    frameMaxMs: 0,
+    /** Time spent in our own frame code, render call included (ms). */
+    cpuMs: 0,
+    calls: 0,
+    triangles: 0,
+    lines: 0,
+    points: 0,
+    /** Frame times of the last 120 frames (ms), oldest first. */
+    history: [] as number[],
+  },
+  /** Heavier numbers, gathered only while the stats view asks (a few times a second). */
+  renderInfo: null as null | (() => RenderInfo),
 };
+
+export interface RenderInfo {
+  geometries: number;
+  textures: number;
+  programs: number;
+  objects: number;
+  meshes: number;
+  visibleMeshes: number;
+  instances: number;
+  lights: number;
+  shadows: boolean;
+  width: number;
+  height: number;
+  pixelRatio: number;
+  gpu: string;
+  labels: number;
+}
 
 /** Vertical curtain texture: bright hem fading upwards, with fine rays. */
 export function auroraTexture(): THREE.CanvasTexture {

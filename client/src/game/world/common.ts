@@ -57,6 +57,10 @@ export const debug = {
   wet: null as number | null, // override how wet the ground is (puddles), 0 … 1
   shadows: true,
   labels: true,
+  /** Dynamic resolution: render fewer pixels when frames are slow (see adaptResolution). */
+  autoRes: true,
+  /** Current share of the device pixel ratio being rendered (1 = full). */
+  resScale: 1,
   grid: false,
   fps: 0,
   /** Last frame's rendering numbers (for the rendering stats view). */

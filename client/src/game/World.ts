@@ -17,6 +17,7 @@ import { BIOMES, Grid, decodeTiles, type TerraOp, type Building, type RoomView, 
 import { bendFocusZ, bendStrength } from './bend.ts';
 import { disposePaths } from './paths.ts';
 import { disposeFoliage } from './foliage.ts';
+import { bentCulling, StaticBatcher } from './batching.ts';
 import { Footprints } from './footprints.ts';
 import { windTime } from './bend.ts';
 import { state, watch } from '../state.ts';
@@ -29,7 +30,7 @@ import { handle } from './world/messages.ts';
 import { animateProps, upsertBuildingMesh } from './world/room/objects.ts';
 import { addSealife, animateSealife, clearSealife } from './world/entities/sealife.ts';
 import { rebuildPaths, toggleGridOverlay } from './world/room/terrainLayer.ts';
-import { refreshVisuals, resize, updateEnvironment, currentVisual, zoom } from './world/scene/environment.ts';
+import { refreshVisuals, resize, updateEnvironment, currentVisual, zoom, adaptResolution } from './world/scene/environment.ts';
 import { computeTarget, facingTile } from './world/targeting.ts';
 import { endCast, startCast, updateFishing } from './world/tools/fishing.ts';
 import { bobberModel, fishingLineModel } from './models/fishing.ts';
@@ -57,6 +58,8 @@ export class World {
   waterFx: THREE.Group | null = null;
   world = new THREE.Group();
   objMeshes = new Map<string, THREE.Object3D>();
+  /** Instanced draws for static scenery (trees, rocks, bushes…), see batching.ts. */
+  readonly batcher = new StaticBatcher(this.world);
   bldMeshes = new Map<string, THREE.Object3D>();
   readonly players = new Map<string, Mover>();
   villagers = new Map<string, Mover & { home: boolean; houseId: string; outfit?: Outfit; model?: VillagerModel }>();
@@ -261,6 +264,7 @@ export class World {
     for (const f of this.flying) this.world.remove(f.mesh);
     this.flying = [];
     for (const m of this.objMeshes.values()) this.world.remove(m);
+    this.batcher.clear();
     for (const m of this.bldMeshes.values()) this.world.remove(m);
     for (const p of this.players.values()) removeMover(this, p);
     for (const v of this.villagers.values()) removeMover(this, v);
@@ -357,10 +361,14 @@ export class World {
     this.moon.target.position.set(fx, 0, fz);
     this.stars.position.copy(this.camera.position);
     this.rain.position.set(fx, fy, fz);
-    this.water.position.x = Math.round(fx / 2) * 2;
-    this.water.position.z = Math.round(fz / 2) * 2;
+    // (steps of 4: a whole number of cells of every ring of the sea grid, see createSea)
+    this.water.position.x = Math.round(fx / 4) * 4;
+    this.water.position.z = Math.round(fz / 4) * 4;
     this.onFrame?.(dt);
     this.labels.domElement.style.display = debug.labels ? '' : 'none';
+    this.batcher.flush();
+    bentCulling(this.camera);
+    adaptResolution(this, rawDt);
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
     // Numbers for the rendering stats view.

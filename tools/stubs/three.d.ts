@@ -1,4 +1,9 @@
 declare module 'three' {
+  export const MeshPhysicalMaterial: any; export type MeshPhysicalMaterial = any;
+  export const Sphere: any; export type Sphere = any;
+  export const Frustum: any; export type Frustum = any;
+  export const Camera: any; export type Camera = any;
+  export const SkinnedMesh: any; export type SkinnedMesh = any;
   export const TextureLoader: any; export type TextureLoader = any;
   export const DefaultLoadingManager: any; export type DefaultLoadingManager = any;
   export const LoopOnce: any; export type LoopOnce = any;

@@ -13,9 +13,20 @@ import { animateBirds } from '../entities/villagers.ts';
 import { currentVisual } from '../scene/environment.ts';
 import type { World } from '../../World.ts';
 
+/** Static scenery drawn through the instanced batches (batching.ts). */
+const BATCHED = new Set(['tree', 'stump', 'rock', 'bush', 'mushroom', 'flower']);
+
+export function removeObjectMesh(self: World, id: string) {
+  const prev = self.objMeshes.get(id);
+  if (prev) self.world.remove(prev);
+  self.batcher.remove(id);
+  self.objMeshes.delete(id);
+}
+
 export function upsertObjectMesh(self: World, o: WorldObject) {
   const prev = self.objMeshes.get(o.id);
   if (prev) self.world.remove(prev);
+  self.batcher.remove(o.id);
   if (!self.room) return;
   const def = BIOMES[self.room.biome];
   const { season, vs, snowy } = currentVisual(self);
@@ -24,6 +35,7 @@ export function upsertObjectMesh(self: World, o: WorldObject) {
   const wallDecor = o.kind === 'decor' && o.item?.startsWith('w_');
   const y = o.kind === 'fish' ? shadowY(self, o) : wallDecor ? baseHeight(Tile.Floor) : self.grid!.surfaceY(o.x + 0.5, o.z + 0.5);
   mesh.position.set(o.x + 0.5, y, o.z + 0.5);
+  if (BATCHED.has(o.kind) && self.room?.kind !== 'interior') self.batcher.add(o.id, mesh);
   mesh.traverse((c: THREE.Object3D) => (c.userData.objId = o.id));
   self.world.add(mesh);
   self.objMeshes.set(o.id, mesh);
@@ -91,37 +103,53 @@ export function objectLabel(self: World, o: WorldObject, owner: boolean): string
   }
 }
 
+const ANIM_NODES = ['beam', 'lighthouse-light', 'spout', 'flame', 'firelight', 'swing', 'boat'];
+
+/** Named moving parts of a mesh, found once and kept (a scene search every frame per object adds up). */
+function animNodes(mesh: THREE.Object3D): Record<string, THREE.Object3D | undefined> {
+  let n = mesh.userData.animNodes as Record<string, THREE.Object3D | undefined> | undefined;
+  if (!n) {
+    n = {};
+    mesh.traverse((c: THREE.Object3D) => {
+      if (ANIM_NODES.includes(c.name) && !n![c.name]) n![c.name] = c;
+    });
+    mesh.userData.animNodes = n;
+  }
+  return n;
+}
+
 export function animateProps(self: World, t: number) {
   animateBirds(self, t);
   const night = 1 - self.day;
   for (const mesh of self.bldMeshes.values()) {
-    const beam = mesh.getObjectByName('beam');
+    const n = animNodes(mesh);
+    const beam = n.beam;
     if (beam) {
       beam.rotation.y = t * 0.9;
       const bm = (beam.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
       bm.opacity = night * 0.22;
-      const ll = mesh.getObjectByName('lighthouse-light') as THREE.PointLight | undefined;
+      const ll = n['lighthouse-light'] as THREE.PointLight | undefined;
       if (ll) ll.intensity = night * 6;
     }
     const keeper = mesh.userData.keeper as Rig | undefined;
     if (keeper) animateRig(keeper, 0.016, 0, 0);
-    const spout = mesh.getObjectByName('spout');
+    const spout = n.spout;
     if (spout) spout.scale.y = 0.35 + Math.sin(t * 6) * 0.05;
-    const flame = mesh.getObjectByName('flame');
+    const flame = n.flame;
     if (flame) {
       flame.scale.y = 0.45 + Math.sin(t * 13) * 0.06 + Math.sin(t * 7.3) * 0.04;
-      const l = mesh.getObjectByName('firelight') as THREE.PointLight | undefined;
+      const l = n.firelight as THREE.PointLight | undefined;
       if (l) l.intensity = 1.6 + Math.sin(t * 11) * 0.3 + (1 - self.day) * 2.5;
     }
   }
   // Hanging chairs sway a little.
   for (const [id, mesh] of self.objMeshes) {
-    const swing = mesh.getObjectByName('swing');
+    const swing = animNodes(mesh).swing;
     if (swing) swing.rotation.x = Math.sin(t * 0.9 + (id.charCodeAt(id.length - 1) % 5)) * 0.045;
   }
   // Moored boats bob on the swell.
   for (const [id, mesh] of self.objMeshes) {
-    const boat = mesh.getObjectByName('boat');
+    const boat = animNodes(mesh).boat;
     if (!boat) continue;
     const ph = (id.charCodeAt(id.length - 1) % 7) * 0.9;
     boat.position.y = Math.sin(t * 1.3 + ph) * 0.03;

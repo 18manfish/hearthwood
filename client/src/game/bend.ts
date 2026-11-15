@@ -94,3 +94,14 @@ export function bendDrop(worldZ: number) {
   const dz = worldZ - bendFocusZ.value;
   return bendStrength.value * dz * dz;
 }
+
+/**
+ * Clone a material loaded from a GLTF as a plain MeshStandardMaterial. Blender's
+ * exporter often produces MeshPhysicalMaterial (for IOR/specular extensions),
+ * whose shader is far heavier per pixel; the toon look doesn't use any of it.
+ */
+export function standardClone(src: THREE.Material): THREE.MeshStandardMaterial {
+  const s = src as THREE.MeshStandardMaterial;
+  if (!(src as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial) return s.clone();
+  return new THREE.MeshStandardMaterial().copy(s);
+}

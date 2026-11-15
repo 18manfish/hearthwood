@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { hashString } from '@hearthwood/shared';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { bend, bentDepth } from './bend.ts';
+import { bend, bentDepth, standardClone } from './bend.ts';
 
 export const HOUSE_MODEL_URL = '/models/house.glb';
 export const VILLAGER_HOUSE_URL = '/models/houses/villager_houses.glb';
@@ -46,7 +46,7 @@ function readRoots(scene: THREE.Object3D, prefix: string) {
       const role = (src?.name || c.name.slice(name.length + 1)).replace(/\.\d+$/, '');
       let mat = mats.get(src);
       if (!mat) {
-        const cl = src.clone();
+        const cl = standardClone(src);
         cl.flatShading = false;
         if (cl.map) cl.map.anisotropy = 4;
         mat = bend(cl);
@@ -204,7 +204,7 @@ export function gltfVillagerHouse(level: number, style: HouseStyle, shared: Shar
     const key = `${role}|${spec.color}|${'kind' in spec ? spec.kind : ''}`;
     let m = styleMats.get(key);
     if (!m) {
-      const cl = (base as THREE.MeshStandardMaterial).clone();
+      const cl = standardClone(base);
       cl.color.set(spec.color);
       if ('kind' in spec && spec.kind) {
         cl.map = tex(spec.kind, false);

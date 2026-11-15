@@ -5,6 +5,7 @@
 // wind and follows the world bend.
 
 import * as THREE from 'three';
+import { chunkInstances, releaseChunks } from './batching.ts';
 import { isFreshWater, BIOMES, Tile, hashString, visualSeason, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
 import { dominantSeason, seasonAt, snowAt, snowLiftAt, type GroundLook } from './groundLook.ts';
 import { kitGeometry, kitGeometryByColor } from './assets/kit.ts';
@@ -279,13 +280,15 @@ export function buildFoliage(grid: Grid, biome: BiomeId, look: GroundLook, objec
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.receiveShadow = true;
       mesh.castShadow = false;
-      mesh.frustumCulled = false; // instances span the whole island; the bend moves them anyway
-      group.add(mesh);
+      // split into chunks that are culled one by one (with the bend), see batching.ts
+      chunkInstances(mesh, group);
+      mesh.dispose();
     }
   }
   return group;
 }
 
 export function disposeFoliage(group: THREE.Group) {
+  releaseChunks(group);
   for (const c of group.children) (c as THREE.InstancedMesh).dispose?.();
 }

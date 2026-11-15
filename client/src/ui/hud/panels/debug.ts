@@ -2,6 +2,7 @@
 
 import { BIOMES, DEV_COMMANDS, type DevCommand, ITEM_LIST, type Season, SEASONS_BY_MODEL, type Weather } from '@hearthwood/shared';
 import { debug } from '../../../game/World.ts';
+import { setAutoResolution } from '../../../game/world/scene/environment.ts';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { h } from '../../dom.ts';
@@ -23,7 +24,7 @@ export function debugPanel(hud: Hud) {
       me && g ? `pos ${me.x.toFixed(2)}, ${me.z.toFixed(2)}  tile ${tx},${tz}  type ${g.tile(tx, tz)}  level ${g.level(tx, tz)}  ramp ${g.ramp(tx, tz)}  y ${g.surfaceY(me.x, me.z).toFixed(2)}` : 'pos –',
       `objects ${w.objects.size}  buildings ${w.buildings.size}  players ${w.players.size}  target ${w.target?.label ?? '–'}`,
       env ? `env ${env.season} / ${env.weather} (${Math.round(env.intensity * 100)}%) ${env.tempC}°C  day ${env.islandDay}  ${env.dayKey} ${env.hour}:${String(env.minute).padStart(2, '0')} ${env.geo.tz} (${env.geo.lat}, ${env.geo.lon})` : '',
-      info ? `draw calls ${info.calls ?? '?'}  triangles ${info.triangles ?? '?'}` : '',
+      info ? `draw calls ${info.calls ?? '?'}  triangles ${info.triangles ?? '?'}  resolution ${Math.round(debug.resScale * 100)}%` : '',
       `server dev mode: ${state.dev ? 'ON' : 'off (start with npm run dev:fast for server commands)'}`,
     ].filter(Boolean).join('\n');
   };
@@ -76,6 +77,7 @@ export function debugPanel(hud: Hud) {
     h('div', { class: 'row', style: 'gap:16px' },
       toggle('Shadows', () => debug.shadows, (v) => (debug.shadows = v)),
       toggle('Name labels', () => debug.labels, (v) => (debug.labels = v)),
+      toggle('Dynamic resolution', () => debug.autoRes, (v) => setAutoResolution(w, v)),
       toggle('Collision grid', () => debug.grid, (v) => { debug.grid = v; w.toggleGridOverlay(v); })),
   );
 

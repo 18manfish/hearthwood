@@ -53,7 +53,7 @@ function tick() {
       row('Instances', k(info.instances)),
       row('Lights', `${info.lights} · shadows ${info.shadows ? 'on' : 'off'}`),
       row('Labels', k(info.labels)),
-      row('Resolution', `${info.width}×${info.height} @${info.pixelRatio.toFixed(2)}`),
+      row('Resolution', `${info.width}×${info.height} @${info.pixelRatio.toFixed(2)}${debug.resScale < 1 ? ` (dynamic ${Math.round(debug.resScale * 100)}%)` : ''}`),
       row('Pixels', `${Math.round(info.width * info.pixelRatio)}×${Math.round(info.height * info.pixelRatio)}`),
     ] : []),
     ...(mem ? [row('JS heap', `${Math.round(mem.usedJSHeapSize / 1048576)} MB`)] : []),

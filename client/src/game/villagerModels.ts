@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import { garmentOf, ITEMS, type Gender, type Look, type Outfit, type Species, type VillagerDef } from '@hearthwood/shared';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { bend, bentDepth } from './bend.ts';
+import { bend, bentDepth, standardClone } from './bend.ts';
 
 const BASE = '/models/villagers/';
 const FUR_PARTS = new Set(['head', 'earL', 'earR', 'torso', 'armL', 'armR', 'legL', 'legR', 'tail']);
@@ -133,8 +133,7 @@ function loadSpecies(sp: Species) {
 }
 
 function bentClone(src: THREE.Material): THREE.Material {
-  const m = (src as THREE.MeshStandardMaterial).clone();
-  return bend(m);
+  return bend(standardClone(src));
 }
 
 function prepMesh(o: THREE.Object3D) {

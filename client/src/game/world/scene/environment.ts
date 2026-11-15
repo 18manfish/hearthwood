@@ -299,7 +299,7 @@ const limits = new WeakMap<World, number>();
 export function resize(self: World) {
   const w = self.container.clientWidth || window.innerWidth;
   const h = self.container.clientHeight || window.innerHeight;
-  const want = Math.min(2, window.devicePixelRatio || 1);
+  const want = Math.min(2, window.devicePixelRatio || 1) * debug.resScale;
   const key = `${w}x${h}@${want}`;
   if (fitted.get(self) === key) return;
   fitted.set(self, key);
@@ -330,4 +330,41 @@ function apply(self: World, w: number, h: number, dpr: number) {
   self.labels.setSize(w, h);
   self.camera.aspect = w / h;
   self.camera.updateProjectionMatrix();
+}
+
+// ── Dynamic resolution ─────────────────────────────────────────────────────
+// The standard way to hold the frame rate on slow GPUs: when frames take too long
+// for a while, render fewer pixels (the canvas is scaled up by the browser); when
+// there is headroom again, go back up. Steps rather than a continuous scale so the
+// picture doesn't keep changing.
+const RES_STEPS = [1, 0.85, 0.7, 0.55];
+const res = { step: 0, acc: 0, frames: 0, slow: 0, fast: 0 };
+
+export function setAutoResolution(self: World, on: boolean) {
+  debug.autoRes = on;
+  res.step = 0;
+  res.acc = res.frames = res.slow = res.fast = 0;
+  debug.resScale = 1;
+  resize(self);
+}
+
+export function adaptResolution(self: World, rawDt: number) {
+  if (!debug.autoRes || document.hidden) return;
+  res.acc += rawDt;
+  res.frames++;
+  if (res.acc < 1) return; // judge whole seconds (coarse browser clocks give 0 now and then)
+  const ms = (res.acc / res.frames) * 1000;
+  res.acc = 0;
+  res.frames = 0;
+  if (ms > 22) { res.slow++; res.fast = 0; } // under ~45 fps
+  else if (ms < 15) { res.fast++; res.slow = 0; } // over ~65 fps (vsync caps at 60: stays)
+  else { res.slow = 0; res.fast = 0; }
+  let step = res.step;
+  if (res.slow >= 2 && step < RES_STEPS.length - 1) step++;
+  if (res.fast >= 5 && step > 0) step--;
+  if (step === res.step) return;
+  res.step = step;
+  res.slow = res.fast = 0;
+  debug.resScale = RES_STEPS[step];
+  resize(self);
 }

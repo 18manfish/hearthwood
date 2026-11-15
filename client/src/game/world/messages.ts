@@ -47,6 +47,7 @@ export function handle(self: World, m: ServerMessage) {
         const mesh = self.objMeshes.get(id);
         if (mesh && m.fx === 'fly') self.flying.push({ mesh, t0: self.clock.elapsedTime, dir: Math.random() * Math.PI * 2 });
         else if (mesh) self.world.remove(mesh);
+        self.batcher.remove(id);
         self.objMeshes.delete(id);
       }
       break;

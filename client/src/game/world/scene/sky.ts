@@ -8,12 +8,44 @@ import { seaMaterial } from '../../water/waves.ts';
 
 /**
  * Light and fairly clear in the shallows, dark out at sea, with rolling waves
- * (water/waves.ts). Half-unit grid, so the shortest waves stay smooth; it travels
- * with the player in steps of 2, a whole number of cells, so the waves don't swim.
+ * (water/waves.ts). The grid is fine (half a unit) where the camera looks and coarse
+ * (4 units) towards the fogged-out edge: ~65k triangles instead of ~390k. It travels
+ * with the player in steps of 4, a whole number of cells of both spacings, so every
+ * vertex stays on the same world lattice and the waves don't swim.
  */
+export function seaGrid(half = 110, core = 36, fine = 0.5, coarse = 4): THREE.BufferGeometry {
+  const xs: number[] = [];
+  for (let x = -half; x < -core; x += coarse) xs.push(x);
+  for (let x = -core; x < core; x += fine) xs.push(x);
+  for (let x = core; x <= half + 1e-6; x += coarse) xs.push(Math.min(x, half));
+  if (xs[xs.length - 1] < half) xs.push(half);
+  const n = xs.length;
+  const pos = new Float32Array(n * n * 3), uv = new Float32Array(n * n * 2);
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      pos[k * 3] = xs[i];
+      pos[k * 3 + 1] = 0;
+      pos[k * 3 + 2] = xs[j];
+      uv[k * 2] = (xs[i] + half) / (2 * half);
+      uv[k * 2 + 1] = 1 - (xs[j] + half) / (2 * half);
+    }
+  const idx: number[] = [];
+  for (let j = 0; j < n - 1; j++)
+    for (let i = 0; i < n - 1; i++) {
+      const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * n * 3).fill(0).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
 export function createSea(): THREE.Mesh {
-  const wg = new THREE.PlaneGeometry(220, 220, 440, 440);
-  wg.rotateX(-Math.PI / 2);
+  const wg = seaGrid();
   const water = new THREE.Mesh(wg, seaMaterial(bend(new THREE.MeshStandardMaterial({ color: '#4fb7d8', transparent: true, opacity: 0.66, roughness: 0.25, metalness: 0.05 }))));
   water.position.y = WATER_Y;
   water.receiveShadow = true;
@@ -188,7 +220,7 @@ export function createClouds(): THREE.Group {
     const far = Math.random(); // 0 near … 1 far: higher up, smaller, slower
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(w, w * 0.5),
-      new THREE.MeshBasicMaterial({ map: textures[i % textures.length], transparent: true, opacity: 0, fog: false, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ map: textures[i % textures.length], transparent: true, opacity: 0, fog: false, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true }),
     );
     mesh.position.set((Math.random() - 0.5) * CLOUD_SPAN * 2, 26 + far * 30 + Math.random() * 6, -230 - far * 40);
     if (Math.random() < 0.5) mesh.scale.x = -1; // mirrored for variety

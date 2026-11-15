@@ -164,6 +164,12 @@ export interface VillagerModel {
   sadUntil: number;
   idleFor: number;
   wantSit: boolean;
+  /** Smoothed ground speed and the gait it gives (with hysteresis). */
+  speed: number;
+  moving: boolean;
+  running: boolean;
+  /** Seconds the current clip takes to blend in. */
+  fade: number;
 }
 
 export async function makeVillagerModel(def: VillagerDef): Promise<VillagerModel | null> {
@@ -241,7 +247,7 @@ export async function makeVillagerModel(def: VillagerDef): Promise<VillagerModel
   }
   const vm: VillagerModel = {
     root, mixer, actions, current: null, currentName: '', shared: sh, clothes: [], outfitKey: '',
-    mode: 'normal', lock: 0, queue: [], sadUntil: 0, idleFor: 0, wantSit: false,
+    mode: 'normal', lock: 0, queue: [], sadUntil: 0, idleFor: 0, wantSit: false, speed: 0, moving: false, running: false, fade: 0.25,
   };
   play(vm, 'idle', 0);
   return vm;
@@ -282,22 +288,54 @@ export function dress(vm: VillagerModel, outfit: Outfit | undefined) {
   }
 }
 
+/** Loops whose stride lines up: switching between them keeps the step phase. */
+const STRIDES = new Set(['walk', 'run', 'chase', 'walk_sad', 'umbrella_walk']);
+
+/**
+ * Make `name` the clip to blend towards. Weights are managed here (not with three's
+ * fades): the current clip rises to 1 over `fade` seconds and the others shrink so all
+ * weights always add up to 1, however often the choice flips. A clip that is still
+ * fading out is picked up where it is, without restarting.
+ */
 export function play(vm: VillagerModel, name: string, fade = 0.25, timeScale = 1) {
   const a = vm.actions.get(name);
   if (!a) return 0;
-  if (vm.currentName === name) {
-    a.setEffectiveTimeScale(timeScale);
-    return 0;
-  }
-  a.reset();
   a.setEffectiveTimeScale(timeScale);
-  a.setEffectiveWeight(1);
-  if (vm.current && fade > 0) vm.current.crossFadeTo(a, fade, false);
-  else if (vm.current) vm.current.stop();
-  a.play();
+  if (vm.currentName === name) return 0;
+  const prev = vm.current;
+  const once = !vm.shared.loops.has(name);
+  const fading = a.isScheduled() && a.getEffectiveWeight() > 0.001;
+  if (!fading || once) {
+    a.reset();
+    a.play();
+    a.setEffectiveWeight(prev ? 0 : 1);
+    // keep the feet in step when changing gait
+    if (prev && STRIDES.has(name) && STRIDES.has(vm.currentName)) {
+      const pc = prev.getClip().duration;
+      a.time = ((prev.time % pc) / pc) * a.getClip().duration;
+    }
+  }
+  vm.fade = Math.max(0.05, fade);
   vm.current = a;
   vm.currentName = name;
   return a.getClip().duration;
+}
+
+/** Move the weights one step (see play). */
+function blendWeights(vm: VillagerModel, dt: number) {
+  const cur = vm.current;
+  if (!cur) return;
+  const wc = Math.min(1, cur.getEffectiveWeight() + dt / vm.fade);
+  let others = 0;
+  for (const a of vm.actions.values()) if (a !== cur && a.isScheduled()) others += a.getEffectiveWeight();
+  const k = others > 0 ? (1 - wc) / others : 0;
+  for (const a of vm.actions.values()) {
+    if (a === cur || !a.isScheduled()) continue;
+    const w = a.getEffectiveWeight() * k;
+    if (w < 0.002) a.stop();
+    else a.setEffectiveWeight(w);
+  }
+  cur.setEffectiveWeight(others > 0 ? wc : 1);
 }
 
 /** A one-shot clip that holds the state machine until it is nearly over. */
@@ -322,8 +360,13 @@ export interface Drive {
  * umbrella), with the transition clips in between so every change flows.
  */
 export function drive(vm: VillagerModel, dt: number, d: Drive) {
-  vm.mixer.update(dt);
-  const moving = d.speed > 0.15;
+  // Smooth the speed (it comes from interpolated network positions) and switch gaits
+  // with some hysteresis, so a villager doesn't flicker between clips.
+  const raw = d.speed > 8 ? vm.speed : Math.min(d.speed, 5); // > 8: a teleport or a frame hitch
+  vm.speed += (raw - vm.speed) * (1 - Math.exp(-dt * 8));
+  vm.moving = vm.moving ? vm.speed > 0.12 : vm.speed > 0.3;
+  vm.running = vm.running ? vm.speed > 1.9 : vm.speed > 2.3;
+  const moving = vm.moving;
   vm.idleFor = moving ? 0 : vm.idleFor + dt;
   if (moving) vm.wantSit = false;
   else if (vm.idleFor > 3.5 && !vm.wantSit && vm.mode === 'normal' && !vm.queue.length) {
@@ -332,6 +375,13 @@ export function drive(vm: VillagerModel, dt: number, d: Drive) {
     vm.wantSit = Math.random() < p;
     vm.idleFor = -1e9; // decide once per stop
   }
+  choose(vm, dt, d);
+  blendWeights(vm, dt);
+  vm.mixer.update(dt);
+}
+
+function choose(vm: VillagerModel, dt: number, d: Drive) {
+  const moving = vm.moving;
   if (vm.lock > 0) {
     vm.lock -= dt;
     if (vm.lock > 0) return;
@@ -345,14 +395,14 @@ export function drive(vm: VillagerModel, dt: number, d: Drive) {
   const enter = ENTER[vm.mode];
   if (enter && !inMode(vm)) return playLocked(vm, enter);
   if (vm.mode === 'normal' && vm.queue.length) return playLocked(vm, vm.queue.shift()!);
-  const sp = d.speed;
+  const sp = vm.speed;
   switch (vm.mode) {
     case 'sit': play(vm, 'sit_ground'); break;
     case 'sad': moving ? play(vm, 'walk_sad', 0.3, clamp(sp / 0.9, 0.6, 1.6)) : play(vm, 'sad', 0.3); break;
     case 'umbrella': moving ? play(vm, 'umbrella_walk', 0.25, clamp(sp / 1.3, 0.6, 1.8)) : play(vm, 'umbrella_hold', 0.3); break;
     default:
       if (!moving) play(vm, 'idle', 0.3);
-      else if (sp > 2.2) play(vm, d.def.personality === 'cheerful' || d.def.personality === 'sporty' ? 'chase' : 'run', 0.2, clamp(sp / 3, 0.7, 1.5));
+      else if (vm.running) play(vm, d.def.personality === 'cheerful' || d.def.personality === 'sporty' ? 'chase' : 'run', 0.2, clamp(sp / 3, 0.7, 1.5));
       else play(vm, 'walk', 0.25, clamp(sp / 1.3, 0.5, 1.8));
   }
 }

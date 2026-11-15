@@ -14,3 +14,8 @@ that contains this `villagers/` directory; `run.py` runs a list of steps and wri
 - `export_all.py` – the whole pipeline → `villagers/export/`, copied to `client/public/models/villagers/`
 
 `cat_model.py` / `cat_fur.py` / `cat_coats.py` are the original example cat.
+
+The `.blend` files are the saved results: `species_<species>.blend` (model with every coat
+of that species painted, as built by `lineup_coats.py`) and `cat_animated.blend` (the
+example cat with clothes, props and all clips as actions, plus the showreel timeline).
+Their textures are written next to the scripts when the pipeline runs.

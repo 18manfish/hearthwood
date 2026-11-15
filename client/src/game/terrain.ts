@@ -14,7 +14,7 @@ import { createTerrainCtx, type TerrainOptions } from './terrain/context.ts';
 import { makeCoastTile } from './terrain/coast.ts';
 import { makeEdgeFaces } from './terrain/fallback.ts';
 import { makeTiledTile } from './terrain/tiles.ts';
-import { isUniform, seasonAt, snowAt, type GroundLook } from './groundLook.ts';
+import { anySnow, isUniform, seasonAt, snowAt, snowLift, type GroundLook } from './groundLook.ts';
 
 export type { TerrainOptions } from './terrain/context.ts';
 export { buildDocks } from './terrain/docks.ts';
@@ -84,24 +84,30 @@ function variant(g0: Grid, o: TerrainOptions, season: Season, snowy: boolean): G
 function blendedGeometry(g0: Grid, o: TerrainOptions, look: GroundLook): Geo {
   if (o.interior) return buildTerrainGeometry(g0, o);
   const steady = look.t >= 1 ? look.to : look.from;
-  if (isUniform(look)) return variant(g0, o, steady, look.snowFrom === 1 && look.snowTo === 1);
-  const a = variant(g0, o, look.from, false);
-  const b = look.from !== look.to && look.t > 0 ? variant(g0, o, look.to, false) : null;
-  const anySnow = look.snowFrom > 0 || look.snowTo > 0 || look.fresh > 0;
-  const s = anySnow ? variant(g0, o, look.to, true) : null;
+  const snow = anySnow(look);
+  if (isUniform(look) && !snow) return variant(g0, o, steady, false);
+  const allSnow = isUniform(look); // steady full snow cover: one snowy build, only the depth to add
+  const a = allSnow ? variant(g0, o, steady, true) : variant(g0, o, look.from, false);
+  const b = !allSnow && look.from !== look.to && look.t > 0 ? variant(g0, o, look.to, false) : null;
+  const s = !allSnow && snow ? variant(g0, o, look.to, true) : null;
   if ((b && b.pos.length !== a.pos.length) || (s && s.pos.length !== a.pos.length)) return a; // shouldn't happen: colours only
-  const col = new Array<number>(a.col.length);
-  const { pos } = a;
+  const col = b || s ? new Array<number>(a.col.length) : a.col;
+  const pos = snow ? a.pos.slice() : a.pos;
   for (let i = 0; i < pos.length; i += 3) {
-    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
-    const w = b ? seasonAt(look, x, z) : 0;
-    const sn = s ? snowAt(look, x, y, z) : 0;
-    for (let k = 0; k < 3; k++) {
-      let c = a.col[i + k];
-      if (b) c += (b.col[i + k] - c) * w;
-      if (s) c += (s.col[i + k] - c) * sn;
-      col[i + k] = c;
+    const x = a.pos[i], y = a.pos[i + 1], z = a.pos[i + 2];
+    if (b || s) {
+      const w = b ? seasonAt(look, x, z) : 0;
+      const sn = s ? snowAt(look, x, y, z) : 0;
+      for (let k = 0; k < 3; k++) {
+        let c = a.col[i + k];
+        if (b) c += (b.col[i + k] - c) * w;
+        if (s) c += (s.col[i + k] - c) * sn;
+        col[i + k] = c;
+      }
     }
+    // The snow has depth: lift the surface where it lies (a pure function of the
+    // point, so neighbouring triangles stay joined).
+    if (snow) pos[i + 1] = y + snowLift(look, g0, x, y, z);
   }
   return { pos, col };
 }

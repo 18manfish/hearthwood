@@ -8,7 +8,7 @@
 // field, so the new season creeps in over days instead of flipping. Snow settles
 // on high ground first and melts there last.
 
-import { BIOMES, CLIFF, MAX_LEVEL, visualSeason, type BiomeId, type Season, type Weather } from '@hearthwood/shared';
+import { BIOMES, CLIFF, MAX_LEVEL, SEA_LEVEL, Tile, visualSeason, type BiomeId, type Grid, type Season, type Weather } from '@hearthwood/shared';
 
 export interface GroundLook {
   from: Season;
@@ -124,4 +124,46 @@ export function resetGroundWeather() {
   fresh = 0;
   wet = 0;
   primed = false;
+}
+
+// ── Snow depth ──────────────────────────────────────────────────────────────
+/** How deep full snow cover lies (tiles). */
+export const SNOW_DEPTH = 0.09;
+
+/** Ground that snow piles up on; it tapers off towards everything else (paths, ramps, water, docks). */
+function holdsSnow(g: Grid, x: number, z: number): boolean {
+  if (!g.inBounds(x, z)) return false;
+  const t = g.tile(x, z);
+  return (t === Tile.Ground || t === Tile.Shore) && !g.paths[z * g.size + x] && g.ramp(x, z) < 0;
+}
+
+/** 0 at the edge of ground that holds no snow, 1 from 0.6 tiles away: the snow banks up gently. */
+function clearance(g: Grid, x: number, z: number): number {
+  const tx = Math.floor(x), tz = Math.floor(z);
+  let d = 1;
+  for (let dz = -1; dz <= 1; dz++)
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = tx + dx, nz = tz + dz;
+      if (holdsSnow(g, nx, nz)) continue;
+      const ex = Math.max(nx - x, 0, x - (nx + 1)), ez = Math.max(nz - z, 0, z - (nz + 1));
+      d = Math.min(d, Math.hypot(ex, ez));
+    }
+  return smooth(0, 0.6, d);
+}
+
+/** How far the snow surface lies above the ground at a point (0 where there's none). */
+export function snowLift(look: GroundLook, g: Grid, x: number, y: number, z: number): number {
+  const s = snowAt(look, x, y, z);
+  if (s <= 0) return 0;
+  return SNOW_DEPTH * smooth(0.05, 0.6, s) * clearance(g, x, z) * smooth(SEA_LEVEL, SEA_LEVEL + 0.06, y);
+}
+
+/** The same at a point on the ground (footprints, drifts). */
+export function snowLiftAt(look: GroundLook, g: Grid, x: number, z: number): number {
+  return snowLift(look, g, x, g.surfaceY(x, z), z);
+}
+
+/** Anything in the look that could lay snow on the ground. */
+export function anySnow(look: GroundLook): boolean {
+  return look.snowFrom > 0 || look.snowTo > 0 || look.fresh > 0;
 }

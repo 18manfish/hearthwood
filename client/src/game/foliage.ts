@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { isFreshWater, BIOMES, Tile, hashString, visualSeason, type BiomeId, type Grid, type Season, type WorldObject } from '@hearthwood/shared';
-import { dominantSeason, seasonAt, snowAt, type GroundLook } from './groundLook.ts';
+import { dominantSeason, seasonAt, snowAt, snowLiftAt, type GroundLook } from './groundLook.ts';
 import { kitGeometry, kitGeometryByColor } from './assets/kit.ts';
 import { bend } from './bend.ts';
 
@@ -243,7 +243,12 @@ export function buildFoliage(grid: Grid, biome: BiomeId, look: GroundLook, objec
         if (kit) { if (r() < 0.6) place('leaf', 1, '#ffffff'); }
         else for (let k = 0; k < 3; k++) if (r() < 0.7) place('leaf', 1, pick(pal.leaves));
       }
-      if (pal.snow && r() < 0.22) place('snow', 0.8 + r() * 0.6, kit ? '#ffffff' : '#f4f8fb');
+      if (pal.snow && r() < 0.22) {
+        // Drifts sit on top of the snow layer.
+        place('snow', 0.8 + r() * 0.6, kit ? '#ffffff' : '#f4f8fb');
+        const d = out.snow[out.snow.length - 1];
+        d.y += snowLiftAt(look, grid, d.x, d.z);
+      }
       if (kit && !pal.snow && !pal.dry) {
         if (r() < 0.05) place('clover', 1, pick(pal.grass));
         if (r() < pal.flowerChance * 0.4) place('wild', 1, '#ffffff');

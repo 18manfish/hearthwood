@@ -10,7 +10,7 @@
 //   world/messages.ts            server messages that change the view
 
 import * as THREE from 'three';
-import { resetGroundWeather, snowAt } from './groundLook.ts';
+import { resetGroundWeather, snowLiftAt } from './groundLook.ts';
 import { disposePuddles } from './puddles.ts';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { BIOMES, Grid, decodeTiles, type TerraOp, type Building, type RoomView, type ServerMessage, type WorldObject, type BuildingType, type Outfit } from '@hearthwood/shared';
@@ -195,7 +195,7 @@ export class World {
     this.footprints.clear();
     this.footprints.sandColor.set(BIOMES[room.biome].shore);
     refreshVisuals(this, true);
-    rebuildPaths(this);
+    rebuildPaths(this, false);
     for (const b of room.buildings) upsertBuildingMesh(this, b);
     for (const p of room.players) addPlayer(this, p);
     for (const v of room.villagers) upsertVillager(this, v);
@@ -322,7 +322,7 @@ export class World {
     windTime.value = t;
     if (this.grid && this.room?.kind !== 'interior') {
       const look = currentVisual(this).look, g = this.grid;
-      const snowy = (x: number, z: number) => snowAt(look, x, g.surfaceY(x, z), z) > 0.5; // only in the snowy patches
+      const snowy = (x: number, z: number) => snowLiftAt(look, g, x, z); // prints sink into the snow where it lies
       for (const [id, p] of this.players) this.footprints.track(id, p.x, p.z, g, snowy, t);
       for (const [id, v] of this.villagers) if (!v.home) this.footprints.track(`v:${id}`, v.x, v.z, g, snowy, t);
     }

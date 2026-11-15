@@ -10,6 +10,7 @@ import { buildDocks, buildTerrainMesh, invalidateTerrainCache, waterColor } from
 import { buildDockModels, buildStairs } from '../../tileAssets.ts';
 import { buildWater, seaColor } from '../../water.ts';
 import { currentVisual } from '../scene/environment.ts';
+import { anySnow } from '../../groundLook.ts';
 import { upsertObjectMesh } from './objects.ts';
 import type { World } from '../../World.ts';
 
@@ -37,14 +38,15 @@ export function scheduleTerrain(self: World) {
     self.terrainTimer = null;
     if (self.grid) invalidateTerrainCache(self.grid);
     buildTerrain(self);
-    rebuildPaths(self);
+    rebuildPaths(self, false);
     rebuildFoliage(self);
     for (const o of self.objects.values()) upsertObjectMesh(self, o);
     if (self.gridOverlay) toggleGridOverlay(self, true);
   }, 70);
 }
 
-export function rebuildPaths(self: World) {
+/** `snow`: also re-lay the snow layer round the paths (not needed when the terrain was just rebuilt). */
+export function rebuildPaths(self: World, snow = true) {
   if (!self.grid) return;
   if (self.pathLayer) {
     self.world.remove(self.pathLayer);
@@ -53,6 +55,7 @@ export function rebuildPaths(self: World) {
   self.pathLayer = buildPaths(self.grid);
   self.world.add(self.pathLayer);
   rebuildPuddles(self); // puddles keep off paths
+  if (snow && anySnow(currentVisual(self).look)) buildTerrain(self); // the snow layer is cleared off paths
 }
 
 export function schedulePaths(self: World) {

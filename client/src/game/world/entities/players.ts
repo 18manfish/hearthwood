@@ -93,7 +93,8 @@ export function updateLocal(self: World, dt: number) {
     me.rig.root.position.set(me.x, groundY(self, me.x, me.z), me.z);
     me.rig.root.rotation.y = me.r;
     bendLabel(self, me);
-    animateRig(me.rig, dt, me.speed * 0.62, 0);
+    animateRig(me.rig, dt, me.speed, 0);
+    driveModel(me.rig, dt, me.speed, 0, false);
     return;
   }
   if (k.has('KeyW') || k.has('ArrowUp')) dz -= 1;

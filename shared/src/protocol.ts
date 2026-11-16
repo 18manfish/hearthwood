@@ -68,6 +68,14 @@ export const ACCESS_LEVELS: Access[] = ['private', 'friends', 'invite', 'public'
 const color = s.str(4, 9, /^#[0-9a-fA-F]{3,8}$/);
 export const NAME_RE = /^[\p{L}\p{N} _.'-]{2,16}$/u;
 
+/** An email address as people type it (trimmed, lower-cased): something@domain.tld, ≤ 254 characters. */
+export function normalizeEmail(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const e = v.trim().toLowerCase();
+  return e.length <= 254 && /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[a-z]{2,}$/.test(e) && !e.includes('..') ? e : null;
+}
+export const EMAIL_CODE_LENGTH = 6;
+
 /** Birthdays are calendar dates, 'YYYY-MM-DD' (no time zone). */
 export const BIRTHDAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 /** What characters made before birthdays existed were given. */
@@ -342,6 +350,8 @@ export interface SelfView {
   geo: GeoInfo;
   /** Your birthday, 'YYYY-MM-DD' (only you and admins see it). */
   birthday: string;
+  /** Your confirmed email address (only you and admins see it). */
+  email: string | null;
 }
 
 export interface QuestView {

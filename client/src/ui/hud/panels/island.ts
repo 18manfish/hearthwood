@@ -136,7 +136,8 @@ export function geoBox(hud: Hud, b: HTMLElement) {
 export function accountBox(hud: Hud, b: HTMLElement) {
   const self = state.self!;
   b.append(h('div', { class: 'row', style: 'justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px' },
-    h('div', {}, h('b', {}, self.username ? `👤 ${self.username}` : '👤 Guest (dev mode)'), h('div', { class: 'muted' }, `Friend code ${self.code}`), self.birthday ? h('div', { class: 'muted', title: 'Only you can see this' }, `🎂 Birthday ${formatBirthday(self.birthday)}`) : null),
+    h('div', {}, h('b', {}, self.username ? `👤 ${self.username}` : '👤 Guest (dev mode)'), h('div', { class: 'muted' }, `Friend code ${self.code}`), self.email ? h('div', { class: 'muted', title: 'Only you can see this. You can log in with it too.' }, `📧 ${self.email}`) : null,
+      self.birthday ? h('div', { class: 'muted', title: 'Only you can see this' }, `🎂 Birthday ${formatBirthday(self.birthday)}`) : null),
     h('div', { class: 'row', style: 'gap:6px' },
       self.admin ? h('a', { class: 'btn ghost small', href: '/admin.html', target: '_blank' }, '🛡️ Admin tool') : null,
       state.dev ? h('a', { class: 'btn ghost small', href: '/editor.html', target: '_blank' }, '🛠️ Game creation tool') : null,

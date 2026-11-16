@@ -7,7 +7,8 @@ import { loadTileset } from '../game/tileAssets.ts';
 import { loadKitAssets } from '../game/assets/kit.ts';
 import { loadHouseAssets } from '../game/houseAssets.ts';
 import { api, clearToken, health, loadGameData, token, type Health } from '../auth.ts';
-import { showLogin } from '../ui/login.ts';
+import { clearLastRegister, lastRegister, showLogin } from '../ui/login.ts';
+import { showEmailGate, type EmailStatus } from '../ui/email.ts';
 import { showStart } from '../ui/start.ts';
 import { app, game, statusScreen } from './session.ts';
 
@@ -32,9 +33,16 @@ export function bindAuth() {
       return;
     }
     if (kind === 'banned') return statusScreen(msg, 'Contact the server admin if you think this is a mistake.');
-    await showLogin(app, { health: serverInfo!, mode: kind === 'register' ? 'claim' : 'login', message: msg });
+    if (kind !== 'email') await showLogin(app, { health: serverInfo!, mode: kind === 'register' ? 'claim' : 'login', message: msg });
+    await confirmEmail();
     net.connect();
   };
+}
+
+/** If the account still has to confirm an email address, do that first. */
+async function confirmEmail() {
+  const me = await api<{ username: string | null } & EmailStatus>('GET', '/api/me').catch(() => null);
+  if (me?.needed) await showEmailGate(app, me, { username: me.username, devCode: lastRegister.devCode, message: lastRegister.emailError });
 }
 
 export async function boot() {
@@ -49,11 +57,15 @@ export async function boot() {
     return;
   }
   // Log in first if needed, then the start screen (logo + news), then into the world.
-  let me: { username: string | null } | null = null;
+  let me: ({ username: string | null } & EmailStatus) | null = null;
   while (!me) {
     if (!token()) await showLogin(app, { health: serverInfo });
     try {
-      me = await api<{ username: string | null }>('GET', '/api/me');
+      me = await api<{ username: string | null } & EmailStatus>('GET', '/api/me');
+      if (me.needed) {
+        await showEmailGate(app, me, { username: me.username, devCode: lastRegister.devCode, message: lastRegister.emailError });
+        clearLastRegister();
+      }
     } catch (e) {
       if ((e as { status?: number }).status !== 401) {
         setTimeout(boot, 3000);

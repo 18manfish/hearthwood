@@ -99,7 +99,7 @@ export class Game {
     return register(this, username, password);
   }
 
-  /** Username + password → a fresh login token. */
+  /** Username (or confirmed email) + password → a fresh login token. */
   login(username: string, password: string): { token: string; playerId: string } | { error: string } {
     return login(this, username, password);
   }

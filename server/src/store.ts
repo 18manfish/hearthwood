@@ -71,6 +71,8 @@ export class Store {
   private byCode = new Map<string, string>();
   private byInvite = new Map<string, string>();
   private byUsername = new Map<string, string>();
+  /** Confirmed email → player id. */
+  private byEmail = new Map<string, string>();
   private dirtyPlayers = new Set<string>();
   private dirtyIslands = new Set<string>();
   /** Billboard notes per location id. */
@@ -234,6 +236,7 @@ export class Store {
     this.players.set(p.id, p);
     this.byCode.set(p.code, p.id);
     if (p.username) this.byUsername.set(p.username.toLowerCase(), p.id);
+    if (p.email) this.byEmail.set(p.email, p.id);
   }
 
   addPlayer(p: PlayerRecord) {
@@ -253,6 +256,29 @@ export class Store {
     return true;
   }
 
+  /** Give a player a (confirmed) email address; false if another account has it. */
+  setEmail(p: PlayerRecord, email: string | null): boolean {
+    if (email) {
+      const other = this.byEmail.get(email);
+      if (other && other !== p.id) return false;
+    }
+    if (p.email) this.byEmail.delete(p.email);
+    if (email) {
+      p.email = email;
+      this.byEmail.set(email, p.id);
+    } else delete p.email;
+    this.markPlayer(p.id);
+    return true;
+  }
+  playerByEmail(email: string) {
+    const id = this.byEmail.get(email.trim().toLowerCase());
+    return id ? this.players.get(id) : undefined;
+  }
+  emailTaken(email: string, by?: string) {
+    const id = this.byEmail.get(email);
+    return !!id && id !== by;
+  }
+
   deletePlayer(id: string) {
     const p = this.players.get(id);
     if (!p) return;
@@ -260,6 +286,7 @@ export class Store {
     this.players.delete(id);
     this.byCode.delete(p.code);
     if (p.username) this.byUsername.delete(p.username.toLowerCase());
+    if (p.email) this.byEmail.delete(p.email);
     this.dirtyPlayers.delete(id);
     this.q.deletePlayer.run(id);
   }

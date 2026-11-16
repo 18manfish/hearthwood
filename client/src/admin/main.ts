@@ -89,7 +89,7 @@ async function route() {
 
 // ── Players ──────────────────────────────────────────────────────────────────
 interface PlayerSummary {
-  id: string; username: string | null; name: string; role: string; banned: boolean; online: boolean; coins: number;
+  id: string; username: string | null; email?: string | null; name: string; role: string; banned: boolean; online: boolean; coins: number;
   island: { id: string; name: string; biome: string } | null; createdAt: number; lastSeen: number; room: string | null;
 }
 
@@ -107,7 +107,7 @@ async function playersPage(q = '') {
       r.players.map((p) => h('tr', { class: 'click', onclick: () => (location.hash = `player/${p.id}`) },
         h('td', {}, p.online ? '🟢' : '⚪'),
         h('td', {}, h('b', {}, p.name), p.banned ? h('span', { class: 'pill no', style: 'margin-left:6px' }, 'banned') : null),
-        h('td', {}, p.username ?? h('span', { class: 'muted' }, 'guest')),
+        h('td', {}, p.username ?? h('span', { class: 'muted' }, 'guest'), p.email ? h('div', { class: 'muted' }, p.email) : null),
         h('td', {}, p.role === 'admin' ? h('span', { class: 'pill ok' }, 'admin') : 'player'),
         h('td', {}, String(p.coins)),
         h('td', {}, p.island ? h('a', { href: `#island/${p.island.id}`, onclick: (e: Event) => e.stopPropagation() }, `${p.island.name}`) : '–'),
@@ -128,7 +128,7 @@ async function playerPage(id: string) {
   const p = r.player as unknown as {
     id: string; username?: string; name: string; role?: string; banned?: { reason: string; until?: number; by?: string }; coins: number; inv: Record<string, number>;
     permits?: string[]; hotbar?: (string | null)[]; album?: unknown; look: Record<string, string>; gender: string; hat: string | null; chapterRewarded: number;
-    mail: unknown[]; homeIslandId: string | null; birthday?: string; code: string; createdAt: number; lastSeen: number; friends: string[]; hasPassword: boolean;
+    mail: unknown[]; homeIslandId: string | null; birthday?: string; email?: string; emailPending?: { email: string; sentAt: number } | null; code: string; createdAt: number; lastSeen: number; friends: string[]; hasPassword: boolean;
   };
   const s = r.summary;
   const left = h('div', { class: 'col', style: 'gap:16px' });
@@ -147,6 +147,7 @@ async function playerPage(id: string) {
   const hat = select([['', '– none –'], ...ITEM_LIST.filter((i) => i.wear === 'hat').map((i) => [i.id, `${i.icon} ${i.name}`] as [string, string])], p.hat ?? '');
   const chapter = input(p.chapterRewarded, { type: 'number', min: 0 });
   const birthday = input(p.birthday ?? '', { type: 'date', min: BIRTHDAY_MIN });
+  const email = input(p.email ?? '', { type: 'email', maxlength: 254, placeholder: p.username ? 'none yet – asked for at next login' : 'guest (none)' });
   const home = input(p.homeIslandId ?? '', { placeholder: 'island id' });
   const looks = Object.fromEntries(['skin', 'hairColor', 'eyes', 'shirt', 'pants', 'shoes'].map((k) => [k, input(p.look[k], { type: 'color' })]));
   const hair = input(p.look.hair);
@@ -156,6 +157,8 @@ async function playerPage(id: string) {
       field('Name', name), field('Username', username, p.hasPassword ? 'Has a password' : 'No password yet'), field('Role', role), field('Coins', coins),
       field('Gender', gender), field('Hat', hat), field('Look', h('div', { class: 'row' }, hair, Object.entries(looks).map(([k, el]) => h('span', { title: k }, el)))),
       field('Permits', h('div', { class: 'row' }, permits.map(([pid, cb]) => h('label', { class: 'row', style: 'gap:4px' }, cb, PERMITS.find((x) => x.id === pid)!.name)))),
+      field('Email', email, p.email ? '✅ Confirmed. Changing it here counts as confirmed; empty asks the player again at their next login.'
+        : p.emailPending ? `Waiting for the code sent to ${p.emailPending.email} (${ago(p.emailPending.sentAt)})` : p.username ? 'Not confirmed yet – the player is asked for one before playing.' : undefined),
       field('Birthday', birthday, p.birthday === DEFAULT_BIRTHDAY ? 'The default – this character was made before birthdays were asked for' : undefined),
       field('Chapter reward paid', chapter), field('Home island', home)),
     h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: async () => {
@@ -166,6 +169,7 @@ async function playerPage(id: string) {
         homeIslandId: home.value || null,
       };
       if (birthday.value && birthday.value !== p.birthday) patch.birthday = birthday.value;
+      if (email.value.trim() !== (p.email ?? '')) patch.email = email.value.trim() || null;
       if (username.value && username.value !== (p.username ?? '')) patch.username = username.value;
       if (role.value !== (p.role ?? 'player')) patch.role = role.value;
       if (await call('PATCH', `/api/admin/players/${p.id}`, patch)) { toast('Profile saved'); playerPage(id); }

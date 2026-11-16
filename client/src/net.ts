@@ -21,8 +21,8 @@ export class Net {
   clockOffset = 0;
   rtt = 0;
   onStatus: (s: 'connecting' | 'online' | 'offline' | 'fatal', msg?: string) => void = () => {};
-  /** The server wants a (new) login: 'login' (token unknown), 'register' (guest account must pick a name), 'banned'. */
-  onAuth: (kind: 'login' | 'register' | 'banned', msg: string) => void = () => {};
+  /** The server wants a (new) login: 'login' (token unknown), 'register' (guest account must pick a name), 'email' (confirm an address first), 'banned'. */
+  onAuth: (kind: 'login' | 'register' | 'email' | 'banned', msg: string) => void = () => {};
 
   on(h: Handler) {
     this.handlers.add(h);
@@ -54,7 +54,7 @@ export class Net {
         this.rtt = Date.now() - m.ct;
         this.clockOffset = m.st + this.rtt / 2 - Date.now();
       }
-      if (m.t === 'err' && (m.code === 'auth' || m.code === 'register' || m.code === 'banned' || m.code === 'kicked')) {
+      if (m.t === 'err' && (m.code === 'auth' || m.code === 'register' || m.code === 'email' || m.code === 'banned' || m.code === 'kicked')) {
         this.closedByServer = true;
         if (m.code === 'auth') clearToken(); // token unknown (e.g. logged out elsewhere)
         if (m.code === 'kicked') this.onStatus('fatal', m.msg);

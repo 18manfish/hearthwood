@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { decodeTiles } from '@hearthwood/shared';
-import { BASE, PORT, check, dataDir, dbAll, here, productionChecks, sleep, state, type Ctx } from './harness.ts';
+import { BASE, PORT, check, dataDir, dbAll, here, productionChecks, sleep, startFakeSmtp, state, type Ctx } from './harness.ts';
 
 const SUITES = fs.readdirSync(path.join(here, 'suites')).filter((f) => f.endsWith('.ts')).sort();
 
@@ -22,6 +22,8 @@ async function main() {
     process.exit(1);
   }
 
+  // Both test servers mail through a fake SMTP server in this process.
+  Object.assign(process.env, { SMTP_HOST: '127.0.0.1', SMTP_PORT: String(await startFakeSmtp()), SMTP_USER: 'mailer', SMTP_PASS: 'secret', SMTP_FROM: 'Hearthwood <noreply@hearthwood.test>' });
   const server = spawn(process.execPath, ['--import', 'tsx', path.join(here, '../src/index.ts')], {
     env: { ...process.env, PORT: String(PORT), DATA_DIR: dataDir, DEV_FAST: '1', LOG_LEVEL: process.env.LOG_LEVEL ?? 'error' },
     stdio: ['ignore', 'pipe', 'inherit'],

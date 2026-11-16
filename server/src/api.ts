@@ -3,7 +3,7 @@
 
 import {
   ACCESS_LEVELS, BIOME_IDS, BUILDINGS, DEFAULT_GAME_DATA, GAME_TABLES, HOTBAR_TOOLS, ITEMS, PERMITS, PROTOCOL_VERSION, VILLAGERS, FRIENDSHIP_MAX,
-  applyGameData, decodeTiles, isValidBirthday, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
+  applyGameData, decodeTiles, isValidBirthday, normalizeEmail, encodeTiles, generateIsland, isBiome, isBuildingType, normalizeHotbar, snapshotGameData, validateGameData, villagerDef,
   type Access, type Building, type GameData, type GameTable, type WorldObject,
   cleanOutfit, outfitOf,
 } from '@hearthwood/shared';
@@ -13,6 +13,7 @@ import { credentialError, hashPassword, hashToken, USERNAME_RE } from './auth.ts
 import { HttpError, Router, bearer, clientIp, readJson } from './http.ts';
 import { logger } from './log.ts';
 import type { Game } from './game/Game.ts';
+import { emailStatus, startEmail, verifyEmail } from './game/services/email.ts';
 import type { NewsRow, Store } from './store.ts';
 import type { IslandRecord, PlayerRecord, VillagerRecord } from './types.ts';
 
@@ -38,6 +39,7 @@ export function buildApi(game: Game, store: Store): Router {
   const r = new Router();
   const allowRegister = limiter(config.registerPerHourPerIp, 3600_000);
   const allowLogin = limiter(20, 10 * 60_000);
+  const allowEmail = limiter(20, 3600_000);
 
   /** The logged-in player behind a bearer token. */
   const who = (req: Parameters<typeof bearer>[0]): PlayerRecord => {
@@ -65,6 +67,9 @@ export function buildApi(game: Game, store: Store): Router {
     if (!guest) {
       const bad = credentialError(body.username, body.password);
       if (bad) throw new HttpError(400, bad);
+      const email = normalizeEmail(body.email);
+      if (!email) throw new HttpError(400, 'Enter your email address – you’ll get a code to confirm it.');
+      if (store.emailTaken(email)) throw new HttpError(409, 'Another account already uses that email address.');
     }
     if (!allowRegister(ip)) {
       log.warn('registration rate limit hit', { ip });
@@ -73,14 +78,17 @@ export function buildApi(game: Game, store: Store): Router {
     const out = guest ? game.register() : game.register(body.username as string, body.password as string);
     if ('error' in out) throw new HttpError(409, out.error);
     log.info('account registered', { player: out.playerId, username: guest ? undefined : body.username, guest: guest || undefined, ip });
-    return out;
+    if (guest) return out;
+    // Mail the confirmation code right away (the account can't play until it's entered).
+    const sent = await startEmail(game, store.players.get(out.playerId)!, body.email);
+    return { ...out, emailSent: 'error' in sent ? null : sent.sentTo, emailError: 'error' in sent ? sent.error : undefined, devCode: 'devCode' in sent ? sent.devCode : undefined };
   });
 
   r.on('POST', '/api/login', async ({ req }) => {
     const body = await readJson(req, 4096);
     const ip = clientIp(req);
     if (!allowLogin(ip)) throw new HttpError(429, 'Too many login attempts. Wait a few minutes.');
-    if (typeof body.username !== 'string' || typeof body.password !== 'string') throw new HttpError(400, 'Enter your username and password.');
+    if (typeof body.username !== 'string' || typeof body.password !== 'string') throw new HttpError(400, 'Enter your username (or email) and password.');
     const out = game.login(body.username, body.password);
     if ('error' in out) {
       log.info('login failed', { username: body.username, ip });
@@ -110,7 +118,25 @@ export function buildApi(game: Game, store: Store): Router {
 
   r.on('GET', '/api/me', ({ req }) => {
     const p = who(req);
-    return { id: p.id, username: p.username ?? null, name: p.name, admin: game.isAdmin(p), dev: config.devFast };
+    return { id: p.id, username: p.username ?? null, name: p.name, admin: game.isAdmin(p), dev: config.devFast, ...emailStatus(p) };
+  });
+
+  /** Ask for a code to confirm (or change to) this email address. */
+  r.on('POST', '/api/email', async ({ req }) => {
+    const p = who(req);
+    const body = await readJson(req, 4096);
+    if (!allowEmail(clientIp(req))) throw new HttpError(429, 'Too many codes asked for from this address. Try later.');
+    const r = await startEmail(game, p, body.email);
+    if ('error' in r) throw new HttpError(400, r.error);
+    return { ok: true, ...r };
+  });
+  /** Enter the code from the email. */
+  r.on('POST', '/api/email/verify', async ({ req }) => {
+    const p = who(req);
+    const body = await readJson(req, 4096);
+    const r = verifyEmail(game, p, body.code);
+    if ('error' in r) throw new HttpError(400, r.error);
+    return { ok: true, email: r.email };
   });
 
   // ── News boxes on the start screen ─────────────────────────────────────
@@ -179,7 +205,7 @@ export function buildApi(game: Game, store: Store): Router {
   const summary = (p: PlayerRecord) => {
     const isl = p.homeIslandId ? store.islands.get(p.homeIslandId) : undefined;
     return {
-      id: p.id, username: p.username ?? null, name: p.name, role: p.role ?? 'player', banned: !!p.banned, online: game.online.has(p.id),
+      id: p.id, username: p.username ?? null, email: p.email ?? null, name: p.name, role: p.role ?? 'player', banned: !!p.banned, online: game.online.has(p.id),
       coins: p.coins, island: isl ? { id: isl.id, name: isl.name, biome: isl.biome } : null, createdAt: p.createdAt, lastSeen: p.lastSeen,
       room: game.online.get(p.id)?.room?.id ?? null,
     };
@@ -194,7 +220,7 @@ export function buildApi(game: Game, store: Store): Router {
     admin(req);
     const q = (url.searchParams.get('q') ?? '').toLowerCase();
     const list = [...store.players.values()]
-      .filter((p) => !q || [p.id, p.name, p.username ?? '', p.code].some((s) => s.toLowerCase().includes(q)))
+      .filter((p) => !q || [p.id, p.name, p.username ?? '', p.code, p.email ?? ''].some((s) => s.toLowerCase().includes(q)))
       .sort((a, b) => Number(game.online.has(b.id)) - Number(game.online.has(a.id)) || b.lastSeen - a.lastSeen)
       .slice(0, 500);
     return { total: store.players.size, players: list.map(summary) };
@@ -203,8 +229,8 @@ export function buildApi(game: Game, store: Store): Router {
   r.on('GET', '/api/admin/players/:id', ({ req, params }) => {
     admin(req);
     const p = findPlayer(params.id);
-    const { passHash: _ph, ...safe } = p;
-    return { player: { ...safe, hasPassword: !!p.passHash }, summary: summary(p) };
+    const { passHash: _ph, emailPending, ...safe } = p;
+    return { player: { ...safe, hasPassword: !!p.passHash, emailPending: emailPending ? { email: emailPending.email, sentAt: emailPending.sentAt } : null }, summary: summary(p) };
   });
 
   r.on('PATCH', '/api/admin/players/:id', async ({ req, params }) => {
@@ -455,6 +481,14 @@ function applyPlayerPatch(game: Game, store: Store, p: PlayerRecord, b: Record<s
     game.kick(p.id, `You were banned: ${p.banned.reason || 'no reason given'}`);
   });
   set('chapterRewarded', () => (p.chapterRewarded = int(b.chapterRewarded, 0, 99, 'Chapter')));
+  set('email', () => {
+    // Set by an admin: counts as confirmed (empty removes it – the player is asked again).
+    if (b.email === null || b.email === '') return void store.setEmail(p, null);
+    const email = normalizeEmail(b.email);
+    if (!email) throw new HttpError(400, 'Email: not a valid address.');
+    if (!store.setEmail(p, email)) throw new HttpError(409, 'Another account already uses that email address.');
+    delete p.emailPending;
+  });
   set('birthday', () => {
     if (!isValidBirthday(b.birthday)) throw new HttpError(400, 'Birthday: a date from 1900 until today.');
     p.birthday = b.birthday;

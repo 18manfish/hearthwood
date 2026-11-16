@@ -26,7 +26,7 @@ export function selfView(game: Game, p: PlayerRecord): SelfView {
     homeIslandId: p.homeIslandId, islandName: isl?.name ?? null, biome: isl?.biome ?? null,
     access: isl?.access ?? 'friends', inviteCode: isl?.inviteCode ?? null, coins: p.coins, inv: p.inv,
     permits: p.permits ?? [], hotbar: normalizeHotbar(p.hotbar ?? DEFAULT_HOTBAR), album: albumOf(p),
-    username: p.username ?? null, admin: isAdmin(game, p), geo: p.geo, birthday: p.birthday ?? DEFAULT_BIRTHDAY,
+    username: p.username ?? null, admin: isAdmin(game, p), geo: p.geo, birthday: p.birthday ?? DEFAULT_BIRTHDAY, email: p.email ?? null,
     islandRoles: isl ? Object.fromEntries([...(isl.builders ?? []).map((id) => [id, 'builder'] as const), ...(isl.residents ?? []).map((id) => [id, 'resident'] as const)]) : {},
     helping: [...game.store.islands.values()]
       .filter((i) => i.residents?.includes(p.id) || i.builders?.includes(p.id))

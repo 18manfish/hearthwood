@@ -31,14 +31,14 @@ interface Print {
  */
 function printGeometry(): THREE.BufferGeometry {
   const N = 14;
-  const rings: [number, number, number][] = [[1, 0.004, 0.8], [1.3, 0.024, 1], [1.8, 0.002, 1]]; // [scale, height, shade]
-  const pos: number[] = [0, 0.004, 0], col: number[] = [0.78, 0.78, 0.78], idx: number[] = [];
+  const rings: [number, number, number][] = [[1, 0.004, 0.62], [1.3, 0.038, 1.04], [1.85, 0.002, 1]]; // [scale, height, shade]
+  const pos: number[] = [0, 0.004, 0], col: number[] = [0.58, 0.6, 0.66], idx: number[] = [];
   for (const [s, y, c] of rings)
     for (let k = 0; k < N; k++) {
       const th = (k / N) * Math.PI * 2;
       const w = 1 + 0.18 * Math.cos(th); // wider at the toe
-      pos.push(0.042 * Math.sin(th) * w * s, y, (-0.078 * Math.cos(th) + 0.006) * s);
-      col.push(c, c, c);
+      pos.push(0.05 * Math.sin(th) * w * s, y, (-0.09 * Math.cos(th) + 0.007) * s);
+      col.push(c, c, c < 1 ? c + 0.06 : c); // pressed snow in the hollow is a little blue
     }
   for (let k = 0; k < N; k++) idx.push(0, 1 + ((k + 1) % N), 1 + k); // floor
   for (let r = 0; r < rings.length - 1; r++)
@@ -126,7 +126,7 @@ export class Footprints {
     const i = this.next;
     this.next = (this.next + 1) % MAX;
     const base = onSnow ? this.snowColor : this.sandColor;
-    const from = onSnow ? new THREE.Color('#dbe4ee') : base.clone().multiplyScalar(0.92);
+    const from = onSnow ? new THREE.Color('#e8eef5') : base.clone().multiplyScalar(0.92);
     this.prints[i] = { born: now, life: onSnow ? 60 : 25, from, to: base.clone(), x: px, y, z: pz, ang: ang + Math.PI, depth: onSnow ? 1 : 0.55 };
     this.place(i, 1);
     this.mesh.setColorAt(i, from);

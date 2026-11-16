@@ -127,8 +127,8 @@ export function resetGroundWeather() {
 }
 
 // ── Snow depth ──────────────────────────────────────────────────────────────
-/** How deep full snow cover lies (tiles). */
-export const SNOW_DEPTH = 0.09;
+/** How deep full snow cover lies on average (tiles); drifts pile it higher, hollows lower. */
+export const SNOW_DEPTH = 0.13;
 
 /** Ground that snow piles up on; it tapers off towards everything else (paths, ramps, water, docks). */
 function holdsSnow(g: Grid, x: number, z: number): boolean {
@@ -137,7 +137,7 @@ function holdsSnow(g: Grid, x: number, z: number): boolean {
   return (t === Tile.Ground || t === Tile.Shore) && !g.paths[z * g.size + x] && g.ramp(x, z) < 0;
 }
 
-/** 0 at the edge of ground that holds no snow, 1 from 0.6 tiles away: the snow banks up gently. */
+/** 0 at the edge of ground that holds no snow, 1 from 0.35 tiles away: a short, rounded bank. */
 function clearance(g: Grid, x: number, z: number): number {
   const tx = Math.floor(x), tz = Math.floor(z);
   let d = 1;
@@ -148,14 +148,43 @@ function clearance(g: Grid, x: number, z: number): number {
       const ex = Math.max(nx - x, 0, x - (nx + 1)), ez = Math.max(nz - z, 0, z - (nz + 1));
       d = Math.min(d, Math.hypot(ex, ez));
     }
-  return smooth(0, 0.6, d);
+  return smooth(0, 0.35, d);
 }
 
 /** How far the snow surface lies above the ground at a point (0 where there's none). */
 export function snowLift(look: GroundLook, g: Grid, x: number, y: number, z: number): number {
   const s = snowAt(look, x, y, z);
   if (s <= 0) return 0;
-  return SNOW_DEPTH * smooth(0.05, 0.6, s) * clearance(g, x, z) * smooth(SEA_LEVEL, SEA_LEVEL + 0.06, y);
+  return SNOW_DEPTH * snowDrift(x, z) * smooth(0.05, 0.6, s) * clearance(g, x, z) * smooth(SEA_LEVEL, SEA_LEVEL + 0.06, y);
+}
+
+/**
+ * Drifts and hollows: how much deeper (> 1) or shallower (< 1) than SNOW_DEPTH the
+ * snow lies here, 0.5 … 1.6. Broad (a few tiles across) so the terrain's triangles
+ * follow it and prints sit on it.
+ */
+export function snowDrift(x: number, z: number): number {
+  return 0.5 + 0.8 * vnoise(x * 0.38, z * 0.38, 4) + 0.3 * vnoise(x * 0.8, z * 0.8, 5);
+}
+
+/**
+ * Snow is nearly white, so its shape barely shows in the light. Shade it as painters
+ * do: hollows and the walls of banks a little blue and darker, crests brightest.
+ * Returns a factor per colour channel to multiply the snow's colour by.
+ */
+export function snowShade(look: GroundLook, g: Grid, x: number, y: number, z: number, out: [number, number, number]) {
+  const lift = snowLift(look, g, x, y, z);
+  if (lift <= 0.002) {
+    out[0] = out[1] = out[2] = 1; // no snow here (paths, water, the sea floor)
+    return;
+  }
+  const full = SNOW_DEPTH * snowDrift(x, z);
+  const bank = full > 0 ? 1 - lift / full : 0; // 1 at the foot of a bank, 0 on open snow
+  const hollow = Math.min(1, Math.max(0, (1.25 - snowDrift(x, z)) / 0.75)); // 1 in the lowest hollows
+  const k = Math.min(1, 0.9 * hollow + 0.9 * bank);
+  out[0] = 1 - 0.24 * k;
+  out[1] = 1 - 0.15 * k;
+  out[2] = 1 - 0.04 * k;
 }
 
 /** The same at a point on the ground (footprints, drifts). */

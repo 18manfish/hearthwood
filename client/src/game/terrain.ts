@@ -14,7 +14,7 @@ import { createTerrainCtx, type TerrainOptions } from './terrain/context.ts';
 import { makeCoastTile } from './terrain/coast.ts';
 import { makeEdgeFaces } from './terrain/fallback.ts';
 import { makeTiledTile } from './terrain/tiles.ts';
-import { anySnow, isUniform, seasonAt, snowAt, snowLift, type GroundLook } from './groundLook.ts';
+import { anySnow, isUniform, seasonAt, snowAt, snowLift, snowShade, type GroundLook } from './groundLook.ts';
 
 export type { TerrainOptions } from './terrain/context.ts';
 export { buildDocks } from './terrain/docks.ts';
@@ -91,7 +91,8 @@ function blendedGeometry(g0: Grid, o: TerrainOptions, look: GroundLook): Geo {
   const b = !allSnow && look.from !== look.to && look.t > 0 ? variant(g0, o, look.to, false) : null;
   const s = !allSnow && snow ? variant(g0, o, look.to, true) : null;
   if ((b && b.pos.length !== a.pos.length) || (s && s.pos.length !== a.pos.length)) return a; // shouldn't happen: colours only
-  const col = b || s ? new Array<number>(a.col.length) : a.col;
+  const col = b || s || snow ? (b || s ? new Array<number>(a.col.length) : a.col.slice()) : a.col;
+  const shade: [number, number, number] = [1, 1, 1];
   const pos = snow ? a.pos.slice() : a.pos;
   for (let i = 0; i < pos.length; i += 3) {
     const x = a.pos[i], y = a.pos[i + 1], z = a.pos[i + 2];
@@ -103,6 +104,14 @@ function blendedGeometry(g0: Grid, o: TerrainOptions, look: GroundLook): Geo {
         if (b) c += (b.col[i + k] - c) * w;
         if (s) c += (s.col[i + k] - c) * sn;
         col[i + k] = c;
+      }
+    }
+    if (snow) {
+      // Blue shade in the hollows and on the banks, so the snow's shape shows (see snowShade).
+      const sn = snowAt(look, x, y, z);
+      if (sn > 0) {
+        snowShade(look, g0, x, y, z, shade);
+        for (let k = 0; k < 3; k++) col[i + k] *= 1 - sn + sn * shade[k];
       }
     }
     // The snow has depth: lift the surface where it lies (a pure function of the

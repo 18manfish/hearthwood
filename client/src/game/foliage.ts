@@ -244,10 +244,10 @@ export function buildFoliage(grid: Grid, biome: BiomeId, look: GroundLook, objec
         else for (let k = 0; k < 3; k++) if (r() < 0.7) place('leaf', 1, pick(pal.leaves));
       }
       if (pal.snow && r() < 0.22) {
-        // Drifts sit on top of the snow layer.
+        // Drifts rise out of the snow layer (half sunk into it, so they read as mounds, not rocks on top).
         place('snow', 0.8 + r() * 0.6, kit ? '#ffffff' : '#f4f8fb');
         const d = out.snow[out.snow.length - 1];
-        d.y += snowLiftAt(look, grid, d.x, d.z);
+        d.y += snowLiftAt(look, grid, d.x, d.z) * 0.5;
       }
       if (kit && !pal.snow && !pal.dry) {
         if (r() < 0.05) place('clover', 1, pick(pal.grass));

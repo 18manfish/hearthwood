@@ -52,7 +52,7 @@ function seg<T extends string>(options: readonly { value: T; label: string }[], 
   return chips(options, [value], (s) => onChange(s[0]), true);
 }
 
-function select<T extends string | number>(options: readonly { value: T; label: string; group?: string }[], value: T | undefined, onChange: (v: T) => void, blank?: string): HTMLSelectElement {
+export function select<T extends string | number>(options: readonly { value: T; label: string; group?: string }[], value: T | undefined, onChange: (v: T) => void, blank?: string): HTMLSelectElement {
   const s = h('select', {}) as HTMLSelectElement;
   if (blank !== undefined) s.append(h('option', { value: '' }, blank));
   const groups = new Map<string, HTMLElement>();
@@ -70,14 +70,14 @@ function select<T extends string | number>(options: readonly { value: T; label: 
   return s;
 }
 
-function num(value: number | undefined, onChange: (v: number | undefined) => void, attrs: Record<string, unknown> = {}): HTMLInputElement {
+export function num(value: number | undefined, onChange: (v: number | undefined) => void, attrs: Record<string, unknown> = {}): HTMLInputElement {
   const i = h('input', { type: 'number', value: value === undefined ? '' : String(value), ...attrs }) as HTMLInputElement;
   i.oninput = () => onChange(i.value === '' ? undefined : Number(i.value));
   return i;
 }
 
 /** MM-DD as month + day selects. */
-function mdPicker(value: string | undefined, onChange: (v: string | undefined) => void, optional = false): HTMLElement {
+export function mdPicker(value: string | undefined, onChange: (v: string | undefined) => void, optional = false): HTMLElement {
   let m = value ? Number(value.slice(0, 2)) : 0;
   let d = value ? Number(value.slice(3)) : 0;
   const emit = () => onChange(m && d ? `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : undefined);

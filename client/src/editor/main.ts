@@ -12,12 +12,14 @@ import {
   type Gender, type Look, type Outfit, type PathDef,
   type BirdDef, type DialogueRule, type FieldHint, type GameData, type GameTable, type ItemDef, type VillagerDef, type BuildingType, type Building,
 } from '@hearthwood/shared';
+import { structuredField, type ItemSource } from './fields.ts';
 import { chips, dialogueEditor, dialogueSummary, SPECIES_ICON, type DialogueHost } from './dialogue.ts';
 import { api, clearToken, health, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
 import { h, clear } from '../ui/dom.ts';
 import { watchEmojis } from '../ui/emoji.ts';
 import { birdModel, buildingModel, furnitureModel } from '../game/models.ts';
+import { caughtFishModel } from '../game/models/fish.ts';
 import { loadKitAssets } from '../game/assets/kit.ts';
 import { loadHouseAssets } from '../game/houseAssets.ts';
 import { buildPaths } from '../game/paths.ts';
@@ -223,6 +225,12 @@ function previewRow(t: GameTable, r: Row) {
       const m = withRow(BIRD_BY_ID as Record<string, unknown>, r.id as string, r, () => birdModel(r.id as string, 0));
       return preview.show(m, null, 1.6);
     }
+    if (t === 'fish') {
+      // The kit model when there is one (new fish show their emoji).
+      const id = r.id as string;
+      const m = withRow(ITEMS as Record<string, unknown>, id, { ...ITEMS[id], ...r, category: 'fish' }, () => caughtFishModel(id));
+      return preview.show(m, null, 1.6);
+    }
     if (t === 'items' && r.category === 'furniture') {
       const m = withRow(ITEMS as Record<string, unknown>, r.id as string, r, () => furnitureModel(r.id as string, 0));
       return preview.show(m);
@@ -279,8 +287,12 @@ type Getter = () => unknown;
 
 const hourOpts = Array.from({ length: 25 }, (_, i) => i);
 
+const itemSrc: ItemSource = { items: () => rows('items'), fish: () => rows('fish'), birds: () => rows('birds') };
+
 function fieldEditor(f: FieldHint, value: unknown, locked: boolean): { el: HTMLElement; get: Getter } {
   const dis = locked ? { disabled: true } : {};
+  const structured = structuredField(f, value, itemSrc, locked);
+  if (structured) return structured;
   switch (f.type) {
     case 'number': {
       const i = h('input', { type: 'number', step: 'any', value: value === undefined ? '' : String(value), ...dis }) as HTMLInputElement;
@@ -354,30 +366,15 @@ function fieldEditor(f: FieldHint, value: unknown, locked: boolean): { el: HTMLE
       return { el: s, get: () => s.value || undefined };
     }
     case 'tags': {
-      let sel = Array.isArray(value) ? (value as string[]) : [];
+      const wasList = Array.isArray(value);
+      let sel = wasList ? (value as string[]) : [];
       const el = chips((f.options ?? []).map((o) => ({ value: o, label: o })), sel, (s) => { sel = s; el.dispatchEvent(new Event('input', { bubbles: true })); });
       if (locked) el.classList.add('locked');
-      return { el, get: () => (sel.length || f.required ? sel : undefined) };
+      return { el, get: () => (sel.length || wasList || f.required ? sel : undefined) };
     }
     case 'text': {
       const t = h('textarea', { rows: 3, class: 'prose', ...dis }, String(value ?? '')) as HTMLTextAreaElement;
       return { el: t, get: () => (t.value === '' ? undefined : t.value) };
-    }
-    case 'json': {
-      const short = value === undefined ? '' : JSON.stringify(value);
-      const text = short.length > 60 ? JSON.stringify(value, null, 2) : short;
-      const t = h('textarea', { rows: Math.min(10, Math.max(2, text.split('\n').length)), ...dis }, text) as HTMLTextAreaElement;
-      return {
-        el: t,
-        get: () => {
-          if (!t.value.trim()) return undefined;
-          try {
-            return JSON.parse(t.value);
-          } catch {
-            throw new Error(`${f.key}: invalid JSON`);
-          }
-        },
-      };
     }
     default: {
       const i = h('input', { value: String(value ?? ''), ...dis }) as HTMLInputElement;
@@ -386,7 +383,7 @@ function fieldEditor(f: FieldHint, value: unknown, locked: boolean): { el: HTMLE
   }
 }
 
-const WIDE_FIELDS = new Set<FieldHint['type']>(['tags', 'json', 'text', 'colors', 'outfit']);
+const WIDE_FIELDS = new Set<FieldHint['type']>(['tags', 'text', 'colors', 'outfit', 'items', 'cost', 'ingredients', 'buildings']);
 
 // ── Un-applied edits in the editor panel ────────────────────────────────────
 /** Draft of the row being edited with the purpose-built (dialogue) editor. */
@@ -491,8 +488,8 @@ function summaryOf(t: GameTable, r: Row, k = keyOf(t, r)): string {
   switch (t) {
     case 'items': return `${r.category} · sell ${r.sell}${r.buy !== undefined ? ` · buy ${r.buy}` : ''}${r.tier === 2 || r.tier === 3 ? ` · ${ITEM_TIERS[r.tier as ItemTier].name.toLowerCase()}` : ''}`;
     case 'shopStock': return `${stockSlotsText(k as BuildingType)} a day · ${(r.items as string[]).map((i) => ITEMS[i]?.icon ?? i).join(' ')}`;
-    case 'fish': return `${r.water} · ${r.sell} · ${rarityLabel(r.rarity)}`;
-    case 'birds': return `${(r.biomes as string[]).join(', ')} · ${r.sell} · ${rarityLabel(r.rarity)}`;
+    case 'fish':
+    case 'birds': return `${rarityLabel(r.rarity)} · ${whereText(t, r)} · ${whenText(r)} · ${r.sell} coins`;
     case 'rarities': return `fish ${r.fish} · birds ${r.birds}`;
     case 'recipes': return `${r.station} · ${(r.ingredients as { item?: string; tag?: string; qty: number }[]).map((i) => `${i.qty} ${i.item ?? `any ${i.tag}`}`).join(', ')}`;
     case 'buildings': return `day ${r.minDay} · ${r.buildMinutes} min · ${Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ')}`;
@@ -501,6 +498,35 @@ function summaryOf(t: GameTable, r: Row, k = keyOf(t, r)): string {
     case 'permits': return `${r.price} coins`;
     case 'paths': return Object.entries(r.cost as Record<string, number>).map(([k, n]) => `${n} ${k}`).join(', ') || 'free';
   }
+}
+
+// ── Fish and birds: where and when they turn up ─────────────────────────────
+const hh = (n: number) => `${String(n).padStart(2, '0')}:00`;
+function whereText(t: GameTable, r: Row): string {
+  const biomes = (r.biomes as string[] | undefined) ?? [];
+  if (t === 'fish') return `${r.water}${r.water === 'sea' && r.shadow ? ` (${r.shadow} shadow)` : ''}${biomes.length ? ` + ${biomes.join(', ')}` : ''}`;
+  return `${biomes.join(', ') || 'nowhere'}${r.perch === 'shore' ? ' (shore)' : ''}`;
+}
+function whenText(r: Row): string {
+  const hours = r.hours as [number, number] | undefined;
+  const seasons = (r.seasons as string[] | undefined) ?? [];
+  return `${hours ? `${hh(hours[0])}–${hh(hours[1])}` : 'all day'}, ${seasons.length ? seasons.join(', ') : 'all year'}`;
+}
+
+/** Fish and bird rows: the same card for both – how often, where and when. */
+function spawnCard(t: 'fish' | 'birds', r: Row): HTMLElement {
+  const rar = rows('rarities').find((x) => x.id === r.rarity);
+  const common = rows('rarities').find((x) => x.id === 'common');
+  const rate = Number(rar?.[t] ?? 0), base = Number(common?.[t] ?? 0);
+  const same = rows(t).filter((x) => x.rarity === r.rarity && x.id !== r.id);
+  const noun = t === 'fish' ? 'fish' : 'birds';
+  return h('section', { class: 'ed-card' }, h('h4', {}, t === 'fish' ? '🎣 When it bites' : '🔭 When it lands'),
+    h('div', { class: 'stock-tier', style: 'margin-top:0' }, h('b', {}, `💎 ${String(rar?.name ?? r.rarity ?? '–')} · spawn rate ${rate}`),
+      h('span', { class: 'muted' }, r.rarity === 'common' ? 'The baseline rarity.' : base > 0 ? `${Math.round((rate / base) * 100)}% as often as a common one.` : ''),
+      h('span', { class: 'muted' }, `${same.length} other ${noun} share this rarity. Change the rate in the Rarities table.`)),
+    h('div', { class: 'stock-tier' }, h('b', {}, '📍 Where'), h('span', { class: 'muted' }, whereText(t, r))),
+    h('div', { class: 'stock-tier' }, h('b', {}, '🕒 When'), h('span', { class: 'muted' }, whenText(r))),
+    h('div', { class: 'stock-tier' }, h('b', {}, '🪙 Sells for'), h('span', { class: 'muted' }, `${r.sell} coins`)));
 }
 
 // ── Rarities (fish and birds) ───────────────────────────────────────────────
@@ -652,7 +678,7 @@ function rowEditor(): HTMLElement {
       }
       return next;
     };
-    const hasPreview = ['villagers', 'birds', 'items', 'buildings', 'paths'].includes(table);
+    const hasPreview = ['villagers', 'fish', 'birds', 'items', 'buildings', 'paths'].includes(table);
     const aside = h('div', { class: 'ed-aside' });
     if (hasPreview) {
       aside.append(h('section', { class: 'ed-card' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('h4', { style: 'margin:0' }, '👁️ Preview'), h('button', { class: 'btn ghost small', onclick: () => { try { previewRow(table, readForm()); } catch (e) { toast((e as Error).message, false); } } }, '↻ Update')),
@@ -662,6 +688,7 @@ function rowEditor(): HTMLElement {
     if (table === 'villagers') aside.append(villagerDialogueCard(r as unknown as VillagerDef));
     if (table === 'shopStock') aside.append(shopStockCard(r.shop as BuildingType, r.items as string[]));
     if (table === 'rarities') aside.append(rarityCard(r));
+    if (table === 'fish' || table === 'birds') aside.append(spawnCard(table, r));
     if (table === 'items') {
       const card = itemStockCard(r);
       if (card) aside.append(card);

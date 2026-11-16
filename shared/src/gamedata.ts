@@ -89,7 +89,12 @@ export function migrateGameData(d: Partial<GameData>): Partial<GameData> {
 export interface FieldHint {
   key: string;
   label?: string;
-  type: 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'json' | 'hours' | 'colors' | 'text' | 'outfit' | 'tier';
+  type:
+    | 'string' | 'number' | 'boolean' | 'color' | 'enum' | 'tags' | 'hours' | 'colors' | 'text' | 'outfit' | 'tier'
+    // structured editors (no hand-written JSON anywhere):
+    | 'item' | 'items' | 'cost' | 'ingredients' | 'tool' | 'buildings' | 'date';
+  /** For 'items': only offer items a shop can sell (they have a buy price). */
+  pick?: 'buyable';
   /** For 'colors': a label per colour. */
   parts?: readonly string[];
   options?: readonly string[];
@@ -135,7 +140,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'wear', type: 'enum', options: WEAR_SLOTS, help: 'Clothing slot' },
       { key: 'garment', type: 'enum', options: ALL_GARMENTS, help: 'Clothing cut (default: same as id)' },
       { key: 'color', type: 'color', help: 'Hat colour' },
-      { key: 'tool', type: 'json', help: '{"kind":"axe|shovel|rod|net","power":1}' },
+      { key: 'tool', type: 'tool', options: ['axe', 'shovel', 'rod', 'net'], help: 'What the tool does; power = how much better than the basic one (hits saved, longer bite window)' },
       { key: 'tier', type: 'tier', help: 'Shop rarity: 1 common (default), 2 uncommon, 3 rare – how likely it is to be in a shop’s stock on a given day' },
     ],
     blank: () => ({ id: 'new_item', name: 'New item', icon: '📦', category: 'furniture', tags: ['furniture'], sell: 50, buy: 250, placeable: true, model: 'crate' }),
@@ -143,33 +148,33 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
   fish: {
     label: 'Fish', icon: '🐟', shape: 'list', key: 'id', canAdd: true,
     fields: [
-      { key: 'id', type: 'string', required: true, help: 'Must start with fish_' },
-      { key: 'name', type: 'string', required: true },
-      { key: 'icon', type: 'string', required: true },
-      { key: 'sell', type: 'number', required: true },
-      { key: 'rarity', type: 'enum', options: RARITY_IDS, required: true, help: 'How often it bites is set per rarity in the Rarities table' },
-      { key: 'water', type: 'enum', options: ['sea', 'river', 'pond'], required: true, help: 'Rivers connect to the sea, ponds don’t' },
-      { key: 'shadow', type: 'enum', options: FISH_SHADOWS, help: 'Sea fish: size of the shadow it bites from (default medium). Rivers and ponds only have medium shadows.' },
-      { key: 'hours', type: 'hours', help: 'Local hours it can be caught; leave empty for all day. Wraps past midnight (e.g. 16 → 9).' },
-      { key: 'seasons', type: 'tags', options: SEASON_NAMES },
-      { key: 'biomes', type: 'tags', options: BIOME_IDS, help: 'Extra biomes (on top of each biome’s fish list)' },
+      { key: 'id', label: 'Id', type: 'string', required: true, help: 'Must start with fish_' },
+      { key: 'name', label: 'Name', type: 'string', required: true },
+      { key: 'icon', label: 'Icon', type: 'string', required: true, help: 'An emoji (journal and fallback model)' },
+      { key: 'sell', label: 'Sell price', type: 'number', required: true, help: 'Coins paid when selling' },
+      { key: 'rarity', label: 'Rarity', type: 'enum', options: RARITY_IDS, required: true, help: 'How often it bites is set per rarity in the Rarities table' },
+      { key: 'water', label: 'Water', type: 'enum', options: ['sea', 'river', 'pond'], required: true, help: 'Rivers connect to the sea, ponds don’t' },
+      { key: 'shadow', label: 'Shadow', type: 'enum', options: FISH_SHADOWS, help: 'Sea fish: size of the shadow it bites from (default medium). Rivers and ponds only have medium shadows.' },
+      { key: 'biomes', label: 'Biomes', type: 'tags', options: BIOME_IDS, help: 'Extra biomes (on top of each biome’s own fish list)' },
+      { key: 'hours', label: 'Hours', type: 'hours', help: 'Island hours it can be caught; leave empty for all day. Wraps past midnight (e.g. 16 → 9).' },
+      { key: 'seasons', label: 'Seasons', type: 'tags', options: SEASON_NAMES, help: 'None picked = all year' },
     ],
     blank: () => ({ id: 'fish_new', name: 'New fish', icon: '🐟', sell: 100, rarity: 'uncommon', water: 'river', biomes: ['grassland'] }),
   },
   birds: {
     label: 'Birds', icon: '🐦', shape: 'list', key: 'id', canAdd: true,
     fields: [
-      { key: 'id', type: 'string', required: true, help: 'Must start with bird_' },
-      { key: 'name', type: 'string', required: true },
-      { key: 'icon', type: 'string', required: true },
-      { key: 'sell', type: 'number', required: true },
-      { key: 'rarity', type: 'enum', options: RARITY_IDS, required: true, help: 'How often it lands is set per rarity in the Rarities table' },
-      { key: 'biomes', type: 'tags', options: BIOME_IDS, required: true },
-      { key: 'hours', type: 'hours', help: 'Local hours it shows up; leave empty for all day.' },
-      { key: 'seasons', type: 'tags', options: SEASON_NAMES },
-      { key: 'perch', type: 'enum', options: ['ground', 'shore'] },
-      { key: 'colors', type: 'colors', parts: ['body', 'wing', 'belly', 'beak'], required: true },
-      { key: 'size', type: 'number', required: true, help: 'Model scale, 1 = sparrow' },
+      { key: 'id', label: 'Id', type: 'string', required: true, help: 'Must start with bird_' },
+      { key: 'name', label: 'Name', type: 'string', required: true },
+      { key: 'icon', label: 'Icon', type: 'string', required: true, help: 'An emoji (journal)' },
+      { key: 'sell', label: 'Sell price', type: 'number', required: true, help: 'Coins paid when selling' },
+      { key: 'rarity', label: 'Rarity', type: 'enum', options: RARITY_IDS, required: true, help: 'How often it lands is set per rarity in the Rarities table' },
+      { key: 'perch', label: 'Perch', type: 'enum', options: ['ground', 'shore'], help: 'Where it lands (default: ground)' },
+      { key: 'size', label: 'Size', type: 'number', required: true, help: 'Model scale, 1 = sparrow' },
+      { key: 'biomes', label: 'Biomes', type: 'tags', options: BIOME_IDS, required: true, help: 'Biomes it lands in' },
+      { key: 'hours', label: 'Hours', type: 'hours', help: 'Island hours it shows up; leave empty for all day. Wraps past midnight (e.g. 16 → 9).' },
+      { key: 'seasons', label: 'Seasons', type: 'tags', options: SEASON_NAMES, help: 'None picked = all year' },
+      { key: 'colors', label: 'Colours', type: 'colors', parts: ['body', 'wing', 'belly', 'beak'], required: true },
     ],
     blank: () => ({ id: 'bird_new', name: 'New bird', icon: '🐦', sell: 150, rarity: 'uncommon', biomes: ['grassland'], hours: [6, 19], colors: ['#8d6e4f', '#5d4330', '#d7c4a3', '#3e2f22'], size: 1 }),
   },
@@ -177,16 +182,16 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
     label: 'Recipes', icon: '🛠️', shape: 'list', key: 'id', canAdd: true,
     fields: [
       { key: 'id', type: 'string', required: true },
-      { key: 'output', type: 'string', required: true, help: 'Item id' },
+      { key: 'output', type: 'item', required: true, help: 'The item it makes' },
       { key: 'qty', type: 'number', required: true },
       { key: 'station', type: 'enum', options: ['hand', 'workbench', 'campfire', 'restaurant'], required: true },
-      { key: 'ingredients', type: 'json', required: true, help: '[{"item":"wood","qty":3}, {"tag":"fish","qty":1}]' },
+      { key: 'ingredients', type: 'ingredients', required: true, help: 'A specific item, or any item of a kind (e.g. any fish)' },
     ],
     blank: () => ({ id: 'new_recipe', output: 'crate', qty: 1, station: 'workbench', ingredients: [{ item: 'wood', qty: 5 }] }),
   },
   shopStock: {
     label: 'Shop stock', icon: '🏪', shape: 'map', key: 'shop', canAdd: false,
-    fields: [{ key: 'items', type: 'json', help: 'Everything this shop can sell (price = the item’s buy price). Each morning it puts out a few of these, picked by item tier.' }],
+    fields: [{ key: 'items', type: 'items', pick: 'buyable', required: true, help: 'Everything this shop can sell (price = the item’s buy price). Each morning it puts out a few of these, picked by item tier.' }],
   },
   buildings: {
     label: 'Buildings', icon: '🏠', shape: 'map', key: 'type', canAdd: false,
@@ -194,8 +199,8 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'name', type: 'string', required: true },
       { key: 'icon', type: 'string', required: true },
       { key: 'description', type: 'text' },
-      { key: 'cost', type: 'json', help: '{"wood":20,"stone":10}' },
-      { key: 'requires', type: 'json', help: 'Building types that must be finished first' },
+      { key: 'cost', type: 'cost', help: 'Materials to build it' },
+      { key: 'requires', type: 'buildings', options: BUILDING_TYPES(), help: 'Buildings that must be finished first' },
       { key: 'minDay', type: 'number', help: 'Island day it unlocks' },
       { key: 'buildMinutes', type: 'number' },
       { key: 'max', type: 'number' },
@@ -214,9 +219,9 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
       { key: 'accent', type: 'color', required: true },
       { key: 'catchphrase', type: 'string', required: true, help: 'Used as {cp} in dialogue' },
       { key: 'likes', type: 'tags', options: ITEM_TAGS },
-      { key: 'loves', type: 'json', help: 'Item ids, e.g. ["apple","bench"]' },
+      { key: 'loves', type: 'items', required: true, help: 'Favourite gifts' },
       { key: 'dislikes', type: 'tags', options: ITEM_TAGS },
-      { key: 'birthday', type: 'string', required: true, help: 'MM-DD' },
+      { key: 'birthday', type: 'date', required: true },
       { key: 'outfit', type: 'outfit', options: VILLAGER_SLOTS, help: 'What they wear until a player gives them clothes' },
     ],
     blank: () => ({ id: 'v_new', name: 'Newbie', species: 'cat', personality: 'cheerful', color: '#d9a35b', accent: '#fff3dc', catchphrase: 'hiya', likes: ['fruit'], loves: ['apple'], dislikes: ['mineral'], birthday: '01-01' }),
@@ -240,7 +245,7 @@ export const TABLE_INFO: Record<GameTable, TableInfo> = {
     fields: [
       { key: 'name', type: 'string', required: true },
       { key: 'icon', type: 'string', required: true },
-      { key: 'cost', type: 'json', help: 'Per tile, e.g. {"stone":1}' },
+      { key: 'cost', type: 'cost', help: 'Per tile' },
       { key: 'color', type: 'color', required: true, help: 'Swatch in the build menu (the path pieces have their own colours)' },
     ],
   },

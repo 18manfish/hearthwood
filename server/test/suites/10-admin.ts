@@ -2,23 +2,60 @@ import {
   Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
-import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
+import { Bot, BASE, PORT, check, codeFor, mails, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
 
 export async function run(ctx: Ctx) {
   const { A, C } = ctx;
   console.log('Accounts');
   {
-    const reg = await http('POST', '/api/register', { username: 'Tester_1', password: 'correct horse' });
-    check(reg.status === 200 && !!reg.body.token, 'register with username & password');
-    check((await http('POST', '/api/register', { username: 'tester_1', password: 'whatever123' })).status === 409, 'usernames are unique (case-insensitive)');
-    check((await http('POST', '/api/register', { username: 'x', password: 'whatever123' })).status === 400, 'too-short username refused');
+    const reg = await http('POST', '/api/register', { username: 'Tester_1', password: 'correct horse', email: 'Tester@Example.org ' });
+    check(reg.status === 200 && !!reg.body.token && reg.body.emailSent === 'tester@example.org', 'register with username, email & password');
+    check((await http('POST', '/api/register', { username: 'tester_1', password: 'whatever123', email: 'other@example.org' })).status === 409, 'usernames are unique (case-insensitive)');
+    check((await http('POST', '/api/register', { username: 'x', password: 'whatever123', email: 'x@example.org' })).status === 400, 'too-short username refused');
+    check((await http('POST', '/api/register', { username: 'Noemail', password: 'whatever123' })).status === 400
+      && (await http('POST', '/api/register', { username: 'Bademail', password: 'whatever123', email: 'not-an-address' })).status === 400, 'an email address is required (and checked)');
+    // The code arrives by email (sent through SMTP with a login).
+    await sleep(300);
+    const mail = mails.find((m) => m.to === 'tester@example.org');
+    const code = codeFor('tester@example.org');
+    check(!!code && mail!.auth === 'mailer:secret' && mail!.text.includes(code) && mail!.from === 'noreply@hearthwood.test', 'the confirmation code is emailed over SMTP');
+    const tok = reg.body.token as string;
+    const gate = new Bot('T');
+    gate.ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+    await new Promise((res) => (gate.ws.onopen = res));
+    gate.ws.onmessage = (ev) => gate.onMsg(JSON.parse(String(ev.data)));
+    gate.send({ t: 'hello', token: tok, v: PROTOCOL_VERSION });
+    check(!!(await gate.wait('err', (m) => m.code === 'email').catch(() => null)), 'an account can’t play before its email is confirmed');
+    const me0 = await http('GET', '/api/me', undefined, tok);
+    check(me0.body.needed === true && (me0.body.pending as { email: string }).email === 'tester@example.org', '/api/me says the email is still to confirm');
+    check((await http('POST', '/api/email', { email: 'tester@example.org' }, tok)).status === 400, 'a new code only after a minute');
+    const wrong = code === '000000' ? '111111' : '000000';
+    const bad = await http('POST', '/api/email/verify', { code: wrong }, tok);
+    check(bad.status === 400 && /4 tries left/.test(bad.body.error as string), 'a wrong code is refused (tries counted)');
+    check((await http('POST', '/api/email/verify', { code: ` ${code!.slice(0, 3)} ${code!.slice(3)} ` }, tok)).status === 200, 'the right code confirms the address');
+    const me1 = await http('GET', '/api/me', undefined, tok);
+    check(me1.body.email === 'tester@example.org' && me1.body.needed === false, 'the address is confirmed');
+    check((await http('POST', '/api/register', { username: 'Copycat', password: 'whatever123', email: 'TESTER@example.org' })).status === 409, 'a confirmed email belongs to one account');
+    gate.ws.close();
     check((await http('POST', '/api/login', { username: 'tester_1', password: 'wrong password' })).status === 401, 'wrong password refused');
     const login = await http('POST', '/api/login', { username: 'TESTER_1', password: 'correct horse' });
     check(login.status === 200 && login.body.token !== reg.body.token, 'login issues a new token');
+    const byMail = await http('POST', '/api/login', { username: 'Tester@example.org', password: 'correct horse' });
+    check(byMail.status === 200 && byMail.body.playerId === login.body.playerId, 'log in with the email address instead of the username');
+    check((await http('POST', '/api/login', { username: 'tester@example.org', password: 'wrong password' })).status === 401, '… but still only with the right password');
     const me = await http('GET', '/api/me', undefined, login.body.token as string);
     check(me.body.username === 'Tester_1', '/api/me knows who you are');
     await http('POST', '/api/logout', {}, login.body.token as string);
     check((await http('GET', '/api/me', undefined, login.body.token as string)).status === 401, 'logout revokes the token');
+    // The mail server refusing the address: nothing sent, and the player can try again at once.
+    const bounce = await http('POST', '/api/register', { username: 'Bouncer', password: 'whatever123', email: 'gone@bounce.test' });
+    check(bounce.status === 200 && bounce.body.emailSent === null && typeof bounce.body.emailError === 'string', 'a refused address is reported');
+    check((await http('POST', '/api/email', { email: 'bouncer@example.org' }, bounce.body.token as string)).status === 200, '… and another one can be tried straight away');
+    // An admin can set an address (counts as confirmed).
+    const adm = await http('PATCH', `/api/admin/players/${bounce.body.playerId}`, { email: 'bouncer@admin.test' }, A.token);
+    const am = await http('GET', '/api/me', undefined, bounce.body.token as string);
+    check(adm.status === 200 && am.body.email === 'bouncer@admin.test' && am.body.needed === false, 'an admin can set a player’s email');
+    check((await http('PATCH', `/api/admin/players/${bounce.body.playerId}`, { email: 'tester@example.org' }, A.token)).status === 409, '… but not one another account has');
   }
 
   console.log('Admin API');

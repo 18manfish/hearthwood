@@ -3,6 +3,7 @@
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -254,6 +255,56 @@ export function dbAll(sql: string, ...args: (string | number)[]) {
   }
 }
 
+/** Emails the servers sent, as received by the test mail server. */
+export const mails: { from: string; to: string; subject: string; text: string; auth: string }[] = [];
+/** The newest code mailed to this address. */
+export function codeFor(to: string) {
+  const m = [...mails].reverse().find((x) => x.to === to.toLowerCase());
+  return m ? /code: (\d{6})/.exec(m.subject)?.[1] ?? null : null;
+}
+
+/** A tiny SMTP server for the tests (plain text, AUTH PLAIN) that keeps what it receives. */
+export function startFakeSmtp(): Promise<number> {
+  return new Promise((resolve) => {
+    const srv = net.createServer((sock) => {
+      let buf = '', data: string[] | null = null, from = '', to = '', auth = '';
+      const say = (s: string) => sock.write(`${s}\r\n`);
+      say('220 test-smtp ready');
+      sock.on('data', (d) => {
+        buf += d.toString('utf8');
+        let i: number;
+        while ((i = buf.indexOf('\r\n')) >= 0) {
+          const line = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          if (data) {
+            if (line !== '.') { data.push(line.startsWith('..') ? line.slice(1) : line); continue; }
+            const raw = data.join('\r\n');
+            data = null;
+            const [head, body] = raw.split('\r\n\r\n');
+            const subject = /^Subject: (.*)$/m.exec(head)?.[1] ?? '';
+            mails.push({ from, to, subject, text: Buffer.from(body.replace(/\r\n/g, ''), 'base64').toString('utf8'), auth });
+            say('250 queued');
+            continue;
+          }
+          const [verb] = line.split(' ');
+          switch (verb.toUpperCase()) {
+            case 'EHLO': say('250-test-smtp'); say('250 AUTH PLAIN LOGIN'); break;
+            case 'AUTH': auth = Buffer.from(line.split(' ')[2] ?? '', 'base64').toString('utf8').split('\0').slice(1).join(':'); say(auth === 'mailer:secret' ? '235 ok' : '535 bad credentials'); break;
+            case 'MAIL': from = /<(.*)>/.exec(line)?.[1] ?? ''; say('250 ok'); break;
+            case 'RCPT': to = /<(.*)>/.exec(line)?.[1] ?? ''; say(to.endsWith('@bounce.test') ? '550 no such user' : '250 ok'); break;
+            case 'DATA': data = []; say('354 go on'); break;
+            case 'QUIT': say('221 bye'); sock.end(); break;
+            default: say('502 not here');
+          }
+        }
+      });
+      sock.on('error', () => undefined);
+    });
+    srv.listen(0, '127.0.0.1', () => resolve((srv.address() as net.AddressInfo).port));
+    srv.unref();
+  });
+}
+
 /** A second server without dev mode: accounts are required, tools are locked. */
 export async function productionChecks() {
   console.log('Production mode (no DEV_FAST)');
@@ -270,8 +321,10 @@ export async function productionChecks() {
     const h = await http('GET', '/api/health', undefined, undefined, base);
     check(h.body.guests === false && h.body.dev === false, 'production server reports no guests, no dev mode');
     check((await http('POST', '/api/register', {}, undefined, base)).status === 400, 'registration needs a username and password');
-    const root = await http('POST', '/api/register', { username: 'root', password: 'admin-password' }, undefined, base);
-    const pleb = await http('POST', '/api/register', { username: 'pleb', password: 'player-password' }, undefined, base);
+    check((await http('POST', '/api/register', { username: 'nomail', password: 'player-password' }, undefined, base)).status === 400, 'registration needs an email address');
+    const root = await http('POST', '/api/register', { username: 'root', password: 'admin-password', email: 'root@prod.test' }, undefined, base);
+    const pleb = await http('POST', '/api/register', { username: 'pleb', password: 'player-password', email: 'pleb@prod.test' }, undefined, base);
+    check(!!codeFor('pleb@prod.test') && root.body.devCode === undefined, 'the confirmation code is emailed (never handed out outside dev mode)');
     check((await http('GET', '/api/admin/players', undefined, pleb.body.token as string, base)).status === 403, 'normal players can’t use the admin API');
     check((await http('GET', '/api/admin/players', undefined, root.body.token as string, base)).status === 200, 'ADMIN_USERS accounts can');
     check((await http('GET', '/api/dev/gamedata', undefined, root.body.token as string, base)).status === 404, 'game creation API is off outside dev mode');

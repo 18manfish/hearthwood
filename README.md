@@ -287,6 +287,8 @@ hearthwood/
 ### Configuration (environment variables)
 `PORT` (8787), `HOST`, `DATA_DIR` (server/data, which holds `hearthwood.db`), `CLIENT_DIST`, `ALLOWED_ORIGINS`, `DEV_FAST=1` (dev mode: fast time, guests, dev commands, game creation tool, everyone is an admin), `ADMIN_USERS` (comma-separated usernames that are always admins).
 
+Email (accounts confirm an address with a 6-digit code before playing, and can log in with it): `SMTP_HOST` (e.g. `smtp.gmail.com`, `mail.infomaniak.com`), `SMTP_PORT` (587 with STARTTLS by default, or 465), `SMTP_SECURE=1` (TLS from the start; automatic on port 465), `SMTP_USER`, `SMTP_PASS` (often an app password or API key) and `SMTP_FROM` (e.g. `Hearthwood <noreply@example.com>`, defaults to `SMTP_USER`). Without `SMTP_HOST` no email is sent: the message with its code is written to the server log instead (and a dev-mode server shows the code on screen), so set this up before players register.
+
 Logging: `LOG_LEVEL` (`debug` · `info` · `warn` · `error`; the default is `info`, or `debug` with `DEV_FAST`), `LOG_FORMAT` (`pretty` in a terminal, otherwise `json`; one JSON object per line), and `LOG_FILE` to also append JSON lines to a file. The server logs startup, registrations, connections and disconnects (with IP), refused or malformed messages, abuse disconnects, character creation, building completions, moves, permit purchases, dev commands, save timings (debug) and all errors. Tokens are never logged. Gameplay constants are in `server/src/config.ts`, for example `treeStageMinutes` and the fishing window.
 
 ### Going further

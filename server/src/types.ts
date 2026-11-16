@@ -55,6 +55,10 @@ export interface PlayerRecord {
   album?: Album;
   /** 'YYYY-MM-DD'; set when the character is made (older characters got DEFAULT_BIRTHDAY). */
   birthday?: string;
+  /** Confirmed email address (lower-case); accounts with a username need one to play. */
+  email?: string;
+  /** An address being confirmed: the code's hash, when it expires, wrong tries, and how many codes were sent today. */
+  emailPending?: { email: string; codeHash: string; expires: number; tries: number; sentAt: number; day: string; sends: number };
 }
 
 export interface Friendship {

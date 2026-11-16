@@ -1,10 +1,15 @@
-// Log-in / create-account screen. Outside dev mode an account (username +
-// password) is required; in dev mode you may also play as a guest.
+// Log-in / create-account screen. Outside dev mode an account (username, email and
+// password) is required; in dev mode you may also play as a guest. You log in with
+// your username or your (confirmed) email address.
 
 import { api, setToken, type Health } from '../auth.ts';
 import { h, clear } from './dom.ts';
 
 export type LoginMode = 'login' | 'register' | 'claim';
+
+/** What registering said about the confirmation email (for the email screen that follows). */
+export let lastRegister: { devCode?: string; emailError?: string } = {};
+export const clearLastRegister = () => (lastRegister = {});
 
 /** Show the form; resolves once a login token is stored. */
 export function showLogin(app: HTMLElement, opts: { health: Health; mode?: LoginMode; message?: string }): Promise<void> {
@@ -12,7 +17,8 @@ export function showLogin(app: HTMLElement, opts: { health: Health; mode?: Login
     let mode: LoginMode = opts.mode ?? 'login';
     const draw = (message = opts.message ?? '') => {
       clear(app);
-      const user = h('input', { placeholder: 'Username', autocomplete: 'username', maxlength: 20 }) as HTMLInputElement;
+      const user = h('input', { placeholder: mode === 'login' ? 'Username or email' : 'Username', autocomplete: 'username', maxlength: mode === 'login' ? 254 : 20 }) as HTMLInputElement;
+      const email = h('input', { type: 'email', placeholder: 'Email address', autocomplete: 'email', maxlength: 254 }) as HTMLInputElement;
       const pass = h('input', { type: 'password', placeholder: 'Password', autocomplete: mode === 'login' ? 'current-password' : 'new-password', maxlength: 200 }) as HTMLInputElement;
       const pass2 = h('input', { type: 'password', placeholder: 'Repeat password', autocomplete: 'new-password', maxlength: 200 }) as HTMLInputElement;
       const msg = h('div', { class: 'muted', style: 'min-height:20px;color:#b84358' }, message);
@@ -22,11 +28,12 @@ export function showLogin(app: HTMLElement, opts: { health: Health; mode?: Login
         if (mode !== 'login' && pass.value !== pass2.value) return void (msg.textContent = 'The passwords don’t match.');
         busy(true);
         try {
-          const body = { username: user.value.trim(), password: pass.value };
+          const body = { username: user.value.trim(), password: pass.value, ...(mode === 'register' ? { email: email.value.trim() } : {}) };
           if (mode === 'claim') await api('POST', '/api/account', body);
           else {
-            const r = await api<{ token: string }>('POST', mode === 'login' ? '/api/login' : '/api/register', body);
+            const r = await api<{ token: string; devCode?: string; emailError?: string }>('POST', mode === 'login' ? '/api/login' : '/api/register', body);
             setToken(r.token);
+            lastRegister = { devCode: r.devCode, emailError: r.emailError };
           }
           resolve();
         } catch (e) {
@@ -51,8 +58,8 @@ export function showLogin(app: HTMLElement, opts: { health: Health; mode?: Login
         mode !== 'claim' ? h('div', { class: 'row', style: 'justify-content:center' }, tab('login', 'Log in'), tab('register', 'Create account')) : null,
         h('h2', { style: 'margin:4px 0' }, title),
         mode === 'claim' ? h('p', { class: 'muted', style: 'margin:0' }, 'This server needs a username and password. Your island and items stay with you.') : null,
-        user, pass, mode !== 'login' ? pass2 : null,
-        mode !== 'login' ? h('div', { class: 'muted', style: 'font-size:12px' }, 'Username: 3–20 letters, digits or _. Password: at least 8 characters.') : null,
+        user, mode === 'register' ? email : null, pass, mode !== 'login' ? pass2 : null,
+        mode !== 'login' ? h('div', { class: 'muted', style: 'font-size:12px' }, `Username: 3–20 letters, digits or _. Password: at least 8 characters.${mode === 'register' ? ' We’ll email you a code to confirm the address.' : ''}`) : null,
         msg,
         h('button', { class: 'btn', type: 'submit' }, mode === 'login' ? 'Log in' : mode === 'claim' ? 'Save & play' : 'Create account & play'),
         opts.health.guests && mode !== 'claim'

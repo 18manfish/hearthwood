@@ -20,6 +20,7 @@ import { disconnect } from './router.ts';
 import { pushFriendsToFriendsOf, sanitize, sendFriends } from './social.ts';
 import { enterIsland, travel } from './travel.ts';
 import { selfView } from './views.ts';
+import { needsEmail } from './email.ts';
 
 const log = logger('game');
 
@@ -57,12 +58,12 @@ export function issueToken(game: Game, p: PlayerRecord) {
   return token;
 }
 
-/** Username + password → a fresh login token. */
+/** Username (or confirmed email) + password → a fresh login token. */
 export function login(game: Game, username: string, password: string): { token: string; playerId: string } | { error: string } {
-  const p = game.store.playerByUsername(username);
+  const p = username.includes('@') ? game.store.playerByEmail(username) : game.store.playerByUsername(username);
   // Same work and message whether or not the account exists.
   const ok = verifyPassword(password, p?.passHash ?? 'scrypt$16384$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
-  if (!p || !ok) return { error: 'Wrong username or password.' };
+  if (!p || !ok) return { error: username.includes('@') ? 'Wrong email or password.' : 'Wrong username or password.' };
   const ban = banReason(game, p);
   if (ban) return { error: ban };
   return { token: issueToken(game, p), playerId: p.id };
@@ -126,6 +127,11 @@ export function hello(game: Game, s: Session, token: string, v: number) {
     // Guest accounts from dev mode must register before playing on a real server.
     s.send({ t: 'err', code: 'register', msg: 'Pick a username and password to keep playing.' });
     return s.ws.close(4011, 'register');
+  }
+  if (needsEmail(p)) {
+    // Accounts confirm an email address before playing (older ones on their next login).
+    s.send({ t: 'err', code: 'email', msg: 'Please add your email address to keep playing.' });
+    return s.ws.close(4012, 'email');
   }
   game.store.touchToken(hash);
   const prev = game.online.get(p.id);

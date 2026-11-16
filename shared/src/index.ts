@@ -22,3 +22,4 @@ export * from './data/rarity.ts';
 export * from './data/hotbar.ts';
 export * from './data/dialogue.ts';
 export * from './gamedata.ts';
+export * from './gifts.ts';

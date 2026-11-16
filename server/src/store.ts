@@ -10,7 +10,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { IslandRecord, PlayerRecord } from './types.ts';
-import { DEFAULT_BIRTHDAY, type BoardPost } from '@hearthwood/shared';
+import { DEFAULT_BIRTHDAY, type BoardPost, type GiftRule } from '@hearthwood/shared';
 import { logger } from './log.ts';
 
 const log = logger('store');
@@ -113,6 +113,7 @@ export class Store {
         created INTEGER NOT NULL, updated INTEGER NOT NULL, author TEXT, pinned INTEGER NOT NULL DEFAULT 0, published INTEGER NOT NULL DEFAULT 1);
       CREATE TABLE IF NOT EXISTS news_images (
         id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BLOB NOT NULL, created INTEGER NOT NULL, author TEXT);
+      CREATE TABLE IF NOT EXISTS gift_rules (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS audit (
         id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor TEXT, action TEXT, target TEXT, detail TEXT);
     `);
@@ -471,6 +472,25 @@ export class Store {
     if (n.n) return;
     this.saveNews({ title: 'Welcome to Hearthwood!', icon: '🌿', pinned: true, published: true,
       body: 'Settle an island, gather, craft and build – then invite friends over. Admins can edit these news boxes in the admin tool (📰 News).' }, 'system');
+  }
+
+  // ── Automatic gifts (mailbox) ─────────────────────────────────────────────
+  private giftCache: GiftRule[] | null = null;
+  /** All automatic gift rules (cached; edit through saveGiftRule). */
+  giftRules(): GiftRule[] {
+    return (this.giftCache ??= (this.db.prepare('SELECT data FROM gift_rules ORDER BY updated DESC').all() as { data: string }[]).map((r) => JSON.parse(r.data) as GiftRule));
+  }
+  saveGiftRule(rule: GiftRule) {
+    this.db.prepare('INSERT INTO gift_rules (id, data, updated) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated = excluded.updated')
+      .run(rule.id, JSON.stringify(rule), rule.updatedAt);
+    const list = this.giftRules();
+    const i = list.findIndex((r) => r.id === rule.id);
+    if (i >= 0) list[i] = rule;
+    else list.unshift(rule);
+  }
+  deleteGiftRule(id: string) {
+    this.db.prepare('DELETE FROM gift_rules WHERE id = ?').run(id);
+    this.giftCache = this.giftRules().filter((r) => r.id !== id);
   }
 
   // ── Audit log (admin & editor actions) ────────────────────────────────────

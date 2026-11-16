@@ -1,11 +1,12 @@
 // Letters and messages in bottles.
 
 import {
-  BOTTLE_COOLDOWN_MS, BOTTLE_MAX_DELAY_MS, BOTTLE_MIN_DELAY_MS, Tile,
+  BOTTLE_COOLDOWN_MS, BOTTLE_MAX_DELAY_MS, BOTTLE_MIN_DELAY_MS, ITEMS, Tile,
 } from '@hearthwood/shared';
 import { config } from '../../config.ts';
 import * as inv from '../inventory.ts';
 import { fail, give, type Handlers, log, nearCompleted } from './context.ts';
+import { mailList } from '../services/gifts.ts';
 
 export const socialHandlers: Pick<Handlers, 'mail' | 'takeMail' | 'bottle'> = {
   mail(ctx, a) {
@@ -39,13 +40,15 @@ export const socialHandlers: Pick<Handlers, 'mail' | 'takeMail' | 'bottle'> = {
     if (idx < 0) return fail('No such letter.');
     const m = ctx.p.mail[idx];
     const gained: Record<string, number> = {};
-    if (m.item && m.n) {
-      if (!inv.canAdd(ctx.p, m.item, m.n)) return fail('You can’t carry the attachment.');
-      give(ctx, gained, m.item, m.n);
-    }
+    // Everything attached comes out together – or nothing, if it doesn't all fit.
+    const parts = [...(m.item && m.n ? [{ item: m.item, n: m.n }] : []), ...(m.items ?? [])];
+    for (const it of parts) if (ITEMS[it.item] && !inv.canAdd(ctx.p, it.item, it.n)) return fail(`You can’t carry ${it.n}× ${ITEMS[it.item].name} – make room first.`);
+    for (const it of parts) if (ITEMS[it.item]) give(ctx, gained, it.item, it.n);
+    if (m.coins) ctx.p.coins += m.coins;
     ctx.p.mail.splice(idx, 1);
-    ctx.s.send({ t: 'mail', list: ctx.p.mail });
-    return { ok: true, gained };
+    ctx.s.send({ t: 'mail', list: mailList(ctx.p) });
+    const got = [...parts.map((it) => `${it.n}× ${ITEMS[it.item]?.name ?? it.item}`), ...(m.coins ? [`${m.coins} coins`] : [])];
+    return { ok: true, gained, msg: got.length ? `🎁 You got ${got.join(', ')}!` : undefined };
   },
   bottle(ctx, a) {
     if (inv.count(ctx.p, 'message_bottle') < 1) return fail('You need a Message Bottle (2 sea glass + 1 fiber).');

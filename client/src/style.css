@@ -154,6 +154,9 @@ img.emo { width: 20px; height: 20px; vertical-align: -4px; display: inline-block
 .tile.tier-3 { border-color: #f1d27a; }
 .tile.locked { opacity: 0.6; }
 .list { display: flex; flex-direction: column; gap: 8px; }
+.list .item.gift-letter { background: linear-gradient(135deg, #fff8e6, #fff); border-color: #e9c46a; }
+.gift-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.gift-chip { background: #fff3cf; border: 1px solid #e9c46a; border-radius: 999px; padding: 2px 9px; font-size: 13px; white-space: nowrap; }
 .list .item { background: white; border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
 .goal { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: white; border: 2px solid var(--line); font-weight: 700; }
 .goal.done { background: #eef9e8; border-color: #c4e6b6; text-decoration: line-through; color: var(--muted); }

@@ -16,6 +16,7 @@ import { Session } from './Session.ts';
 
 import { banReason, claimAccount, deletePlayer, isAdmin, kick, login, register } from './services/accounts.ts';
 import { deliverBottles } from './services/bottles.ts';
+import { giftTick } from './services/gifts.ts';
 import { loadGameData, resetGameData, setGameData } from './services/gamedata.ts';
 import { levelUpCheck, sendQuest } from './services/progress.ts';
 import { reloadIsland, sharedRoom, syncIsland, syncVillagerAtHome } from './services/rooms.ts';
@@ -42,6 +43,7 @@ export class Game {
     this.timers.push(setInterval(() => this.slowTick(), 2000));
     this.timers.push(setInterval(() => this.flush(), config.saveIntervalMs));
     this.timers.push(setInterval(() => deliverBottles(this), 15_000));
+    this.timers.push(setInterval(() => giftTick(this), config.devFast ? 3000 : 30_000));
   }
 
   stop() {

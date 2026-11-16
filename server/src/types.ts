@@ -8,6 +8,10 @@ export interface MailRecord {
   item?: string;
   n?: number;
   at: number;
+  /** A gift letter from the game (the gift rule's id, or 'manual'). */
+  giftId?: string;
+  items?: { item: string; n: number }[];
+  coins?: number;
 }
 
 export interface PlayerRecord {
@@ -59,6 +63,8 @@ export interface PlayerRecord {
   email?: string;
   /** An address being confirmed: the code's hash, when it expires, wrong tries, and how many codes were sent today. */
   emailPending?: { email: string; codeHash: string; expires: number; tries: number; sentAt: number; day: string; sends: number };
+  /** Automatic gifts received: rule id → the period it was last sent for ('once', a day or week key). */
+  gifts?: Record<string, string>;
 }
 
 export interface Friendship {

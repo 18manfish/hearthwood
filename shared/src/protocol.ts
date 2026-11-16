@@ -296,6 +296,10 @@ export interface MailView {
   item?: string;
   n?: number;
   at: number;
+  /** A gift letter from the game: several items and/or coins. */
+  gift?: boolean;
+  items?: { item: string; n: number }[];
+  coins?: number;
 }
 
 export interface FriendView {

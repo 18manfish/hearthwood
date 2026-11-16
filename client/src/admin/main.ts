@@ -6,7 +6,7 @@ import '../style.css';
 import '../tools.css';
 import {
   BIOMES, BIOME_IDS, BUILDINGS, DEFAULT_HOTBAR, DIRS, HOTBAR_INFO, HOTBAR_SIZE, HOTBAR_TOOLS, ITEMS, ITEM_LIST, PATHS, PERMITS, TREES, Tile, VILLAGERS,
-  FRIENDSHIP_MAX, decodeTiles, encodeTiles, friendshipLevel, villagerDef,
+  FRIENDSHIP_MAX, BIRTHDAY_MIN, DEFAULT_BIRTHDAY, decodeTiles, encodeTiles, friendshipLevel, villagerDef,
   type Building, type BuildingType, type TreeSpecies, type WorldObject,
 } from '@hearthwood/shared';
 import { api, clearToken, health, loadGameData, logout, token } from '../auth.ts';
@@ -128,7 +128,7 @@ async function playerPage(id: string) {
   const p = r.player as unknown as {
     id: string; username?: string; name: string; role?: string; banned?: { reason: string; until?: number; by?: string }; coins: number; inv: Record<string, number>;
     permits?: string[]; hotbar?: (string | null)[]; album?: unknown; look: Record<string, string>; gender: string; hat: string | null; chapterRewarded: number;
-    mail: unknown[]; homeIslandId: string | null; code: string; createdAt: number; lastSeen: number; friends: string[]; hasPassword: boolean;
+    mail: unknown[]; homeIslandId: string | null; birthday?: string; code: string; createdAt: number; lastSeen: number; friends: string[]; hasPassword: boolean;
   };
   const s = r.summary;
   const left = h('div', { class: 'col', style: 'gap:16px' });
@@ -146,6 +146,7 @@ async function playerPage(id: string) {
   const gender = select([['boy', 'Boy'], ['girl', 'Girl']], p.gender);
   const hat = select([['', '– none –'], ...ITEM_LIST.filter((i) => i.wear === 'hat').map((i) => [i.id, `${i.icon} ${i.name}`] as [string, string])], p.hat ?? '');
   const chapter = input(p.chapterRewarded, { type: 'number', min: 0 });
+  const birthday = input(p.birthday ?? '', { type: 'date', min: BIRTHDAY_MIN });
   const home = input(p.homeIslandId ?? '', { placeholder: 'island id' });
   const looks = Object.fromEntries(['skin', 'hairColor', 'eyes', 'shirt', 'pants', 'shoes'].map((k) => [k, input(p.look[k], { type: 'color' })]));
   const hair = input(p.look.hair);
@@ -155,6 +156,7 @@ async function playerPage(id: string) {
       field('Name', name), field('Username', username, p.hasPassword ? 'Has a password' : 'No password yet'), field('Role', role), field('Coins', coins),
       field('Gender', gender), field('Hat', hat), field('Look', h('div', { class: 'row' }, hair, Object.entries(looks).map(([k, el]) => h('span', { title: k }, el)))),
       field('Permits', h('div', { class: 'row' }, permits.map(([pid, cb]) => h('label', { class: 'row', style: 'gap:4px' }, cb, PERMITS.find((x) => x.id === pid)!.name)))),
+      field('Birthday', birthday, p.birthday === DEFAULT_BIRTHDAY ? 'The default – this character was made before birthdays were asked for' : undefined),
       field('Chapter reward paid', chapter), field('Home island', home)),
     h('div', { class: 'row', style: 'margin-top:12px' }, h('button', { class: 'btn', onclick: async () => {
       const patch: Record<string, unknown> = {
@@ -163,6 +165,7 @@ async function playerPage(id: string) {
         permits: permits.filter(([, cb]) => cb.checked).map(([pid]) => pid),
         homeIslandId: home.value || null,
       };
+      if (birthday.value && birthday.value !== p.birthday) patch.birthday = birthday.value;
       if (username.value && username.value !== (p.username ?? '')) patch.username = username.value;
       if (role.value !== (p.role ?? 'player')) patch.role = role.value;
       if (await call('PATCH', `/api/admin/players/${p.id}`, patch)) { toast('Profile saved'); playerPage(id); }

@@ -2,8 +2,8 @@
 
 import * as THREE from 'three';
 import {
-  BIOMES, BIOME_IDS, BROWS, CHEEKS, CLOTH_COLORS, EYE_COLORS, EYE_SHAPES, HAIR_COLORS, HAIR_STYLES, ITEMS, MOUTHS, NAME_RE, NOSES, OUTFIT_SETS, SKIN_TONES,
-  guessGeoFromTimeZone, computeEnvironment, setOutfit, type BiomeId, type Gender, type Look, type Outfit, type Season,
+  BIOMES, BIOME_IDS, BIRTHDAY_MIN, BROWS, CHEEKS, CLOTH_COLORS, EYE_COLORS, EYE_SHAPES, HAIR_COLORS, HAIR_STYLES, ITEMS, MOUTHS, NAME_RE, NOSES, OUTFIT_SETS, SKIN_TONES,
+  guessGeoFromTimeZone, computeEnvironment, isValidBirthday, setOutfit, type BiomeId, type Gender, type Look, type Outfit, type Season,
 } from '@hearthwood/shared';
 import { animateRig, type Rig } from '../game/characters.ts';
 import { makePlayer } from '../game/player.ts';
@@ -20,6 +20,8 @@ export interface CreatorResult {
   outfit: string;
   biome: BiomeId;
   geo: { lat: number; lon: number; tz: string };
+  /** 'YYYY-MM-DD' (empty when only the looks are redone). */
+  birthday: string;
 }
 
 /** A rotating 3D preview of the character. */
@@ -147,6 +149,28 @@ export function showRecreate(app: HTMLElement, prev: { name: string; gender: Gen
   showCreator(app, (r) => onDone({ gender: r.gender, look: r.look, outfit: r.outfit }), prev);
 }
 
+/** Day · month · year pickers for a birthday ('YYYY-MM-DD', or '' until all three are set). */
+export function birthdayPicker(value: string, onChange: (v: string) => void) {
+  const [y0, m0, d0] = value ? value.split('-') : ['', '', ''];
+  const opt = (v: string, label: string, cur: string) => h('option', { value: v, selected: v === cur }, label);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const months = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2000, i, 1)).toLocaleDateString(undefined, { month: 'long', timeZone: 'UTC' }));
+  const thisYear = new Date().getFullYear();
+  const day = h('select', { 'aria-label': 'Day' }, opt('', 'Day', d0), Array.from({ length: 31 }, (_, i) => opt(pad(i + 1), String(i + 1), d0))) as HTMLSelectElement;
+  const month = h('select', { 'aria-label': 'Month' }, opt('', 'Month', m0), months.map((m, i) => opt(pad(i + 1), m, m0))) as HTMLSelectElement;
+  const year = h('select', { 'aria-label': 'Year' }, opt('', 'Year', y0),
+    Array.from({ length: thisYear - Number(BIRTHDAY_MIN.slice(0, 4)) + 1 }, (_, i) => String(thisYear - i)).map((y) => opt(y, y, y0))) as HTMLSelectElement;
+  const update = () => {
+    // No 31 February: days past the end of the month are greyed out (and dropped).
+    const days = month.value ? new Date(Date.UTC(Number(year.value) || 2000, Number(month.value), 0)).getUTCDate() : 31;
+    for (const o of Array.from(day.options)) if (o.value) o.disabled = Number(o.value) > days;
+    if (day.value && Number(day.value) > days) day.value = '';
+    onChange(day.value && month.value && year.value ? `${year.value}-${month.value}-${day.value}` : '');
+  };
+  for (const el of [day, month, year]) el.addEventListener('change', update);
+  return h('div', { class: 'row birthday', style: 'gap:6px' }, day, month, year);
+}
+
 export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void, redo?: { name: string; gender: Gender; look: Look }) {
   clear(app);
   const screen = h('div', { class: 'screen' });
@@ -161,6 +185,7 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
   let outfit = OUTFIT_SETS[0].id;
   let name = redo?.name ?? '';
   let islandName = '';
+  let birthday = '';
   let biome: BiomeId | null = null;
   let preview: Preview | null = null;
 
@@ -170,6 +195,7 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
     const nameIn = h('input', { value: name, maxlength: 16, placeholder: 'Your name', oninput: (e: Event) => (name = (e.target as HTMLInputElement).value) });
     const isleIn = h('input', { value: islandName, maxlength: 20, placeholder: 'e.g. Willowbrook', oninput: (e: Event) => (islandName = (e.target as HTMLInputElement).value) });
     const err = h('div', { class: 'muted', style: 'color:#b84358' });
+    const bday = birthdayPicker(birthday, (v) => (birthday = v));
     const dressUp = () => preview?.set(gender, look, setOutfit(outfit));
     const editor = lookEditor(() => gender, look, dressUp);
     // Starter clothes: a few basic sets (you keep them, and can buy more at the Clothing Shop).
@@ -193,7 +219,9 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
         h('div', { class: 'title', style: 'font-size:30px' }, redo ? `New look, ${name}!` : 'Create your villager'),
         redo
           ? h('p', { class: 'muted', style: 'margin:0' }, 'Characters got a makeover: new faces and real clothes. Redo your look – your island, pockets and progress all stay as they are.')
-          : h('div', { class: 'look-grid' }, h('div', { class: 'field' }, 'Name', nameIn), h('div', { class: 'field' }, 'Island name', isleIn)),
+          : h('div', { class: 'col', style: 'gap:10px' },
+            h('div', { class: 'look-grid' }, h('div', { class: 'field' }, 'Name', nameIn), h('div', { class: 'field' }, 'Island name', isleIn)),
+            h('div', { class: 'field' }, '🎂 Birthday', bday)),
         h('div', { class: 'field' }, 'I am a…', gToggle),
         editor.root,
         h('div', { class: 'field' }, 'Clothes', sets, setNote),
@@ -201,10 +229,11 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
         h('div', { class: 'row', style: 'justify-content:flex-end' },
           redo ? h('button', { class: 'btn', onclick: () => {
             preview?.dispose();
-            onDone({ name, islandName: '', gender, look, outfit, biome: 'grassland', geo: { lat: 0, lon: 0, tz: 'UTC' } });
+            onDone({ name, islandName: '', gender, look, outfit, biome: 'grassland', geo: { lat: 0, lon: 0, tz: 'UTC' }, birthday: '' });
           } }, 'Back to my island →') : h('button', { class: 'btn', onclick: () => {
             if (!NAME_RE.test(name.trim())) return (err.textContent = 'Please enter a name (2–16 letters).');
             if (!NAME_RE.test(islandName.trim())) return (err.textContent = 'Please name your island (2–20 letters).');
+            if (!isValidBirthday(birthday)) return (err.textContent = 'Please pick your birthday (day, month and year).');
             name = name.trim(); islandName = islandName.trim();
             preview?.dispose();
             stepMap();
@@ -273,7 +302,7 @@ export function showCreator(app: HTMLElement, onDone: (r: CreatorResult) => void
         h('p', {}, b.blurb),
         h('div', { class: 'muted' }, `Seasons: ${b.seasonModel === 'tropical' ? 'wet & dry' : b.seasonModel === 'arid' ? 'hot & cool' : b.seasonModel === 'boreal' ? 'long winters' : 'four seasons'}`),
         h('div', { class: 'col', style: 'margin-top:10px' },
-          h('button', { class: 'btn', onclick: () => { previewer.dispose(); onDone({ name, islandName, gender, look, outfit, biome: biome!, geo }); } }, `Settle on ${islandName}!`),
+          h('button', { class: 'btn', onclick: () => { previewer.dispose(); onDone({ name, islandName, gender, look, outfit, biome: biome!, geo, birthday }); } }, `Settle on ${islandName}!`),
           h('button', { class: 'btn ghost small', onclick: () => { previewer.dispose(); stepLook(); } }, '← Back'),
         ),
       );

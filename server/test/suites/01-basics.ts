@@ -3,6 +3,11 @@ import {
   type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Store } from '../../src/store.ts';
+import type { PlayerRecord } from '../../src/types.ts';
 
 export async function run(ctx: Ctx) {
   console.log('Accounts & character creation');
@@ -13,8 +18,36 @@ export async function run(ctx: Ctx) {
   check((await A.wait('err')).code === 'no_character', 'actions rejected before character exists');
   A.send({ t: 'create', name: 'X', islandName: 'Isle', gender: 'boy', biome: 'mars', look: {}, geo: {} });
   check((await A.wait('err')).code === 'bad_message', 'invalid create payload rejected by schema');
-  await A.create('grassland', 'Alice');
+  const look = { skin: '#f1c27d', hair: 'ponytail', hairColor: '#5a3a1e', eyes: '#2b1d14', shirt: '#e74c3c', pants: '#34495e', shoes: '#8d6e63' };
+  const geo = { lat: 47.37, lon: 8.54, tz: 'Europe/Zurich' };
+  let badDates = 0;
+  for (const birthday of [undefined, '2001-02-29', '1899-12-31', `${new Date().getFullYear() + 1}-01-01`, '14.03.1990']) {
+    A.send({ t: 'create', name: 'Alice', islandName: 'Isle', gender: 'girl', biome: 'grassland', look, geo, birthday });
+    if ((await A.wait('err')).code === 'bad_message') badDates++;
+  }
+  check(badDates === 5, 'a missing or impossible birthday is refused');
+  await A.create('grassland', 'Alice', '2000-02-29');
   check(A.room.kind === 'island' && A.room.canHarvest, 'Alice lands on her own island');
+  check(A.self.birthday === '2000-02-29', 'her birthday is saved with the character');
+  {
+    // Characters made before birthdays existed get 1 January 1970.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hw-bday-'));
+    const old = new Store(dir);
+    old.load();
+    old.addPlayer({ id: 'p_old', code: 'OLDCODE1', name: 'Oldie', created: true, mail: [], inv: {}, friends: [], reqIn: [], reqOut: [] } as unknown as PlayerRecord);
+    old.addPlayer({ id: 'p_new', code: 'NEWCODE1', name: 'Newbie', created: false, mail: [], inv: {}, friends: [], reqIn: [], reqOut: [] } as unknown as PlayerRecord);
+    old.close();
+    const again = new Store(dir);
+    again.load();
+    check(again.players.get('p_old')?.birthday === '1970-01-01' && again.players.get('p_new')?.birthday === undefined, 'existing characters get 1 January 1970 as their birthday');
+    again.flush();
+    again.close();
+    const third = new Store(dir);
+    third.load();
+    check(third.players.get('p_old')?.birthday === '1970-01-01', '… and it is saved');
+    third.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
   check(/[12]/.test(A.room.levels) && /[1-4]/.test(A.room.ramps), 'island has cliff levels and ramps');
 
   console.log('Elevation');

@@ -17,7 +17,7 @@ import {
   type BrowStyle, type CheekStyle, type EyeShape, type MouthStyle, type NoseStyle, type Outfit,
 } from './data/clothing.ts';
 
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;
 
 /**
  * Version of the character model. Characters made with an older one are asked
@@ -67,6 +67,29 @@ export const ACCESS_LEVELS: Access[] = ['private', 'friends', 'invite', 'public'
 
 const color = s.str(4, 9, /^#[0-9a-fA-F]{3,8}$/);
 export const NAME_RE = /^[\p{L}\p{N} _.'-]{2,16}$/u;
+
+/** Birthdays are calendar dates, 'YYYY-MM-DD' (no time zone). */
+export const BIRTHDAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** What characters made before birthdays existed were given. */
+export const DEFAULT_BIRTHDAY = '1970-01-01';
+export const BIRTHDAY_MIN = '1900-01-01';
+/** A real calendar date from 1900 up to today (UTC+14, so nobody's today is refused). */
+export function isValidBirthday(v: unknown): v is string {
+  if (typeof v !== 'string') return false;
+  const m = BIRTHDAY_RE.exec(v);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = Date.UTC(y, mo - 1, d);
+  const back = new Date(t);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return false;
+  return v >= BIRTHDAY_MIN && t <= Date.now() + 14 * 3600_000;
+}
+/** "14 March 1990" (in the reader's language). */
+export function formatBirthday(v: string, locale?: string): string {
+  const m = BIRTHDAY_RE.exec(v);
+  if (!m) return v;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
 
 export const lookParser: Parser<Look> = s.obj({
   skin: color, hair: s.oneOf(ALL_HAIR as string[]), hairColor: color, eyes: color, shirt: color, pants: color, shoes: color,
@@ -139,6 +162,8 @@ export const clientMessageParser = s.union('t', {
     outfit: s.opt(s.oneOf(OUTFIT_SET_IDS)),
     biome: s.guard(isBiome, 'biome'),
     geo: s.obj({ lat: s.num(-90, 90), lon: s.num(-180, 180), tz: s.str(1, 64, /^[A-Za-z0-9_+\-/]+$/) }),
+    /** 'YYYY-MM-DD'. */
+    birthday: s.guard(isValidBirthday, 'birthday'),
   }),
   /** Redo an existing character's looks (only when the welcome asked for it). */
   recreate: s.obj({
@@ -315,6 +340,8 @@ export interface SelfView {
   helping: { id: string; name: string; owner: string; role: 'builder' | 'resident' }[];
   /** Location used for your island's sun, seasons and clock. */
   geo: GeoInfo;
+  /** Your birthday, 'YYYY-MM-DD' (only you and admins see it). */
+  birthday: string;
 }
 
 export interface QuestView {

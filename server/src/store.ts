@@ -10,7 +10,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { IslandRecord, PlayerRecord } from './types.ts';
-import type { BoardPost } from '@hearthwood/shared';
+import { DEFAULT_BIRTHDAY, type BoardPost } from '@hearthwood/shared';
 import { logger } from './log.ts';
 
 const log = logger('store');
@@ -144,7 +144,13 @@ export class Store {
 
     for (const row of this.db.prepare('SELECT id, data FROM players').all() as { id: string; data: string }[]) {
       try {
-        this.indexPlayer(JSON.parse(row.data) as PlayerRecord);
+        const p = JSON.parse(row.data) as PlayerRecord;
+        // Characters made before birthdays existed.
+        if (p.created && !p.birthday) {
+          p.birthday = DEFAULT_BIRTHDAY;
+          this.markPlayer(p.id);
+        }
+        this.indexPlayer(p);
       } catch (e) {
         log.error('failed to load player', { id: row.id, err: e });
       }

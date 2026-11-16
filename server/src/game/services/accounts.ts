@@ -198,6 +198,7 @@ export function createCharacter(game: Game, s: Session, m: Extract<ClientMessage
   // Starter clothes: yours to keep, and you're wearing them.
   dressInSet(p, m.outfit);
   p.lookVersion = LOOK_VERSION;
+  p.birthday = m.birthday;
   p.created = true;
   p.coins = 100;
   const now = Date.now();

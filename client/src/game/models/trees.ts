@@ -26,7 +26,7 @@ export function treeModel(o: WorldObject, season: Season, visual: 'spring' | 'su
     const m = gltfTree(
       o,
       { trunk: def.trunk, foliage, bare: !!bare, snowy, fruitColor: stage === 2 ? fruitColor : undefined, fruitCount: o.fruit ?? 0 },
-      (c) => mat(c),
+      (c, smooth) => mat(c, { smooth }),
       (c, x, y, z) => part('sphere', c, 0.11, 0.11, 0.11, x, y, z),
     );
     if (m) {

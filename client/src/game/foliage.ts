@@ -103,7 +103,7 @@ function kitFor(kind: Kind, dry: boolean): KitPart[] | null {
     if (!parts) return null; // not loaded (yet): try again next build
     for (const { geo } of parts) {
       geo.scale(k.scale, k.scale, k.scale);
-      geo.computeVertexNormals();
+      if (!geo.attributes.normal) geo.computeVertexNormals();
       const n = geo.attributes.normal as THREE.BufferAttribute;
       if (kind !== 'snow' && kind !== 'pebbles') for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
     }
@@ -122,7 +122,7 @@ function material(kind: Kind, color: string | null = null) {
     const solid = kind === 'snow' || kind === 'pebbles';
     // Both faces lit like the ground (thin blades seen from behind would go dark).
     m = bend(new THREE.MeshStandardMaterial({
-      color: color ?? '#ffffff', roughness: 1, side: solid ? THREE.FrontSide : THREE.DoubleSide, flatShading: solid,
+      color: color ?? '#ffffff', roughness: 1, side: solid ? THREE.FrontSide : THREE.DoubleSide, flatShading: false,
     }), { sway, twoSidedLight: !solid });
     MATERIALS.set(key, m);
   }

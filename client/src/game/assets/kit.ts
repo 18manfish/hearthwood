@@ -12,7 +12,7 @@ import { bentDepth } from '../bend.ts';
 import { mat } from '../models/primitives.ts';
 import { loadGlb } from './glb.ts';
 
-export const KIT_FILES = ['birds', 'fish', 'plants', 'placeables', 'ambient_fish', 'furniture_boho', 'furniture_cottage', 'fish_school', 'buildings', 'paths'] as const;
+export const KIT_FILES = ['birds', 'fish', 'plants', 'nature', 'placeables', 'ambient_fish', 'furniture_boho', 'furniture_cottage', 'fish_school', 'buildings', 'paths'] as const;
 
 /** Roles that glow (emissive) instead of just being coloured. */
 const GLOW = new Set(['glow', 'glow_spot', 'glass', 'candle']);
@@ -42,7 +42,8 @@ export function loadKitAssets(base = '/models/'): Promise<void> {
 }
 
 /** The material a kit part is drawn with: the game's shared, bent material for its colour. */
-export function kitMaterial(role: string, color: string): THREE.Material {
+export function kitMaterial(role: string, color: string, smooth = false): THREE.Material {
+  if (smooth && !GLOW.has(role) && role !== 'glass') return mat(color, { smooth: true });
   // Window glass shares the game's window material, which lights up at night (environment.ts).
   if (role === 'glass') return mat('#bfe6ff', { emissive: '#ffd27a', ei: 0 });
   return GLOW.has(role) ? mat(color, { emissive: color, ei: role === 'glass' ? 0.35 : 0.9, rough: 0.3 }) : mat(color);
@@ -67,7 +68,9 @@ function prepare(node: THREE.Object3D): THREE.Object3D {
     const role = src.name || 'part';
     m.userData.role = role;
     m.userData.color = hex(src);
-    m.material = kitMaterial(role, m.userData.color as string);
+    // Models with their own normals (art/nature) are drawn smooth.
+    m.userData.smooth = !!(m.geometry as THREE.BufferGeometry).attributes.normal;
+    m.material = kitMaterial(role, m.userData.color as string, m.userData.smooth as boolean);
     m.castShadow = !NO_SHADOW.has(role);
     m.receiveShadow = true;
     if (m.castShadow) m.customDepthMaterial = bentDepth;
@@ -112,7 +115,9 @@ export function kitGeometryByColor(name: string): { color: string; geo: THREE.Bu
   if (!t) return null;
   t.root.updateMatrixWorld(true);
   const parts = new Map<string, number[]>();
+  const normals = new Map<string, number[] | null>();
   const v = new THREE.Vector3();
+  const nm = new THREE.Matrix3();
   t.root.traverse((o: THREE.Object3D) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
@@ -125,10 +130,25 @@ export function kitGeometryByColor(name: string): { color: string; geo: THREE.Bu
       v.set(p.getX(i), p.getY(i), p.getZ(i)).applyMatrix4(m.matrixWorld);
       pos.push(v.x, v.y, v.z);
     }
+    // Keep the model's own normals when it has them (smooth models), so instances stay smooth.
+    const n = g.attributes.normal as THREE.BufferAttribute | undefined;
+    const had = normals.get(color);
+    if (!n || had === null) normals.set(color, null);
+    else {
+      const out = had ?? [];
+      nm.getNormalMatrix(m.matrixWorld);
+      for (let i = 0; i < n.count; i++) {
+        v.set(n.getX(i), n.getY(i), n.getZ(i)).applyMatrix3(nm).normalize();
+        out.push(v.x, v.y, v.z);
+      }
+      normals.set(color, out);
+    }
   });
   return [...parts].map(([color, pos]) => {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const n = normals.get(color);
+    if (n && n.length === pos.length) geo.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
     return { color, geo };
   });
 }
@@ -139,8 +159,14 @@ export function kitGeometry(name: string): THREE.BufferGeometry | null {
   if (!parts) return null;
   if (parts.length === 1) return parts[0].geo;
   const pos: number[] = [];
-  for (const { geo } of parts) for (const v of geo.attributes.position.array as Float32Array) pos.push(v);
+  const nrm: number[] = [];
+  for (const { geo } of parts) {
+    for (const v of geo.attributes.position.array as Float32Array) pos.push(v);
+    const n = geo.attributes.normal as THREE.BufferAttribute | undefined;
+    if (n) for (const v of n.array as Float32Array) nrm.push(v);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  if (nrm.length === pos.length) g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
   return g;
 }

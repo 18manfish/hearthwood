@@ -1,4 +1,4 @@
-// Tree models made in Blender (art/trees.blend → client/public/models/trees.glb).
+// Tree models made in Blender (art/nature/nature_models.py → client/public/models/trees.glb).
 //
 // The .glb holds one root node per species, `tree_<species>`, with child meshes
 // named by role. Colours come from the game data (TREES), not the file, so the
@@ -84,7 +84,7 @@ export interface TreeLook {
 export function gltfTree(
   o: WorldObject,
   look: TreeLook,
-  mat: (color: string) => THREE.Material,
+  mat: (color: string, smooth: boolean) => THREE.Material,
   fruit: (color: string, x: number, y: number, z: number) => THREE.Object3D,
 ): THREE.Group | null {
   const t = templates.get(o.species ?? 'oak');
@@ -96,14 +96,15 @@ export function gltfTree(
     const m = c as THREE.Mesh;
     if (!m.isMesh) continue;
     const role = c.name.slice(c.name.lastIndexOf('_') + 1);
+    const sm = !!(m.geometry as THREE.BufferGeometry).attributes.normal; // the new models bring smooth normals
     let visible = true;
     switch (role) {
-      case 'trunk': m.material = mat(look.trunk); break;
-      case 'branches': m.material = mat(look.trunk); visible = look.bare; break;
-      case 'foliage': m.material = mat(look.foliage); visible = !(look.bare && hasBranches); break;
-      case 'snow': m.material = mat('#ffffff'); visible = look.snowy && !look.bare; break;
-      case 'marks': m.material = mat('#2b2622'); break;
-      case 'ribs': m.material = mat(shade(look.trunk, 0.8)); break;
+      case 'trunk': m.material = mat(look.trunk, sm); break;
+      case 'branches': m.material = mat(look.trunk, sm); visible = look.bare; break;
+      case 'foliage': m.material = mat(look.foliage, sm); visible = !(look.bare && hasBranches); break;
+      case 'snow': m.material = mat('#ffffff', sm); visible = look.snowy && !look.bare; break;
+      case 'marks': m.material = mat('#2b2622', sm); break;
+      case 'ribs': m.material = mat(shade(look.trunk, 0.8), sm); break;
       default: break;
     }
     if (!visible) {

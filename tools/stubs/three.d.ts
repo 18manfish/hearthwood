@@ -50,6 +50,7 @@ declare module 'three' {
   export const InstancedMesh: any; export type InstancedMesh = any;
   export const Material: any; export type Material = any;
   export const Matrix4: any; export type Matrix4 = any;
+  export const Matrix3: any; export type Matrix3 = any;
   export const Mesh: any; export type Mesh = any;
   export const MeshBasicMaterial: any; export type MeshBasicMaterial = any;
   export const Line: any; export type Line = any;

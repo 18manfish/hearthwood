@@ -7,11 +7,12 @@ import { bend, bentDepth } from '../bend.ts';
 
 export const matCache = new Map<string, THREE.MeshStandardMaterial>();
 
-export function mat(color: string, opts: { emissive?: string; ei?: number; opacity?: number; rough?: number } = {}) {
-  const key = `${color}|${opts.emissive ?? ''}|${opts.ei ?? 0}|${opts.opacity ?? 1}|${opts.rough ?? 0.9}`;
+/** `smooth`: smooth shading for models with their own normals (the Blender nature models); the rest are flat-shaded. */
+export function mat(color: string, opts: { emissive?: string; ei?: number; opacity?: number; rough?: number; smooth?: boolean } = {}) {
+  const key = `${color}|${opts.emissive ?? ''}|${opts.ei ?? 0}|${opts.opacity ?? 1}|${opts.rough ?? 0.9}|${opts.smooth ? 's' : ''}`;
   let m = matCache.get(key);
   if (!m) {
-    m = bend(new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.9, metalness: 0, flatShading: true }));
+    m = bend(new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.9, metalness: 0, flatShading: !opts.smooth }));
     if (opts.emissive) {
       m.emissive = new THREE.Color(opts.emissive);
       m.emissiveIntensity = opts.ei ?? 1;

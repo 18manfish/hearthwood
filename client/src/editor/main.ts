@@ -25,7 +25,7 @@ import { loadKitAssets } from '../game/assets/kit.ts';
 import { loadHouseAssets } from '../game/houseAssets.ts';
 import { buildPaths } from '../game/paths.ts';
 import { makeVillager, animateRig, type Rig } from '../game/characters.ts';
-import { showProps, dress, makePlayerModel, makeVillagerModel, play, PLAYER_SLOTS, type VillagerModel } from '../game/villagerModels.ts';
+import { advance, dress, makePlayerModel, makeVillagerModel, play, PLAYER_SLOTS, type VillagerModel } from '../game/villagerModels.ts';
 
 const app = document.getElementById('app')!;
 type Row = Record<string, unknown>;
@@ -118,8 +118,7 @@ class Preview3D {
       if (this.obj) this.obj.rotation.y += dt * 0.6;
       if (this.rig) animateRig(this.rig, dt, 0, 0);
       if (this.vm) {
-        this.vm.mixer.update(dt);
-        showProps(this.vm);
+        advance(this.vm, dt);
         const cur = this.vm.current;
         if (cur && !cur.isRunning() && this.vm.currentName !== 'idle') play(this.vm, 'idle', 0.3); // one-shots go back to idle
       }

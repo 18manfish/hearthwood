@@ -29,12 +29,10 @@ function disposeMaterial(m: THREE.Material) {
 
 /**
  * Free the GPU resources a model owns (it is leaving the scene for good). Shared
- * resources are left alone. Parts can add their own clean-up as `userData.dispose`.
+ * resources are left alone.
  */
 export function disposeTree(root: THREE.Object3D) {
   root.traverse((o: THREE.Object3D) => {
-    const hook = o.userData.dispose as (() => void) | undefined;
-    if (hook) hook();
     const m = o as THREE.Mesh;
     const geo = m.geometry as THREE.BufferGeometry | undefined;
     if (!geo) return; // groups, lights, labels

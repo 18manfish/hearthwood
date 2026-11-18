@@ -308,9 +308,7 @@ export function dress(vm: VillagerModel, outfit: Outfit | undefined, slots: read
       if (!parent) continue;
       const m = src.clone();
       const o = src.userData.origin as [number, number, number];
-      m.position.x -= o[0];
-      m.position.y -= o[1];
-      m.position.z -= o[2];
+      m.position.sub(new THREE.Vector3(...o));
       if (cut === 'sun_hat') m.position.y += 0.05; // the wide floppy brim clears the eyes
       if (src.userData.tint) {
         m.material = fabric(`tint|${item}`, () => new THREE.MeshStandardMaterial({ map: vm.shared.clothTex, color: colour, roughness: item === 'jacket_rain' ? 0.45 : 0.9, side: THREE.DoubleSide }));
@@ -428,12 +426,12 @@ export function drive(vm: VillagerModel, dt: number, d: Drive) {
   }
   choose(vm, dt, d);
   blendWeights(vm, dt);
-  vm.mixer.update(dt);
-  showProps(vm);
+  advance(vm, dt);
 }
 
-/** A prop scaled down to nothing is put away (so it isn't drawn at all) until a clip brings it out. */
-export function showProps(vm: VillagerModel) {
+/** Move the clips on by `dt`. A prop they have scaled down to nothing is put away, so it isn't drawn at all. */
+export function advance(vm: VillagerModel, dt: number) {
+  vm.mixer.update(dt);
   for (const p of vm.props) p.visible = p.scale.x > 0.001;
 }
 

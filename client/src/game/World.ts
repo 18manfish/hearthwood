@@ -29,11 +29,12 @@ import type { VillagerModel } from './villagerModels.ts';
 import { handle } from './world/messages.ts';
 import { animateProps, discard, upsertBuildingMesh } from './world/room/objects.ts';
 import { disposeAll } from './gpu.ts';
-import { type Glow, LightPool } from './lightPool.ts';
+import { LightPool } from './lightPool.ts';
 import { pickQuality } from './quality.ts';
 import { addSealife, animateSealife, clearSealife } from './world/entities/sealife.ts';
 import { rebuildPaths, toggleGridOverlay } from './world/room/terrainLayer.ts';
-import { refreshVisuals, resize, updateEnvironment, currentVisual, zoom, adaptResolution, watchContext } from './world/scene/environment.ts';
+import { refreshVisuals, updateEnvironment, currentVisual } from './world/scene/environment.ts';
+import { adaptResolution, resize, watchContext, zoom } from './world/scene/viewport.ts';
 import { computeTarget, facingTile } from './world/targeting.ts';
 import { endCast, startCast, updateFishing } from './world/tools/fishing.ts';
 import { bobberModel, fishingLineModel } from './models/fishing.ts';
@@ -62,13 +63,12 @@ export class World {
   world = new THREE.Group();
   objMeshes = new Map<string, THREE.Object3D>();
   /** Instanced draws for static scenery (trees, rocks, bushes…), see batching.ts. */
+  readonly batcher = new StaticBatcher(this.world);
+  /** The few real lights, handed to the lamps and fires nearest the player (lightPool.ts). */
+  readonly lights = new LightPool(this.scene);
   readonly quality = pickQuality();
   /** The browser took the WebGL context away (it gives it back by itself): nothing can be drawn meanwhile. */
   contextLost = false;
-  readonly batcher = new StaticBatcher(this.world);
-  /** Light sources of the models in the room, by owner (`o:<object id>` / `b:<building id>`); lit by the pool. */
-  readonly glows = new Map<string, Glow[]>();
-  readonly lights = new LightPool(this.scene);
   bldMeshes = new Map<string, THREE.Object3D>();
   readonly players = new Map<string, Mover>();
   villagers = new Map<string, Mover & { home: boolean; houseId: string; outfit?: Outfit; model?: VillagerModel }>();
@@ -273,12 +273,11 @@ export class World {
 
   private clearRoom() {
     clearSealife(this);
-    for (const f of this.flying) discard(this, '', f.mesh);
+    for (const f of this.flying) discard(this, f.mesh);
     this.flying = [];
-    for (const [id, m] of this.objMeshes) discard(this, `o:${id}`, m);
+    for (const m of this.objMeshes.values()) discard(this, m);
     this.batcher.clear();
-    for (const [id, m] of this.bldMeshes) discard(this, `b:${id}`, m);
-    this.glows.clear();
+    for (const m of this.bldMeshes.values()) discard(this, m);
     for (const p of this.players.values()) removeMover(this, p);
     for (const v of this.villagers.values()) removeMover(this, v);
     this.objMeshes.clear();
@@ -319,12 +318,6 @@ export class World {
   /** Where the camera is heading (kept between frames: nothing is allocated in the frame loop). */
   private readonly camGoal = new THREE.Vector3();
 
-  /** How many light sources the room's models have. */
-  private glowCount() {
-    let n = 0;
-    for (const g of this.glows.values()) n += g.length;
-    return n;
-  }
   /** Called every frame after the world has updated (audio hooks in here). */
   onFrame: ((dt: number) => void) | null = null;
   private frame() {
@@ -394,7 +387,7 @@ export class World {
     this.labels.domElement.style.display = debug.labels ? '' : 'none';
     this.batcher.flush();
     bentCulling(this.camera);
-    this.lights.update(this.glows.values(), this.glowCount(), fx, fz);
+    this.lights.update(fx, fz);
     adaptResolution(this, rawDt);
     if (this.contextLost) return; // (the game goes on; the picture comes back with the context)
     this.renderer.render(this.scene, this.camera);

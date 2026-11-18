@@ -1,9 +1,9 @@
 // Villagers walking about (interpolated from the server) and birds hopping.
 
-import type * as THREE from 'three';
 import { type TalkView, villagerDef, type VillagerView } from '@hearthwood/shared';
 import { disposeTree } from '../../gpu.ts';
-import { makeVillager } from '../../characters.ts';
+import { namedPart } from '../../parts.ts';
+import { makeVillager, swapInModel } from '../../characters.ts';
 import { dress, drive, makeVillagerModel, react, type VillagerModel } from '../../villagerModels.ts';
 import { currentEnv } from '../scene/environment.ts';
 import { debug } from '../common.ts';
@@ -26,8 +26,7 @@ export function upsertVillager(self: World, v: VillagerView) {
     const mover = m;
     void makeVillagerModel(def).then((vm) => {
       if (!vm || self.villagers.get(def.id) !== mover) return;
-      for (const c of [...mover.rig.root.children]) if (c !== mover.label && !(c as { isCSS2DObject?: boolean }).isCSS2DObject && c.name !== 'wade') mover.rig.root.remove(c);
-      mover.rig.root.add(vm.root);
+      swapInModel(mover.rig, vm.root);
       mover.model = vm;
       dress(vm, mover.outfit);
     });
@@ -66,23 +65,11 @@ export function villagerReact(self: World, t: TalkView) {
   if (t.gave) react(vm, 'gift', now);
 }
 
-interface BirdParts { body?: THREE.Object3D; head?: THREE.Object3D; wingL?: THREE.Object3D; wingR?: THREE.Object3D }
-
-/** A bird's moving parts, looked up once per bird (not by name every frame). */
-function birdParts(mesh: THREE.Object3D): BirdParts {
-  let p = mesh.userData.birdParts as BirdParts | undefined;
-  if (!p) {
-    p = { body: mesh.getObjectByName('body'), head: mesh.getObjectByName('head'), wingL: mesh.getObjectByName('wingL'), wingR: mesh.getObjectByName('wingR') };
-    mesh.userData.birdParts = p;
-  }
-  return p;
-}
-
 export function animateBirds(self: World, t: number, dt: number) {
   for (const [id, mesh] of self.objMeshes) {
     if (!mesh.userData.bird) continue;
     const ph = (id.charCodeAt(id.length - 1) % 9) * 0.7;
-    const { body, head } = birdParts(mesh);
+    const body = namedPart(mesh, 'body'), head = namedPart(mesh, 'head');
     if (!body) continue;
     // Little hops every few seconds, pecking in between.
     const cyc = (t * 0.6 + ph) % 3;
@@ -105,7 +92,7 @@ export function animateBirds(self: World, t: number, dt: number) {
     f.mesh.position.y += (3.6 + k * 2.4) * dt;
     f.mesh.rotation.y = f.dir;
     const flap = Math.sin(t * 40) * 0.9;
-    const { wingL, wingR } = birdParts(f.mesh);
+    const wingL = namedPart(f.mesh, 'wingL'), wingR = namedPart(f.mesh, 'wingR');
     if (wingL) wingL.rotation.z = flap;
     if (wingR) wingR.rotation.z = -flap;
   }

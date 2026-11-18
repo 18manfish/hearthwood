@@ -7,7 +7,8 @@ import { isWaterTile, Tile } from '@hearthwood/shared';
 import { kitClip, kitModel } from '../../assets/kit.ts';
 import { caughtFishModel, SHADOW_COLOR, SHADOW_SWIM, swimShadow } from '../../models/fish.ts';
 import { mat } from '../../models/primitives.ts';
-import { namedPart, WATER_Y } from '../common.ts';
+import { namedPart } from '../../parts.ts';
+import { WATER_Y } from '../common.ts';
 import type { World } from '../../World.ts';
 
 interface School {

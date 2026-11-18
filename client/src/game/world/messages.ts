@@ -46,8 +46,7 @@ export function handle(self: World, m: ServerMessage) {
         self.objects.delete(id);
         const mesh = self.objMeshes.get(id);
         if (mesh && m.fx === 'fly') self.flying.push({ mesh, t0: self.clock.elapsedTime, dir: Math.random() * Math.PI * 2 });
-        else discard(self, `o:${id}`, mesh);
-        self.glows.delete(`o:${id}`);
+        else discard(self, mesh);
         self.batcher.remove(id);
         self.objMeshes.delete(id);
       }
@@ -69,7 +68,7 @@ export function handle(self: World, m: ServerMessage) {
         const prev = self.buildings.get(id);
         if (prev) self.grid!.removeBuilding(prev);
         self.buildings.delete(id);
-        discard(self, `b:${id}`, self.bldMeshes.get(id));
+        discard(self, self.bldMeshes.get(id));
         self.bldMeshes.delete(id);
       }
       break;

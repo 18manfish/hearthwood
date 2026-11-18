@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { bendDrop } from './bend.ts';
+import { isMovingPart, plainMeshes } from './parts.ts';
 
 // Tiles per chunk side. Bigger chunks = fewer draw calls but less culled; these were
 // tuned against draw calls + triangles on a full island (see the perf notes in the PR).
@@ -124,14 +125,6 @@ interface Batch {
   dirty: boolean;
 }
 
-/** A moving or swapped part keeps its own mesh: any named node and everything under it. */
-export function movable(o: THREE.Object3D, root: THREE.Object3D) {
-  for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if (p.name && KEEP.test(p.name)) return true;
-  return false;
-}
-/** Names the game animates or looks up (see world/room/objects.ts and friends). */
-export const KEEP = /^(beam|spout|flame|firelight|swing|boat|body|head|swimmer|window|bulb|float|ripple|hop|model|lighthouse-light|keeper|wade|bird)$/;
-
 export class StaticBatcher {
   private batches = new Map<string, Batch>();
   private owned = new Map<string, { key: string; count: number }[]>();
@@ -146,17 +139,8 @@ export class StaticBatcher {
   add(id: string, root: THREE.Object3D) {
     this.remove(id);
     root.updateMatrixWorld(true);
-    const take: THREE.Mesh[] = [];
-    root.traverse((o: THREE.Object3D) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh || (mesh as THREE.InstancedMesh).isInstancedMesh || (mesh as THREE.SkinnedMesh).isSkinnedMesh) return;
-      if (Array.isArray(mesh.material) || mesh.morphTargetInfluences) return;
-      for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return;
-      if (movable(o, root)) return;
-      take.push(mesh);
-    });
     const counts = new Map<string, number>();
-    for (const mesh of take) {
+    for (const mesh of plainMeshes(root, isMovingPart)) {
       const key = this.key(mesh);
       const b = this.batch(key, mesh);
       this.place(b, id, mesh.matrixWorld);

@@ -2,7 +2,7 @@
 
 import { BIOMES, DEV_COMMANDS, type DevCommand, ITEM_LIST, type Season, SEASONS_BY_MODEL, type Weather } from '@hearthwood/shared';
 import { debug } from '../../../game/World.ts';
-import { setAutoResolution } from '../../../game/world/scene/environment.ts';
+import { setAutoResolution } from '../../../game/world/scene/viewport.ts';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { h } from '../../dom.ts';

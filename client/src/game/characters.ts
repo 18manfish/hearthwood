@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { garmentOf, ITEMS, type VillagerDef } from '@hearthwood/shared';
 import { mat, part } from './models.ts';
+import { forgetParts } from './parts.ts';
 import { fishingRodModel } from './models/fishing.ts';
 
 export interface Rig {
@@ -17,10 +18,19 @@ export interface Rig {
   hatSlot: THREE.Group;
   tool: THREE.Group;
   phase: number;
-  /** The Blender model once it has loaded (players); the boxes above are hidden then. */
+  /** The Blender model once it has loaded (players); the boxes above have left the scene then. */
   model?: import('./villagerModels.ts').VillagerModel;
   /** Last tool swing seen, to start an action clip once per swing. */
   lastSwing?: number;
+  /** The ring of foam around a wading character (made the first time they wade). */
+  wade?: THREE.Mesh;
+}
+
+/** The smooth model has loaded: it takes the place of the boxes (the name label and the wading ring stay). */
+export function swapInModel(rig: Rig, model: THREE.Object3D) {
+  // (off the scene, not just hidden: hidden nodes still have their matrices updated every frame)
+  for (const c of [...rig.root.children]) if (!(c as { isCSS2DObject?: boolean }).isCSS2DObject && c !== rig.wade) rig.root.remove(c);
+  rig.root.add(model);
 }
 
 function limb(color: string, w: number, h: number, x: number, y: number) {
@@ -236,6 +246,7 @@ export function setTool(rig: Rig, tool: 'axe' | 'shovel' | 'rod' | 'rod_pro' | n
   if (rig.tool.userData.kind === tool) return;
   rig.tool.userData.kind = tool;
   rig.tool.clear();
+  forgetParts(rig.tool);
   if (!tool) return;
   if (tool === 'rod' || tool === 'rod_pro') {
     rig.tool.add(fishingRodModel(tool === 'rod_pro' ? 'pro' : 'basic'));
@@ -250,6 +261,7 @@ export function setTool(rig: Rig, tool: 'axe' | 'shovel' | 'rod' | 'rod_pro' | n
 
 /** Walk cycle / idle bob. `swing` > 0 plays a one-shot tool swing. */
 export function animateRig(rig: Rig, dt: number, speed: number, swing: number) {
+  if (!rig.body.parent) return; // the boxes have made way for the smooth model
   rig.phase += dt * (speed > 0.05 ? 11 : 2);
   const s = speed > 0.05 ? Math.sin(rig.phase) * 0.7 : 0;
   rig.legL.rotation.x = s;

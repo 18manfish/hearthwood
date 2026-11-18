@@ -7,9 +7,10 @@ import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { animateRig, makeVillager, type Rig } from '../../characters.ts';
 import { disposeTree } from '../../gpu.ts';
-import { type Glow, glowsOf } from '../../lightPool.ts';
+import type { Glow } from '../../lightPool.ts';
 import { freeze, mergeStatic, RigidSkin } from '../../merge.ts';
 import { buildingModel, objectModel } from '../../models.ts';
+import { namedPart } from '../../parts.ts';
 import { shopkeeper, WATER_Y } from '../common.ts';
 import { SHADOW_SWIM } from '../../models/fish.ts';
 import { animateBirds } from '../entities/villagers.ts';
@@ -19,30 +20,36 @@ import type { World } from '../../World.ts';
 /** Static scenery drawn through the instanced batches (batching.ts). */
 const BATCHED = new Set(['tree', 'stump', 'rock', 'bush', 'mushroom', 'flower']);
 
-/** Take a model out of the world for good: off the scene, its own GPU resources freed, its lights off. */
-export function discard(self: World, key: string, mesh: THREE.Object3D | undefined) {
-  self.glows.delete(key);
+/** Take a model out of the world for good: off the scene, its lights off, its own GPU resources freed. */
+export function discard(self: World, mesh: THREE.Object3D | undefined) {
   if (!mesh) return;
+  self.lights.remove(mesh);
   self.world.remove(mesh);
   disposeTree(mesh);
 }
 
-/** Note the model's light sources for the light pool (lightPool.ts). */
-function noteGlows(self: World, key: string, mesh: THREE.Object3D) {
-  const glows = glowsOf(mesh);
-  if (glows.length) self.glows.set(key, glows);
-  else self.glows.delete(key);
-}
-
 export function removeObjectMesh(self: World, id: string) {
-  discard(self, `o:${id}`, self.objMeshes.get(id));
+  discard(self, self.objMeshes.get(id));
   self.batcher.remove(id);
   self.objMeshes.delete(id);
 }
 
+/** Draw a placed object cheaply – each kind its own way. */
+function drawCheaply(self: World, o: WorldObject, mesh: THREE.Object3D) {
+  if (o.kind === 'fish') return; // one morphing mesh already
+  if (o.kind === 'bird') {
+    mesh.add(new RigidSkin()); // a dozen little moving parts, drawn as one
+    return;
+  }
+  // Scenery that repeats goes into the instanced batches; furniture and the like get
+  // their still parts baked into one mesh.
+  if (BATCHED.has(o.kind) && self.room?.kind !== 'interior') self.batcher.add(o.id, mesh);
+  else mergeStatic(mesh);
+  freeze(mesh);
+}
+
 export function upsertObjectMesh(self: World, o: WorldObject) {
-  discard(self, `o:${o.id}`, self.objMeshes.get(o.id));
-  self.batcher.remove(o.id);
+  removeObjectMesh(self, o.id);
   if (!self.room) return;
   const def = BIOMES[self.room.biome];
   const { season, vs, snowy } = currentVisual(self);
@@ -51,14 +58,9 @@ export function upsertObjectMesh(self: World, o: WorldObject) {
   const wallDecor = o.kind === 'decor' && o.item?.startsWith('w_');
   const y = o.kind === 'fish' ? shadowY(self, o) : wallDecor ? baseHeight(Tile.Floor) : self.grid!.surfaceY(o.x + 0.5, o.z + 0.5);
   mesh.position.set(o.x + 0.5, y, o.z + 0.5);
-  // Scenery that repeats goes into instanced batches; furniture and the like get their
-  // still parts baked into one mesh (birds and fish are all moving parts).
-  if (BATCHED.has(o.kind) && self.room?.kind !== 'interior') self.batcher.add(o.id, mesh);
-  else if (o.kind === 'bird') mesh.add(new RigidSkin()); // a dozen little moving parts, drawn as one
-  else if (o.kind !== 'fish') mergeStatic(mesh);
-  noteGlows(self, `o:${o.id}`, mesh);
-  if (o.kind !== 'bird' && o.kind !== 'fish') freeze(mesh);
+  drawCheaply(self, o, mesh);
   mesh.traverse((c: THREE.Object3D) => (c.userData.objId = o.id));
+  self.lights.add(mesh);
   self.world.add(mesh);
   self.objMeshes.set(o.id, mesh);
 }
@@ -77,7 +79,7 @@ function houseKey(b: Building, now: number) {
 }
 
 export function upsertBuildingMesh(self: World, b: Building) {
-  discard(self, `b:${b.id}`, self.bldMeshes.get(b.id));
+  discard(self, self.bldMeshes.get(b.id));
   const flagUp = b.type === 'mailbox' && self.room?.ownerId === state.self?.id && state.mail.length > 0;
   const notes = b.type === 'billboard' ? state.room?.board?.length ?? 0 : 0;
   const mesh = buildingModel(b, net.serverNow(), self.room?.interior === 'tent' ? 'tent' : 'cabin', { flagUp, notes });
@@ -85,8 +87,6 @@ export function upsertBuildingMesh(self: World, b: Building) {
   mesh.position.set(b.x + b.w / 2, y, b.z + b.h / 2);
   mesh.userData.done = b.completeAt <= net.serverNow();
   if (tiersOf(b.type).length) mesh.userData.house = houseKey(b, net.serverNow());
-  mergeStatic(mesh);
-  noteGlows(self, `b:${b.id}`, mesh);
   // Someone to serve you behind every counter.
   if (b.type === 'counter') {
     const keeper = makeVillager(shopkeeper(b.role));
@@ -95,7 +95,9 @@ export function upsertBuildingMesh(self: World, b: Building) {
     mesh.add(keeper.root);
     mesh.userData.keeper = keeper;
   }
+  mergeStatic(mesh);
   freeze(mesh);
+  self.lights.add(mesh);
   self.world.add(mesh);
   self.bldMeshes.set(b.id, mesh);
 }
@@ -127,53 +129,35 @@ export function objectLabel(self: World, o: WorldObject, owner: boolean): string
   }
 }
 
-const ANIM_NODES = ['beam', 'lighthouse-light', 'spout', 'flame', 'firelight', 'swing', 'boat'];
-
-/** Named moving parts of a mesh, found once and kept (a scene search every frame per object adds up). */
-function animNodes(mesh: THREE.Object3D): Record<string, THREE.Object3D | undefined> {
-  let n = mesh.userData.animNodes as Record<string, THREE.Object3D | undefined> | undefined;
-  if (!n) {
-    n = {};
-    mesh.traverse((c: THREE.Object3D) => {
-      if (ANIM_NODES.includes(c.name) && !n![c.name]) n![c.name] = c;
-    });
-    mesh.userData.animNodes = n;
-  }
-  return n;
-}
-
 export function animateProps(self: World, t: number, dt: number) {
   animateBirds(self, t, dt);
   const night = 1 - self.day;
   for (const mesh of self.bldMeshes.values()) {
-    const n = animNodes(mesh);
-    const beam = n.beam;
+    const beam = namedPart(mesh, 'beam');
     if (beam) {
       beam.rotation.y = t * 0.9;
       const bm = (beam.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
       bm.opacity = night * 0.22;
-      const ll = n['lighthouse-light'] as Glow | undefined;
+      const ll = namedPart(mesh, 'lighthouse-light') as Glow | undefined;
       if (ll) ll.intensity = night * 6;
     }
     const keeper = mesh.userData.keeper as Rig | undefined;
     if (keeper) animateRig(keeper, dt, 0, 0);
-    const spout = n.spout;
+    const spout = namedPart(mesh, 'spout');
     if (spout) spout.scale.y = 0.35 + Math.sin(t * 6) * 0.05;
-    const flame = n.flame;
+    const flame = namedPart(mesh, 'flame');
     if (flame) {
       flame.scale.y = 0.45 + Math.sin(t * 13) * 0.06 + Math.sin(t * 7.3) * 0.04;
-      const l = n.firelight as Glow | undefined;
-      if (l) l.intensity = 1.6 + Math.sin(t * 11) * 0.3 + (1 - self.day) * 2.5;
+      const l = namedPart(mesh, 'firelight') as Glow | undefined;
+      if (l) l.intensity = 1.6 + Math.sin(t * 11) * 0.3 + night * 2.5;
     }
   }
-  // Hanging chairs sway a little.
   for (const [id, mesh] of self.objMeshes) {
-    const swing = animNodes(mesh).swing;
+    // Hanging chairs sway a little.
+    const swing = namedPart(mesh, 'swing');
     if (swing) swing.rotation.x = Math.sin(t * 0.9 + (id.charCodeAt(id.length - 1) % 5)) * 0.045;
-  }
-  // Moored boats bob on the swell.
-  for (const [id, mesh] of self.objMeshes) {
-    const boat = animNodes(mesh).boat;
+    // Moored boats bob on the swell.
+    const boat = namedPart(mesh, 'boat');
     if (!boat) continue;
     const ph = (id.charCodeAt(id.length - 1) % 7) * 0.9;
     boat.position.y = Math.sin(t * 1.3 + ph) * 0.03;

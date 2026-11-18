@@ -15,44 +15,31 @@
 // (Not used for instanced meshes: some GPUs draw vertex-coloured instances black.)
 
 import * as THREE from 'three';
-import { KEEP } from './batching.ts';
 import { bend, bentDepth } from './bend.ts';
 import { own } from './gpu.ts';
+import { isMovingPart, plainMeshes } from './parts.ts';
 
-interface Source {
+// ── Grouping parts that can share a draw call ────────────────────────────────
+
+interface Part {
   mesh: THREE.Mesh;
-  /** Baked into the vertices (static merge). */
-  matrix: THREE.Matrix4 | null;
-  /** Index of the part's bone (rigid skin). */
-  bone: number;
-  /** Mirrored part: its triangles are wound the other way round. */
+  /** Static merge: where the part sits in the model, baked into its vertices. */
+  bake: THREE.Matrix4 | null;
+  /** A mirrored part: its triangles are wound the other way round. */
   flip: boolean;
-  /** Colour written into the vertices (plain materials). */
-  color: THREE.Color | null;
 }
 
 interface Group {
   material: THREE.Material;
+  /** The parts' own colours go into the vertices (`material` is the shared vertex-colour one). */
+  colored: boolean;
   cast: boolean;
   receive: boolean;
-  sources: Source[];
+  parts: Part[];
 }
 
-const v = new THREE.Vector3();
-const n3 = new THREE.Matrix3();
-const m4 = new THREE.Matrix4();
-const m4b = new THREE.Matrix4();
-const IDENTITY = new THREE.Matrix4();
-
-/** Meshes that can go into a merged geometry at all. */
-function mergeable(mesh: THREE.Mesh) {
-  if (!mesh.isMesh || (mesh as THREE.InstancedMesh).isInstancedMesh || (mesh as THREE.SkinnedMesh).isSkinnedMesh) return false;
-  const material = mesh.material as THREE.Material | THREE.Material[];
-  if (Array.isArray(material) || material.transparent) return false; // see-through parts keep their own draw order
-  const geo = mesh.geometry as THREE.BufferGeometry;
-  if (!geo.attributes.position || mesh.morphTargetInfluences || Object.keys(geo.morphAttributes).length) return false;
-  return true;
-}
+/** See-through parts keep their own mesh (and with it their draw order). */
+const opaque = (mesh: THREE.Mesh) => !(mesh.material as THREE.Material).transparent;
 
 const vertexColored = new Map<string, THREE.MeshStandardMaterial>();
 
@@ -77,8 +64,8 @@ function plainColor(m: THREE.Material): THREE.MeshStandardMaterial | null {
   return shared;
 }
 
-/** Everything about a material that changes how it is drawn: equal signatures can share a draw call. */
-function signature(m: THREE.Material) {
+/** Everything about a material that changes how it is drawn: materials that look the same can share a draw call. */
+function look(m: THREE.Material) {
   const s = m as THREE.MeshStandardMaterial;
   return [
     m.type, s.color?.getHex(), s.map?.id, s.normalMap?.id, s.normalScale?.x, s.roughness, s.metalness, s.emissive?.getHex(), s.emissiveIntensity,
@@ -86,170 +73,124 @@ function signature(m: THREE.Material) {
   ].join('|');
 }
 
-function addToGroup(groups: Map<string, Group>, src: Source, bySignature: boolean) {
-  const mesh = src.mesh;
-  const material = mesh.material as THREE.Material;
-  const flags = `${mesh.castShadow ? 1 : 0}${mesh.receiveShadow ? 1 : 0}`;
-  const plain = plainColor(material);
-  let key: string, shared: THREE.Material;
-  if (plain) {
-    key = `plain|${plain.uuid}|${flags}`;
-    shared = plain;
-    src.color = (material as THREE.MeshStandardMaterial).color;
-  } else {
-    key = `${bySignature ? signature(material) : material.uuid}|${flags}`;
-    shared = material;
+/**
+ * Sort parts into groups that can each be one mesh: same material (as told by `same`)
+ * and same shadow behaviour. A part alone in its group is left out – it is as cheap
+ * drawn by itself.
+ */
+function groupParts(parts: Part[], same: (m: THREE.Material) => string): Group[] {
+  const groups = new Map<string, Group>();
+  for (const part of parts) {
+    const { mesh } = part;
+    const material = mesh.material as THREE.Material;
+    const plain = plainColor(material);
+    const key = `${plain ? plain.uuid : same(material)}|${mesh.castShadow}|${mesh.receiveShadow}`;
+    let g = groups.get(key);
+    if (!g) groups.set(key, (g = { material: plain ?? material, colored: !!plain, cast: mesh.castShadow, receive: mesh.receiveShadow, parts: [] }));
+    g.parts.push(part);
   }
-  let g = groups.get(key);
-  if (!g) groups.set(key, (g = { material: shared, cast: mesh.castShadow, receive: mesh.receiveShadow, sources: [] }));
-  g.sources.push(src);
+  return [...groups.values()].filter((g) => g.parts.length > 1);
 }
 
-const withNormals = new WeakMap<THREE.BufferGeometry, THREE.BufferAttribute>();
-/** The normals of a geometry, worked out once when a smooth-shaded part comes without. */
-function normalsOf(geo: THREE.BufferGeometry): THREE.BufferAttribute {
-  let a = (geo.attributes.normal as THREE.BufferAttribute | undefined) ?? withNormals.get(geo);
-  if (!a) {
+/** A merged mesh casts and receives shadows like the parts it stands for. */
+function likeItsParts(merged: THREE.Mesh, g: Group) {
+  merged.castShadow = g.cast;
+  merged.receiveShadow = g.receive;
+  if (g.cast) merged.customDepthMaterial = bentDepth;
+}
+
+// ── One geometry out of a group ──────────────────────────────────────────────
+
+const v = new THREE.Vector3();
+const normalMatrix = new THREE.Matrix3();
+const geometryOf = (p: Part) => p.mesh.geometry as THREE.BufferGeometry;
+const vertexCount = (p: Part) => geometryOf(p).attributes.position.count;
+
+function copy(to: THREE.BufferAttribute, at: number, from: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) {
+  for (let i = 0; i < from.count; i++) for (let c = 0; c < to.itemSize; c++) to.setComponent(at + i, c, from.getComponent(i, c));
+}
+
+function each(a: THREE.BufferAttribute, at: number, count: number, change: (v: THREE.Vector3) => void) {
+  for (let i = at; i < at + count; i++) {
+    change(v.fromBufferAttribute(a, i));
+    a.setXYZ(i, v.x, v.y, v.z);
+  }
+}
+
+const computedNormals = new WeakMap<THREE.BufferGeometry, THREE.BufferAttribute>();
+/** The normals of a geometry – worked out (once) when a smooth-shaded part comes without. */
+function normalsOf(geo: THREE.BufferGeometry) {
+  let normals = geo.attributes.normal ?? computedNormals.get(geo);
+  if (!normals) {
     const tmp = geo.clone();
     tmp.computeVertexNormals();
-    a = tmp.attributes.normal as THREE.BufferAttribute;
-    withNormals.set(geo, a);
+    computedNormals.set(geo, (normals = tmp.attributes.normal as THREE.BufferAttribute));
   }
-  return a;
+  return normals;
 }
 
-/** One geometry out of the sources of a group. `skin`: with bone indices instead of baked positions. */
-function buildGeometry(g: Group, skin: boolean): THREE.BufferGeometry {
-  const smooth = !(g.material as THREE.MeshStandardMaterial).flatShading;
-  let verts = 0, indices = 0, anyNormal = false, anyUv = false, anyColor = false;
-  for (const s of g.sources) {
-    const geo = s.mesh.geometry as THREE.BufferGeometry;
-    const count = geo.attributes.position.count;
-    verts += count;
-    indices += geo.index ? geo.index.count : count;
-    if (geo.attributes.normal) anyNormal = true;
-    if (geo.attributes.uv) anyUv = true;
-    if (s.color || (g.material.vertexColors && geo.attributes.color)) anyColor = true;
-  }
-  const needNormal = anyNormal || smooth;
-  const position = new Float32Array(verts * 3);
-  const normal = needNormal ? new Float32Array(verts * 3) : null;
-  const uv = anyUv ? new Float32Array(verts * 2) : null;
-  const color = anyColor ? new Float32Array(verts * 3).fill(1) : null;
-  const skinIndex = skin ? new Uint16Array(verts * 4) : null;
-  const skinWeight = skin ? new Uint8Array(verts * 4) : null;
-  const index = verts > 65535 ? new Uint32Array(indices) : new Uint16Array(indices);
-  let vo = 0, io = 0;
-  for (const s of g.sources) {
-    const geo = s.mesh.geometry as THREE.BufferGeometry;
-    const pos = geo.attributes.position as THREE.BufferAttribute;
-    const count = pos.count;
-    for (let i = 0; i < count; i++) {
-      v.fromBufferAttribute(pos, i);
-      if (s.matrix) v.applyMatrix4(s.matrix);
-      position[(vo + i) * 3] = v.x;
-      position[(vo + i) * 3 + 1] = v.y;
-      position[(vo + i) * 3 + 2] = v.z;
-    }
-    if (normal && (geo.attributes.normal || smooth)) {
-      const src = normalsOf(geo);
-      if (s.matrix) n3.getNormalMatrix(s.matrix);
-      for (let i = 0; i < count; i++) {
-        v.fromBufferAttribute(src, i);
-        if (s.matrix) v.applyMatrix3(n3).normalize();
-        normal[(vo + i) * 3] = v.x;
-        normal[(vo + i) * 3 + 1] = v.y;
-        normal[(vo + i) * 3 + 2] = v.z;
-      }
-    }
-    const suv = geo.attributes.uv as THREE.BufferAttribute | undefined;
-    if (uv && suv) {
-      for (let i = 0; i < count; i++) {
-        uv[(vo + i) * 2] = suv.getX(i);
-        uv[(vo + i) * 2 + 1] = suv.getY(i);
-      }
-    }
-    if (color) {
-      const sc = geo.attributes.color as THREE.BufferAttribute | undefined;
-      if (s.color) {
-        for (let i = 0; i < count; i++) {
-          color[(vo + i) * 3] = s.color.r;
-          color[(vo + i) * 3 + 1] = s.color.g;
-          color[(vo + i) * 3 + 2] = s.color.b;
-        }
-      } else if (sc && g.material.vertexColors) {
-        for (let i = 0; i < count; i++) {
-          color[(vo + i) * 3] = sc.getX(i);
-          color[(vo + i) * 3 + 1] = sc.getY(i);
-          color[(vo + i) * 3 + 2] = sc.getZ(i);
-        }
-      }
-    }
-    if (skinIndex && skinWeight) {
-      for (let i = 0; i < count; i++) {
-        skinIndex[(vo + i) * 4] = s.bone;
-        skinWeight[(vo + i) * 4] = 255;
-      }
-    }
-    const si = geo.index;
-    const tris = (si ? si.count : count) / 3;
-    for (let t = 0; t < tris; t++) {
-      const a = si ? si.getX(t * 3) : t * 3, b = si ? si.getX(t * 3 + 1) : t * 3 + 1, c = si ? si.getX(t * 3 + 2) : t * 3 + 2;
-      index[io++] = vo + a;
-      index[io++] = vo + (s.flip ? c : b);
-      index[io++] = vo + (s.flip ? b : c);
-    }
-    vo += count;
-  }
+function mergedGeometry(g: Group): THREE.BufferGeometry {
   const out = own(new THREE.BufferGeometry());
-  out.setAttribute('position', new THREE.BufferAttribute(position, 3));
-  if (normal) out.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
-  if (uv) out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  if (color) out.setAttribute('color', new THREE.BufferAttribute(color, 3));
-  if (skinIndex && skinWeight) {
-    out.setAttribute('skinIndex', new THREE.BufferAttribute(skinIndex, 4));
-    out.setAttribute('skinWeight', new THREE.BufferAttribute(skinWeight, 4, true));
+  const verts = g.parts.reduce((n, p) => n + vertexCount(p), 0);
+  const has = (name: string) => g.parts.some((p) => name in geometryOf(p).attributes);
+  const attribute = (name: string, size: number, fill = 0) => {
+    const a = new THREE.BufferAttribute(new Float32Array(verts * size).fill(fill), size);
+    out.setAttribute(name, a);
+    return a;
+  };
+  const smooth = !(g.material as THREE.MeshStandardMaterial).flatShading;
+  const position = attribute('position', 3);
+  const normal = smooth || has('normal') ? attribute('normal', 3) : null; // (flat shading works its normals out per pixel)
+  const uv = has('uv') ? attribute('uv', 2) : null;
+  const color = g.colored || (g.material.vertexColors && has('color')) ? attribute('color', 3, 1) : null;
+  const index: number[] = [];
+  let at = 0;
+  for (const part of g.parts) {
+    const geo = geometryOf(part);
+    const count = vertexCount(part);
+    copy(position, at, geo.attributes.position);
+    if (normal && (smooth || geo.attributes.normal)) copy(normal, at, normalsOf(geo));
+    if (uv && geo.attributes.uv) copy(uv, at, geo.attributes.uv);
+    if (color && g.colored) {
+      const tint = (part.mesh.material as THREE.MeshStandardMaterial).color;
+      each(color, at, count, (c) => c.set(tint.r, tint.g, tint.b));
+    } else if (color && geo.attributes.color) {
+      copy(color, at, geo.attributes.color);
+    }
+    if (part.bake) {
+      const bake = part.bake;
+      each(position, at, count, (p) => p.applyMatrix4(bake));
+      normalMatrix.getNormalMatrix(bake);
+      if (normal) each(normal, at, count, (n) => n.applyMatrix3(normalMatrix).normalize());
+    }
+    const corner = geo.index ? (i: number) => at + geo.index!.getX(i) : (i: number) => at + i;
+    const corners = geo.index ? geo.index.count : count;
+    for (let i = 0; i < corners; i += 3) index.push(corner(i), corner(part.flip ? i + 2 : i + 1), corner(part.flip ? i + 1 : i + 2));
+    at += count;
   }
-  out.setIndex(new THREE.BufferAttribute(index, 1));
+  out.setIndex(index); // (three.js picks 16 or 32 bit)
   return out;
 }
 
 // ── Static models ────────────────────────────────────────────────────────────
 
-/** Named so they stay out of the instanced batches, but they never move: fine to bake. */
-const STILL = /^(window|bulb)$/;
-
-function moves(o: THREE.Object3D, root: THREE.Object3D) {
-  for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if (p.name && KEEP.test(p.name) && !STILL.test(p.name)) return true;
-  return false;
-}
-
 /**
  * Bake the parts of `root` that never move into one mesh per material (see the top
- * of the file). Moving and looked-up parts (the names in batching.ts) stay as they
- * are. Call it on a finished model, before it is shown.
+ * of the file). Moving parts (parts.ts) stay as they are. Call it on a finished
+ * model, before it is shown.
  */
 export function mergeStatic(root: THREE.Object3D) {
   root.updateMatrixWorld(true);
-  const groups = new Map<string, Group>();
-  const inv = m4.copy(root.matrixWorld).invert();
-  root.traverse((o: THREE.Object3D) => {
-    const mesh = o as THREE.Mesh;
-    if (!mergeable(mesh)) return;
-    for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return;
-    if (moves(o, root)) return;
-    const matrix = new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld);
-    addToGroup(groups, { mesh, matrix, bone: 0, flip: matrix.determinant() < 0, color: null }, false);
+  const toRoot = root.matrixWorld.clone().invert();
+  const parts = plainMeshes(root, isMovingPart).filter(opaque).map((mesh): Part => {
+    const bake = toRoot.clone().multiply(mesh.matrixWorld);
+    return { mesh, bake, flip: bake.determinant() < 0 };
   });
-  for (const g of groups.values()) {
-    if (g.sources.length < 2 && !g.sources[0].color) continue; // nothing to gain
-    const geo = buildGeometry(g, false);
-    const merged = new THREE.Mesh(geo, g.material);
+  for (const g of groupParts(parts, (m) => m.uuid)) {
+    for (const p of g.parts) p.mesh.removeFromParent();
+    const merged = new THREE.Mesh(mergedGeometry(g), g.material);
     merged.name = 'merged';
-    merged.castShadow = g.cast;
-    merged.receiveShadow = g.receive;
-    if (g.cast) merged.customDepthMaterial = bentDepth;
-    for (const s of g.sources) s.mesh.removeFromParent();
+    likeItsParts(merged, g);
     root.add(merged);
   }
 }
@@ -257,14 +198,14 @@ export function mergeStatic(root: THREE.Object3D) {
 /**
  * A placed model that stays where it is: work its matrices out once instead of every
  * frame (three.js otherwise recomputes every node's matrix each frame). Its moving
- * parts – the names in batching.ts – keep updating.
+ * parts keep updating.
  */
 export function freeze(root: THREE.Object3D) {
   root.updateMatrixWorld(true);
   const walk = (o: THREE.Object3D) => {
-    if (o !== root && o.name && KEEP.test(o.name) && !STILL.test(o.name)) return;
+    if (o !== root && isMovingPart(o)) return;
     o.matrixAutoUpdate = false;
-    for (const c of o.children) walk(c);
+    o.children.forEach(walk);
   };
   walk(root);
 }
@@ -273,22 +214,47 @@ export function freeze(root: THREE.Object3D) {
 
 /** Not drawn by any camera: the layer of parts that a RigidSkin draws instead. */
 const SKINNED_LAYER = 31;
+const IDENTITY = new THREE.Matrix4();
+const m4 = new THREE.Matrix4();
 
-/** Sign of the scale between a part and the model root (a mirrored part has -1). */
+/** Is the part mirrored within its model (an odd number of negative scales on the way up)? */
 function mirrored(o: THREE.Object3D, root: THREE.Object3D) {
-  let sign = 1;
-  for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) {
-    const s = p.scale.x * p.scale.y * p.scale.z;
-    if (s < 0) sign = -sign;
-  }
-  return sign < 0;
+  let flip = false;
+  for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if (p.scale.x * p.scale.y * p.scale.z < 0) flip = !flip;
+  return flip;
 }
 
-/** The part's transform in the root's space, from the nodes' own position/rotation/scale. */
-function toRoot(o: THREE.Object3D, root: THREE.Object3D, out: THREE.Matrix4) {
-  out.identity();
-  for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) out.premultiply(m4b.compose(p.position, p.quaternion, p.scale));
-  return out;
+/** A sphere around the parts as they stand now, in the model's space. */
+function boundsOf(parts: Part[], root: THREE.Object3D) {
+  const bounds = new THREE.Sphere().makeEmpty();
+  const one = new THREE.Sphere();
+  const place = new THREE.Matrix4();
+  for (const { mesh } of parts) {
+    // (from the nodes' own position/rotation/scale: their matrices may not be worked out yet)
+    place.identity();
+    for (let p: THREE.Object3D | null = mesh; p && p !== root; p = p.parent) place.premultiply(m4.compose(p.position, p.quaternion, p.scale));
+    const geo = mesh.geometry as THREE.BufferGeometry;
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    one.copy(geo.boundingSphere!).applyMatrix4(place);
+    if (one.radius > 0) bounds.union(one); // (a prop scaled to nothing has no extent yet)
+  }
+  return bounds;
+}
+
+/** Every vertex of a merged geometry follows the bone of the part it came from, and that bone alone. */
+function bindToBones(geo: THREE.BufferGeometry, parts: Part[], firstBone: number) {
+  const verts = geo.attributes.position.count;
+  const bone = new Uint16Array(verts * 4), weight = new Uint8Array(verts * 4);
+  let at = 0;
+  parts.forEach((part, i) => {
+    const end = at + vertexCount(part);
+    for (; at < end; at++) {
+      bone[at * 4] = firstBone + i;
+      weight[at * 4] = 255;
+    }
+  });
+  geo.setAttribute('skinIndex', new THREE.BufferAttribute(bone, 4));
+  geo.setAttribute('skinWeight', new THREE.BufferAttribute(weight, 4, true));
 }
 
 /**
@@ -299,100 +265,78 @@ function toRoot(o: THREE.Object3D, root: THREE.Object3D, out: THREE.Matrix4) {
  * parts changes: a hat goes on, a tool is swapped…).
  */
 export class RigidSkin extends THREE.Object3D {
-  private sig = Number.NaN;
-  private readonly parts: THREE.Mesh[] = [];
+  private built = Number.NaN; // what the skin was last built from (see `refresh`)
+  private readonly meshes: THREE.Mesh[] = [];
   private readonly replaced: THREE.Mesh[] = [];
   private skeleton: THREE.Skeleton | null = null;
+  private readonly isMe = (o: THREE.Object3D) => o === this;
 
   constructor() {
     super();
     this.name = 'rigid-skin';
-    this.userData.dispose = () => this.release();
-    // three.js updates every matrix of a scene before drawing it: the hook that keeps
-    // the skin up to date once per frame, in whatever scene the model is shown.
-    const update = THREE.Object3D.prototype.updateMatrixWorld;
-    this.updateMatrixWorld = (force?: boolean) => {
-      this.refresh();
-      update.call(this, force);
-    };
   }
 
-  private collect(o: THREE.Object3D) {
-    if (!o.visible || o === this) return;
-    const mesh = o as THREE.Mesh;
-    if (mergeable(mesh)) this.parts.push(mesh);
-    for (const c of o.children) this.collect(c);
+  /**
+   * three.js updates every matrix of a scene before drawing it: the hook that keeps
+   * the skin up to date once per frame, in whatever scene the model is shown.
+   */
+  override updateMatrixWorld(force?: boolean) {
+    this.refresh();
+    super.updateMatrixWorld(force);
   }
 
+  /** Rebuild if the model's visible parts are not the ones the skin was built from. */
   private refresh() {
     const root = this.parent;
     if (!root?.visible) return;
-    this.parts.length = 0;
-    this.collect(root);
-    let h = this.parts.length;
-    for (const m of this.parts) h = (Math.imul(h, 31) + m.id * 7 + (m.geometry as THREE.BufferGeometry).id * 3 + (m.material as THREE.Material).id) | 0;
-    if (h === this.sig) return;
+    this.meshes.length = 0;
+    plainMeshes(root, this.isMe, this.meshes);
+    let now = this.meshes.length;
+    for (const m of this.meshes) now = (Math.imul(now, 31) + m.id * 7 + (m.geometry as THREE.BufferGeometry).id * 3 + (m.material as THREE.Material).id) | 0;
+    if (now === this.built) return;
+    this.built = now;
     this.rebuild(root);
-    this.sig = h;
   }
 
   private rebuild(root: THREE.Object3D) {
     this.release();
-    const groups = new Map<string, Group>();
-    const bones: THREE.Object3D[] = [];
-    for (const mesh of this.parts) addToGroup(groups, { mesh, matrix: null, bone: 0, flip: mirrored(mesh, root), color: null }, true);
-    // (a part alone in its group is as cheap drawn by itself)
-    for (const [key, g] of groups) if (g.sources.length < 2 && !g.sources[0].color) groups.delete(key);
-    if (!groups.size) return;
-    const bounds = new THREE.Sphere();
-    const part = new THREE.Sphere();
-    let first = true;
-    for (const g of groups.values()) {
-      for (const s of g.sources) {
-        s.bone = bones.length;
-        bones.push(s.mesh);
-        const geo = s.mesh.geometry as THREE.BufferGeometry;
-        if (!geo.boundingSphere) geo.computeBoundingSphere();
-        part.copy(geo.boundingSphere!).applyMatrix4(toRoot(s.mesh, root, m4));
-        if (part.radius > 0) {
-          if (first) bounds.copy(part);
-          else bounds.union(part);
-          first = false;
-        }
-      }
-    }
-    // Generous: limbs swing, props pop up, and it only decides whether to draw at all.
-    bounds.radius = bounds.radius * 1.4 + 0.6;
-    const skeleton = (this.skeleton = new THREE.Skeleton(bones as THREE.Bone[], bones.map(() => new THREE.Matrix4())));
-    for (const g of groups.values()) {
-      const skinned = new THREE.SkinnedMesh(buildGeometry(g, true), g.material);
-      // The bones are the parts themselves and the vertices stay in each part's own
-      // space, so there is no bind pose to undo: identity all the way.
-      skinned.bind(skeleton, IDENTITY);
-      skinned.castShadow = g.cast;
-      skinned.receiveShadow = g.receive;
-      if (g.cast) skinned.customDepthMaterial = bentDepth;
-      // (given, not measured: three.js would otherwise skin every vertex on the CPU to find them)
+    const groups = groupParts(this.meshes.filter(opaque).map((mesh): Part => ({ mesh, bake: null, flip: mirrored(mesh, root) })), look);
+    if (!groups.length) return;
+    // The bones are the parts themselves, and the vertices stay in each part's own
+    // space: there is no bind pose to undo, so every bind matrix is the identity.
+    const bones = groups.flatMap((g) => g.parts.map((p) => p.mesh));
+    this.skeleton = new THREE.Skeleton(bones as THREE.Object3D[] as THREE.Bone[], bones.map(() => new THREE.Matrix4()));
+    // Given, not measured (three.js would skin every vertex on the CPU to find them),
+    // and generous: limbs swing, props pop up, and it only decides whether to draw at all.
+    const bounds = boundsOf(groups.flatMap((g) => g.parts), root);
+    bounds.radius = Math.max(0, bounds.radius) * 1.4 + 0.6;
+    let firstBone = 0;
+    for (const g of groups) {
+      const geo = mergedGeometry(g);
+      bindToBones(geo, g.parts, firstBone);
+      firstBone += g.parts.length;
+      const skinned = new THREE.SkinnedMesh(geo, g.material);
+      likeItsParts(skinned, g);
+      skinned.bind(this.skeleton, IDENTITY);
       skinned.boundingSphere = bounds.clone();
       skinned.boundingBox = bounds.getBoundingBox(new THREE.Box3());
       this.add(skinned);
-      for (const s of g.sources) {
-        s.mesh.layers.set(SKINNED_LAYER);
-        this.replaced.push(s.mesh);
+      for (const { mesh } of g.parts) {
+        mesh.layers.set(SKINNED_LAYER);
+        this.replaced.push(mesh);
       }
     }
   }
 
-  /** Back to the plain parts (also when the model is disposed). */
+  /** Back to the plain parts. */
   private release() {
     for (const m of this.replaced) m.layers.set(0);
     this.replaced.length = 0;
-    for (const c of [...this.children]) {
-      ((c as THREE.Mesh).geometry as THREE.BufferGeometry).dispose();
-      c.removeFromParent();
+    for (const skinned of [...this.children] as THREE.SkinnedMesh[]) {
+      skinned.geometry.dispose();
+      skinned.removeFromParent();
     }
     this.skeleton?.dispose();
     this.skeleton = null;
-    this.sig = Number.NaN; // (rebuilt if the model is shown again after all)
   }
 }

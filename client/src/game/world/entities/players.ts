@@ -59,9 +59,9 @@ export function interp(self: World, m: Mover, dt: number) {
   m.swing = Math.max(0, m.swing - dt * 2.5);
   m.rig.root.position.set(m.x, groundY(self, m.x, m.z), m.z);
   m.rig.root.rotation.y = m.r;
-  wadeRipple(self, m.rig.root, m.speed);
+  wadeRipple(self, m.rig, m.speed);
   bendLabel(self, m);
-  if (!m.rig.model) animateRig(m.rig, dt, m.speed, m.swing); // (the box rig, until the model has loaded)
+  animateRig(m.rig, dt, m.speed, m.swing);
   driveModel(m.rig, dt, m.speed, m.swing, false);
 }
 
@@ -97,7 +97,7 @@ export function updateLocal(self: World, dt: number) {
     me.rig.root.position.set(me.x, groundY(self, me.x, me.z), me.z);
     me.rig.root.rotation.y = me.r;
     bendLabel(self, me);
-    if (!me.rig.model) animateRig(me.rig, dt, me.speed, 0);
+    animateRig(me.rig, dt, me.speed, 0);
     driveModel(me.rig, dt, me.speed, 0, false);
     return;
   }
@@ -135,10 +135,10 @@ export function updateLocal(self: World, dt: number) {
   } else me.speed = 0;
   me.rig.root.position.set(me.x, groundY(self, me.x, me.z), me.z);
   me.rig.root.rotation.y = me.r;
-  wadeRipple(self, me.rig.root, me.speed);
+  wadeRipple(self, me.rig, me.speed);
   bendLabel(self, me);
   me.swing = Math.max(0, me.swing - dt * 2.5);
-  if (!me.rig.model) animateRig(me.rig, dt, me.speed, me.swing);
+  animateRig(me.rig, dt, me.speed, me.swing);
   driveModel(me.rig, dt, me.speed, me.swing, !!self.cast, self.tool === 'net');
   setTool(me.rig, self.tool === 'axe' && (state.inv.stone_axe || state.inv.iron_axe) ? 'axe' : self.tool === 'shovel' && (state.inv.shovel || state.inv.iron_shovel) ? 'shovel' : self.cast ? (state.inv.pro_rod ? 'rod_pro' : 'rod') : null);
 
@@ -153,18 +153,17 @@ export function updateLocal(self: World, dt: number) {
 /** A ring of foam where a wading character meets the sea surface. */
 const WADE_RING = new THREE.RingGeometry(0.24, 0.34, 20).rotateX(-Math.PI / 2);
 
-export function wadeRipple(self: World, root: THREE.Object3D, speed: number) {
-  let ring = root.userData.wade as THREE.Mesh | undefined;
-  const depth = SEA_LEVEL - root.position.y;
+export function wadeRipple(self: World, rig: Rig, speed: number) {
+  let ring = rig.wade;
+  const depth = SEA_LEVEL - rig.root.position.y;
   if (depth < 0.03 || self.room?.kind === 'interior') {
     if (ring) ring.visible = false;
     return;
   }
   if (!ring) {
     ring = new THREE.Mesh(WADE_RING, mat('#ffffff', { opacity: 0.6 }));
-    ring.name = 'wade';
-    root.userData.wade = ring;
-    root.add(ring);
+    rig.wade = ring;
+    rig.root.add(ring);
   }
   ring.visible = true;
   ring.position.y = depth + 0.01;

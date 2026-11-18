@@ -60,7 +60,9 @@ declare module 'three' {
   export const LineBasicMaterial: any; export type LineBasicMaterial = any;
   export const MeshDepthMaterial: any; export type MeshDepthMaterial = any;
   export const MeshStandardMaterial: any; export type MeshStandardMaterial = any;
-  export const Object3D: any; export type Object3D = any;
+  // A class (not `any`) so that a subclass overriding a method type-checks as with the real types.
+  export class Object3D { [key: string]: any; constructor(...args: any[]); updateMatrixWorld(force?: boolean): void; }
+  export const InterleavedBufferAttribute: any; export type InterleavedBufferAttribute = any;
   export const PCFSoftShadowMap: any; export type PCFSoftShadowMap = any;
   export const PerspectiveCamera: any; export type PerspectiveCamera = any;
   export const Plane: any; export type Plane = any;

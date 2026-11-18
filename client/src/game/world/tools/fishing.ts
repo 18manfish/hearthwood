@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { CLIFF } from '@hearthwood/shared';
 import { layLine } from '../../models/fishing.ts';
-import { namedPart, WATER_Y } from '../common.ts';
+import { namedPart } from '../../parts.ts';
+import { WATER_Y } from '../common.ts';
 import { waveY } from '../../water.ts';
 import type { World } from '../../World.ts';
 

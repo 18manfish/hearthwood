@@ -1,7 +1,7 @@
 // HTTP API (admin): looking up and editing islands and their villagers.
 
 import {
-  ACCESS_LEVELS, BIOME_IDS, BUILDINGS, ITEMS, VILLAGERS, FRIENDSHIP_MAX, decodeTiles, encodeTiles, generateIsland, isBiome, isBuildingType, villagerDef, type Access, type Building, type WorldObject,
+  ACCESS_LEVELS, BIOME_IDS, BUILDINGS, ITEMS, OBJ_KINDS, VILLAGERS, FRIENDSHIP_MAX, decodeTiles, encodeTiles, generateIsland, isBiome, isBuildingType, isTransient, villagerDef, type Access, type Building, type WorldObject,
 } from '@hearthwood/shared';
 import { HttpError, readJson } from '../http.ts';
 import { logger } from '../log.ts';
@@ -10,8 +10,6 @@ import type { IslandRecord, VillagerRecord } from '../types.ts';
 import { type Api, int, str } from './context.ts';
 
 const log = logger('api');
-
-const OBJ_KINDS = ['tree', 'stump', 'rock', 'bush', 'mushroom', 'flower', 'furniture', 'decor'];
 
 export function islandRoutes(api: Api) {
   const { r, game, store, admin, actor } = api;
@@ -120,7 +118,7 @@ function applyIslandPatch(store: Store, rec: IslandRecord, b: Record<string, unk
     for (const o of list) {
       if (typeof o?.id !== 'string' || ids.has(o.id)) throw new HttpError(400, 'Every object needs a unique id.');
       ids.add(o.id);
-      if (!OBJ_KINDS.includes(o.kind)) throw new HttpError(400, `Object ${o.id}: unknown kind.`);
+      if (!OBJ_KINDS.includes(o.kind) || isTransient(o)) throw new HttpError(400, `Object ${o.id}: unknown kind.`);
       inside(o.x, o.z, `Object ${o.id}`);
       if ((o.kind === 'furniture' || o.kind === 'decor') && (typeof o.item !== 'string' || (o.kind === 'furniture' && !ITEMS[o.item]))) throw new HttpError(400, `Object ${o.id}: unknown item.`);
     }

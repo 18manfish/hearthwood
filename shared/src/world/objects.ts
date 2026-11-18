@@ -4,7 +4,9 @@ import { type TreeSpecies } from '../data/biomes.ts';
 import { type BuildingType } from '../data/buildings.ts';
 import { FURNITURE_SHAPES, ITEMS, type FishShadow } from '../data/items.ts';
 
-export type ObjKind = 'tree' | 'stump' | 'rock' | 'bush' | 'mushroom' | 'flower' | 'furniture' | 'decor' | 'bird' | 'washed' | 'fish';
+/** Every kind of world object. The last three come and go by themselves: birds land, things wash up, fish swim by. */
+export const OBJ_KINDS = ['tree', 'stump', 'rock', 'bush', 'mushroom', 'flower', 'furniture', 'decor', 'bird', 'washed', 'fish'] as const;
+export type ObjKind = (typeof OBJ_KINDS)[number];
 
 export interface WorldObject {
   id: string;

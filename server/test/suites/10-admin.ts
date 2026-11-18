@@ -1,8 +1,7 @@
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
-  type RoomView, type ServerMessage, type WorldObject, type BuildingType,
+  PROTOCOL_VERSION,
 } from '@hearthwood/shared';
-import { Bot, BASE, PORT, check, codeFor, mails, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
+import { Bot, PORT, check, codeFor, mails, sleep, http, type Ctx } from '../harness.ts';
 
 export async function run(ctx: Ctx) {
   const { A, C } = ctx;
@@ -76,6 +75,11 @@ export async function run(ctx: Ctx) {
     check(ren.status === 200, 'admin renamed the island');
     const roomMsg = await A.wait('room', (m) => m.room.name === 'Admin Isle').catch(() => null);
     check(!!roomMsg, 'players on the island get the reloaded island');
+    const objects = ((await http('GET', `/api/admin/islands/${A.self.homeIslandId}`, undefined, A.token)).body.record as { objects: unknown[] }).objects;
+    const putObjects = (extra: object[]) => http('PATCH', `/api/admin/islands/${A.self.homeIslandId}`, { objects: [...objects, ...extra] }, A.token);
+    check((await putObjects([{ id: 'wtest', kind: 'washed', item: 'seashell', x: 36, z: 36, rot: 0 }])).status === 200, 'an island with something washed up on it can be saved');
+    check((await putObjects([{ id: 'wtest', kind: 'bird', bird: 'bird_sparrow', x: 36, z: 36, rot: 0 }])).status === 400, 'birds are not saved with an island');
+    check((await putObjects([])).status === 200, 'and the objects can be put back');
     const bad = await http('PATCH', `/api/admin/islands/${A.self.homeIslandId}`, { terrain: { tiles: '123', levels: '0', ramps: '0' } }, A.token);
     check(bad.status === 400, 'bad terrain data refused');
     const D = new Bot('D');

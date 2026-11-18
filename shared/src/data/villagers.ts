@@ -6,6 +6,12 @@ export type Species =
   | 'cat' | 'dog' | 'rabbit' | 'bear' | 'fox' | 'owl' | 'deer' | 'frog'
   | 'penguin' | 'koala' | 'duck' | 'hamster' | 'wolf' | 'squirrel';
 
+/** A face for each species, where there is no room for the model (lists, chips, tools). */
+export const SPECIES_ICON: Record<string, string> = {
+  cat: '🐱', dog: '🐶', rabbit: '🐰', bear: '🐻', fox: '🦊', owl: '🦉', deer: '🦌', frog: '🐸',
+  penguin: '🐧', koala: '🐨', duck: '🦆', hamster: '🐹', wolf: '🐺', squirrel: '🐿️',
+} satisfies Record<Species, string>;
+
 export type Personality = 'cheerful' | 'lazy' | 'grumpy' | 'sporty' | 'artsy' | 'shy';
 
 export interface VillagerDef {

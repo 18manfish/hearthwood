@@ -4,8 +4,10 @@ import {
   BIOME_IDS, BUILDINGS, DIALOGUE_EVENTS, DIALOGUE_PLACEHOLDERS, FRIENDSHIP_LEVELS, ITEMS, PERSONALITIES, SEASON_NAMES, SPECIES, TRIGGER_KINDS, WEEKDAYS,
   checkRules, composeDialogue, easterDate, moonAge, villagerLine, hashMany,
   type DialogueContext, type DialogueEvent, type DialogueRule, type DialogueTrigger, type VillagerDef, type Weather, type Season, type BiomeId,
+  SPECIES_ICON,
 } from '@hearthwood/shared';
 import { h, clear } from '../ui/dom.ts';
+import { chips, mdPicker, MONTHS, num, seg, select } from './controls.ts';
 
 export interface DialogueHost {
   /** Working copy of the villager table. */
@@ -16,77 +18,12 @@ export interface DialogueHost {
 
 const WEATHERS: Weather[] = ['clear', 'cloudy', 'rain', 'storm', 'snow', 'fog', 'sandstorm', 'heatwave'];
 const WEATHER_ICON: Record<Weather, string> = { clear: '☀️', cloudy: '☁️', rain: '🌧️', storm: '⛈️', snow: '❄️', fog: '🌫️', sandstorm: '🏜️', heatwave: '🥵' };
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const SPECIES_ICON: Record<string, string> = { cat: '🐱', dog: '🐶', rabbit: '🐰', bear: '🐻', fox: '🦊', owl: '🦉', deer: '🦌', frog: '🐸', penguin: '🐧', koala: '🐨', duck: '🦆', hamster: '🐹', wolf: '🐺', squirrel: '🐿️' };
 const STATE_FLAGS: DialogueEvent[] = ['first_meeting', 'level_up', 'gifted_today', 'construction', 'new_arrival', 'neighbor_new_arrival'];
 const hourLabel = (n: number) => `${String(n).padStart(2, '0')}:00`;
 const mdLabel = (md: string) => `${Number(md.slice(3))} ${MONTHS[Number(md.slice(0, 2)) - 1] ?? '?'}`;
 const vIcon = (v: VillagerDef) => SPECIES_ICON[v.species] ?? '🙂';
 const kindInfo = (k: DialogueTrigger['k']) => TRIGGER_KINDS.find((x) => x.k === k)!;
 const eventLabel = (id: string) => DIALOGUE_EVENTS.find((e) => e.id === id)?.label ?? id;
-
-// ── Small widgets ───────────────────────────────────────────────────────────
-
-/** Toggle chips; `onChange` gets the new selection. */
-export function chips<T extends string | number>(options: readonly { value: T; label: string; title?: string }[], selected: readonly T[], onChange: (sel: T[]) => void, single = false): HTMLElement {
-  const sel = new Set<T>(selected);
-  const box = h('div', { class: 'chips' });
-  const draw = () => {
-    clear(box);
-    for (const o of options) {
-      box.append(h('button', {
-        type: 'button', class: `chip${sel.has(o.value) ? ' on' : ''}`, title: o.title ?? '',
-        onclick: () => {
-          if (single) { sel.clear(); sel.add(o.value); } else if (sel.has(o.value)) sel.delete(o.value); else sel.add(o.value);
-          draw();
-          onChange(options.map((x) => x.value).filter((v) => sel.has(v)));
-        },
-      }, o.label));
-    }
-  };
-  draw();
-  return box;
-}
-
-function seg<T extends string>(options: readonly { value: T; label: string }[], value: T, onChange: (v: T) => void): HTMLElement {
-  return chips(options, [value], (s) => onChange(s[0]), true);
-}
-
-export function select<T extends string | number>(options: readonly { value: T; label: string; group?: string }[], value: T | undefined, onChange: (v: T) => void, blank?: string): HTMLSelectElement {
-  const s = h('select', {}) as HTMLSelectElement;
-  if (blank !== undefined) s.append(h('option', { value: '' }, blank));
-  const groups = new Map<string, HTMLElement>();
-  for (const o of options) {
-    const opt = h('option', { value: String(o.value), selected: o.value === value }, o.label);
-    if (o.group) {
-      if (!groups.has(o.group)) { const g = h('optgroup', { label: o.group }); groups.set(o.group, g); s.append(g); }
-      groups.get(o.group)!.append(opt);
-    } else s.append(opt);
-  }
-  s.onchange = () => {
-    const o = options.find((x) => String(x.value) === s.value);
-    onChange((o ? o.value : '') as T);
-  };
-  return s;
-}
-
-export function num(value: number | undefined, onChange: (v: number | undefined) => void, attrs: Record<string, unknown> = {}): HTMLInputElement {
-  const i = h('input', { type: 'number', value: value === undefined ? '' : String(value), ...attrs }) as HTMLInputElement;
-  i.oninput = () => onChange(i.value === '' ? undefined : Number(i.value));
-  return i;
-}
-
-/** MM-DD as month + day selects. */
-export function mdPicker(value: string | undefined, onChange: (v: string | undefined) => void, optional = false): HTMLElement {
-  let m = value ? Number(value.slice(0, 2)) : 0;
-  let d = value ? Number(value.slice(3)) : 0;
-  const emit = () => onChange(m && d ? `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : undefined);
-  const months = MONTHS.map((label, i) => ({ value: i + 1, label }));
-  const days = Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: String(i + 1) }));
-  return h('span', { class: 'row', style: 'gap:4px;flex-wrap:nowrap' },
-    select(days, d || undefined, (v) => { d = Number(v) || 0; emit(); }, optional ? '–' : undefined),
-    select(months, m || undefined, (v) => { m = Number(v) || 0; emit(); }, optional ? '–' : undefined));
-}
 
 const optNum = (v: unknown) => (v === undefined || String(v) === '' ? undefined : Number(v));
 const hours = Array.from({ length: 25 }, (_, i) => ({ value: i, label: hourLabel(i) }));

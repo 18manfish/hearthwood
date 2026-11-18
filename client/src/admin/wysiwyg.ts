@@ -5,7 +5,7 @@
 import { h } from '../ui/dom.ts';
 import { sanitizeHtml } from '../ui/richtext.ts';
 
-export interface Wysiwyg {
+interface Wysiwyg {
   el: HTMLElement;
   getHtml(): string;
   setHtml(html: string): void;

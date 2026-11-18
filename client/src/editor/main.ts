@@ -4,28 +4,19 @@
 
 import '../style.css';
 import '../tools.css';
-import * as THREE from 'three';
 import {
-  BIRD_BY_ID, BUILDINGS, ITEMS, TABLE_INFO, GAME_TABLES, validateGameData,
-  speakerMatches, Grid, Tile, HAIR_STYLES, HOUSE_TIERS, PATHS, tiersOf, villagerDefaultOutfit,
-  ITEM_TIERS, SHOP_OPEN_HOUR, STOCK_SLOTS, dailyStock, stockDayKey, stockOdds, stockSlots, type ItemTier, type StockOptions,
-  type Gender, type Look, type Outfit, type PathDef,
-  type BirdDef, type DialogueRule, type FieldHint, type GameData, type GameTable, type ItemDef, type VillagerDef, type BuildingType, type Building,
+  BUILDINGS, ITEMS, TABLE_INFO, GAME_TABLES, validateGameData, speakerMatches, ITEM_TIERS, SHOP_OPEN_HOUR, STOCK_SLOTS, dailyStock, stockDayKey, stockOdds, stockSlots, type ItemTier, type StockOptions, type DialogueRule, type FieldHint, type GameData, type GameTable, type VillagerDef, type BuildingType, SPECIES_ICON,
 } from '@hearthwood/shared';
 import { structuredField, type ItemSource } from './fields.ts';
-import { disposeTree } from '../game/gpu.ts';
-import { chips, dialogueEditor, dialogueSummary, SPECIES_ICON, type DialogueHost } from './dialogue.ts';
+import { btn, chips } from './controls.ts';
+import { dialogueEditor, dialogueSummary, type DialogueHost } from './dialogue.ts';
+import { preview, previewRow } from './preview.ts';
 import { api, clearToken, health, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
 import { h, clear } from '../ui/dom.ts';
 import { watchEmojis } from '../ui/emoji.ts';
-import { birdModel, buildingModel, furnitureModel } from '../game/models.ts';
-import { caughtFishModel } from '../game/models/fish.ts';
 import { loadKitAssets } from '../game/assets/kit.ts';
 import { loadHouseAssets } from '../game/houseAssets.ts';
-import { buildPaths } from '../game/paths.ts';
-import { makeVillager, animateRig, type Rig } from '../game/characters.ts';
-import { advance, dress, makePlayerModel, makeVillagerModel, play, PLAYER_SLOTS, type VillagerModel } from '../game/villagerModels.ts';
 
 const app = document.getElementById('app')!;
 type Row = Record<string, unknown>;
@@ -73,219 +64,6 @@ function workingData(): GameData {
   const d = structuredClone(current);
   for (const t of GAME_TABLES) if (work[t]) (d as unknown as Record<string, unknown>)[t] = dataFrom(t, work[t]!);
   return d;
-}
-
-// ── 3D preview ──────────────────────────────────────────────────────────────
-class Preview3D {
-  readonly el = h('div', { class: 'preview3d' });
-  /** Buttons under the preview (animations, tiers, …), set per row. */
-  readonly controls = h('div', { class: 'pv-controls' });
-  /** A Blender model (villager / player) whose clips play in the preview. */
-  vm: VillagerModel | null = null;
-  /** Bumped on every show so a model that finishes loading late is dropped. */
-  seq = 0;
-  private renderer: THREE.WebGLRenderer | null = null;
-  private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(32, 4 / 3, 0.05, 80);
-  private obj: THREE.Object3D | null = null;
-  private rig: Rig | null = null;
-  constructor() {
-    try {
-      this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-      this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-      this.el.appendChild(this.renderer.domElement);
-    } catch {
-      this.el.append(h('div', { class: 'muted', style: 'padding:20px' }, 'No WebGL – preview unavailable.'));
-    }
-    this.scene.add(new THREE.HemisphereLight('#ffffff', '#88aa66', 1.6));
-    const d = new THREE.DirectionalLight('#fff4dc', 1.8);
-    d.position.set(2, 4, 3);
-    this.scene.add(d);
-    const clock = new THREE.Clock();
-    let fw = 0, fh = 0;
-    this.renderer?.setAnimationLoop(() => {
-      if (!this.renderer || !this.el.isConnected) return;
-      const w = this.el.clientWidth, hh = this.el.clientHeight;
-      if (w && hh && (w !== fw || hh !== fh)) {
-        fw = w;
-        fh = hh;
-        this.renderer.setSize(w, hh, false);
-        this.camera.aspect = w / hh;
-        this.camera.updateProjectionMatrix();
-      }
-      const dt = clock.getDelta();
-      if (this.obj) this.obj.rotation.y += dt * 0.6;
-      if (this.rig) animateRig(this.rig, dt, 0, 0);
-      if (this.vm) {
-        advance(this.vm, dt);
-        const cur = this.vm.current;
-        if (cur && !cur.isRunning() && this.vm.currentName !== 'idle') play(this.vm, 'idle', 0.3); // one-shots go back to idle
-      }
-      this.renderer.render(this.scene, this.camera);
-    });
-  }
-  show(o: THREE.Object3D | null, rig: Rig | null = null, fit = 1.4, vm: VillagerModel | null = null) {
-    if (this.obj) {
-      this.scene.remove(this.obj);
-      disposeTree(this.obj);
-    }
-    this.obj = o;
-    this.rig = rig;
-    this.vm = vm;
-    if (!o) return;
-    const holder = new THREE.Group();
-    holder.add(o);
-    this.obj = holder;
-    this.scene.add(holder);
-    const box = new THREE.Box3().setFromObject(o);
-    const size = box.getSize(new THREE.Vector3());
-    const c = box.getCenter(new THREE.Vector3());
-    o.position.sub(new THREE.Vector3(c.x, box.min.y, c.z));
-    const r = Math.max(size.x, size.y, size.z, 0.3) * fit;
-    this.camera.position.set(0, size.y * 0.6 + r * 0.45, r * 1.9);
-    this.camera.lookAt(0, size.y * 0.45, 0);
-  }
-}
-const preview = new Preview3D();
-
-/** Run `fn` with `row` standing in for its entry in a shared table (so models use the unsaved edit). */
-function withRow<T>(map: Record<string, unknown>, key: string, row: unknown, fn: () => T): T {
-  const had = key in map, prev = map[key];
-  map[key] = row;
-  try {
-    return fn();
-  } finally {
-    if (had) map[key] = prev;
-    else delete map[key];
-  }
-}
-
-const btn = (label: string, on: boolean, onclick: () => void, title = '') =>
-  h('button', { class: `btn small${on ? '' : ' ghost'}`, title, onclick }, label);
-
-/** Clips worth trying in the preview (the rest are transitions). */
-const PREVIEW_CLIPS: [string, string][] = [
-  ['idle', 'Idle'], ['walk', 'Walk'], ['run', 'Run'], ['chase', 'Chase'], ['sit_chair', 'Sit'], ['sit_ground', 'Sit (ground)'],
-  ['laugh', 'Laugh'], ['surprised', 'Surprised'], ['gift', 'Gift'], ['sad', 'Sad'], ['umbrella_hold', 'Umbrella'],
-];
-const PLAYER_CLIPS: [string, string][] = [['idle', 'Idle'], ['walk', 'Walk'], ['run', 'Run'], ['chop', 'Chop'], ['dig', 'Dig'], ['cast', 'Cast'], ['pickup', 'Pick up']];
-
-function clipButtons(vm: VillagerModel, clips: [string, string][]) {
-  const row = h('div', { class: 'pv-row' }, h('span', { class: 'muted' }, 'Animation'));
-  const draw = (cur: string) => {
-    row.replaceChildren(h('span', { class: 'muted' }, 'Animation'),
-      ...clips.filter(([c]) => vm.actions.has(c)).map(([c, label]) => btn(label, c === cur, () => { play(vm, c, 0.25); draw(c); })));
-  };
-  draw('idle');
-  return row;
-}
-
-let previewGender: Gender = 'girl';
-const levelPick: Record<string, number> = {};
-let villagerHouseFor = '';
-
-function previewLook(gender: Gender): Look {
-  return { skin: '#f1c27d', hair: HAIR_STYLES[gender][0], hairColor: '#5a3a1e', eyes: '#2b1d14', shirt: '#f4f1ea', pants: '#34495e', shoes: '#8d6e63' } as Look;
-}
-
-/** A little 7×7 lawn with a ring and a cross of this path, so joins, ends and corners show. */
-function pathPatch(r: PathDef): THREE.Object3D {
-  const n = 7;
-  const tiles = new Uint8Array(n * n).fill(Tile.Ground);
-  const paths = new Uint8Array(n * n);
-  const lay = (x: number, z: number) => (paths[z * n + x] = r.id);
-  for (let i = 1; i < 6; i++) { lay(i, 1); lay(i, 5); lay(1, i); lay(5, i); lay(3, i); }
-  lay(3, 0); lay(6, 3); lay(5, 3); lay(4, 3);
-  const grid = new Grid(n, tiles, undefined, undefined, paths);
-  const g = new THREE.Group();
-  const lawn = new THREE.Mesh(new THREE.BoxGeometry(n, 0.2, n), new THREE.MeshStandardMaterial({ color: '#7fb85a', roughness: 1 }));
-  lawn.position.set(n / 2, (grid.surfaceY(n / 2, n / 2) || 0) - 0.1, n / 2);
-  g.add(lawn);
-  g.add(withRow(PATHS as unknown as Record<string, unknown>, String(r.id - 1), r, () => buildPaths(grid)));
-  g.position.set(-n / 2, 0, -n / 2);
-  const holder = new THREE.Group();
-  holder.add(g);
-  return holder;
-}
-
-/** Build a model from an (unsaved) row so the preview matches the edit. */
-function previewRow(t: GameTable, r: Row) {
-  const seq = ++preview.seq;
-  preview.controls.replaceChildren();
-  try {
-    if (t === 'villagers') {
-      const def = r as unknown as VillagerDef;
-      // The simple box villager right away, the Blender model (dressed) once it has loaded.
-      const rig = makeVillager(def);
-      preview.show(rig.root, rig, 1.3);
-      void makeVillagerModel(def).then((vm) => {
-        if (!vm || seq !== preview.seq) return;
-        dress(vm, (def.outfit as Outfit | undefined) ?? villagerDefaultOutfit(def.id));
-        preview.show(vm.root, null, 1.3, vm);
-        preview.controls.replaceChildren(clipButtons(vm, PREVIEW_CLIPS));
-      });
-      return;
-    }
-    if (t === 'birds') {
-      const m = withRow(BIRD_BY_ID as Record<string, unknown>, r.id as string, r, () => birdModel(r.id as string, 0));
-      return preview.show(m, null, 1.6);
-    }
-    if (t === 'fish') {
-      // The kit model when there is one (new fish show their emoji).
-      const id = r.id as string;
-      const m = withRow(ITEMS as Record<string, unknown>, id, { ...ITEMS[id], ...r, category: 'fish' }, () => caughtFishModel(id));
-      return preview.show(m, null, 1.6);
-    }
-    if (t === 'items' && r.category === 'furniture') {
-      const m = withRow(ITEMS as Record<string, unknown>, r.id as string, r, () => furnitureModel(r.id as string, 0));
-      return preview.show(m);
-    }
-    if (t === 'items' && r.wear) {
-      // Clothes: on the player model (boy or girl), wearing nothing else.
-      const gender = previewGender;
-      preview.show(null);
-      void makePlayerModel(gender, previewLook(gender)).then((vm) => {
-        if (!vm || seq !== preview.seq) return;
-        withRow(ITEMS as Record<string, unknown>, r.id as string, r, () => dress(vm, { [r.wear as string]: r.id as string } as Outfit, PLAYER_SLOTS));
-        preview.show(vm.root, null, 1.25, vm);
-        preview.controls.replaceChildren(
-          h('div', { class: 'pv-row' }, h('span', { class: 'muted' }, 'Worn by'),
-            (['girl', 'boy'] as Gender[]).map((g) => btn(g === 'girl' ? 'Girl' : 'Boy', g === gender, () => { previewGender = g; previewRow(t, r); }))),
-          clipButtons(vm, PLAYER_CLIPS));
-      });
-      return;
-    }
-    if (t === 'buildings') {
-      const type = r.type as BuildingType;
-      const tiers = type === 'cabin' ? HOUSE_TIERS : tiersOf(type);
-      const level = Math.min(levelPick[type] ?? 1, Math.max(1, tiers.length));
-      const b: Building = { id: `preview_${type}`, type, x: 0, z: 0, w: r.w as number, h: r.h as number, completeAt: 0, level };
-      if (type === 'villager_house' && villagerHouseFor) b.villagerId = villagerHouseFor;
-      const m = withRow(BUILDINGS as Record<string, unknown>, type, r, () => buildingModel(b, Date.now()));
-      preview.show(m, null, 1.2);
-      if (tiers.length) {
-        preview.controls.append(h('div', { class: 'pv-row' }, h('span', { class: 'muted' }, 'Tier'),
-          tiers.map((tier, i) => btn(`${tier.icon} ${tier.name}`, i + 1 === level, () => { levelPick[type] = i + 1; previewRow(t, r); }, tier.description))));
-        const tier = tiers[level - 1];
-        if (tier) preview.controls.append(h('div', { class: 'muted pv-note' }, tier.description));
-      }
-      if (type === 'villager_house') {
-        const sel = h('select', { onchange: () => { villagerHouseFor = sel.value; previewRow(t, r); } },
-          h('option', { value: '' }, 'No one yet (random style)'),
-          villagerList().map((v) => h('option', { value: v.id, selected: v.id === villagerHouseFor }, v.name))) as HTMLSelectElement;
-        preview.controls.append(h('div', { class: 'pv-row' }, h('span', { class: 'muted' }, 'Home of'), sel));
-      }
-      return;
-    }
-    if (t === 'paths') {
-      preview.show(pathPatch(r as unknown as PathDef), null, 0.75);
-      return;
-    }
-  } catch (e) {
-    console.warn('preview failed', e);
-  }
-  preview.show(null);
 }
 
 // ── Form generation from the field hints ────────────────────────────────────
@@ -687,9 +465,9 @@ function rowEditor(): HTMLElement {
     const hasPreview = ['villagers', 'fish', 'birds', 'items', 'buildings', 'paths'].includes(table);
     const aside = h('div', { class: 'ed-aside' });
     if (hasPreview) {
-      aside.append(h('section', { class: 'ed-card' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('h4', { style: 'margin:0' }, '👁️ Preview'), h('button', { class: 'btn ghost small', onclick: () => { try { previewRow(table, readForm()); } catch (e) { toast((e as Error).message, false); } } }, '↻ Update')),
+      aside.append(h('section', { class: 'ed-card' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('h4', { style: 'margin:0' }, '👁️ Preview'), h('button', { class: 'btn ghost small', onclick: () => { try { previewRow(table, readForm(), villagerList()); } catch (e) { toast((e as Error).message, false); } } }, '↻ Update')),
         preview.el, preview.controls, table === 'items' ? h('div', { class: 'muted' }, 'Furniture shows its 3D model, clothes are shown on the player.') : null));
-      setTimeout(() => previewRow(table, r));
+      setTimeout(() => previewRow(table, r, villagerList()));
     }
     if (table === 'villagers') aside.append(villagerDialogueCard(r as unknown as VillagerDef));
     if (table === 'shopStock') aside.append(shopStockCard(r.shop as BuildingType, r.items as string[]));

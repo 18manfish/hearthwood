@@ -4,7 +4,7 @@
 
 import { BUILDINGS, ITEM_TAGS, type BuildingType, type FieldHint } from '@hearthwood/shared';
 import { h, clear } from '../ui/dom.ts';
-import { chips, mdPicker, num, select } from './dialogue.ts';
+import { chips, mdPicker, num, select } from './controls.ts';
 
 type Row = Record<string, unknown>;
 export type Editor = { el: HTMLElement; get: () => unknown };

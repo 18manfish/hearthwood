@@ -27,10 +27,13 @@ import { addPlayer, groundY, interp, removeMover, say, swing, updateLocal } from
 import { animateVillagers, upsertVillager } from './world/entities/villagers.ts';
 import type { VillagerModel } from './villagerModels.ts';
 import { handle } from './world/messages.ts';
-import { animateProps, upsertBuildingMesh } from './world/room/objects.ts';
+import { animateProps, discard, upsertBuildingMesh } from './world/room/objects.ts';
+import { disposeAll } from './gpu.ts';
+import { type Glow, LightPool } from './lightPool.ts';
+import { pickQuality } from './quality.ts';
 import { addSealife, animateSealife, clearSealife } from './world/entities/sealife.ts';
 import { rebuildPaths, toggleGridOverlay } from './world/room/terrainLayer.ts';
-import { refreshVisuals, resize, updateEnvironment, currentVisual, zoom, adaptResolution } from './world/scene/environment.ts';
+import { refreshVisuals, resize, updateEnvironment, currentVisual, zoom, adaptResolution, watchContext } from './world/scene/environment.ts';
 import { computeTarget, facingTile } from './world/targeting.ts';
 import { endCast, startCast, updateFishing } from './world/tools/fishing.ts';
 import { bobberModel, fishingLineModel } from './models/fishing.ts';
@@ -59,7 +62,13 @@ export class World {
   world = new THREE.Group();
   objMeshes = new Map<string, THREE.Object3D>();
   /** Instanced draws for static scenery (trees, rocks, bushes…), see batching.ts. */
+  readonly quality = pickQuality();
+  /** The browser took the WebGL context away (it gives it back by itself): nothing can be drawn meanwhile. */
+  contextLost = false;
   readonly batcher = new StaticBatcher(this.world);
+  /** Light sources of the models in the room, by owner (`o:<object id>` / `b:<building id>`); lit by the pool. */
+  readonly glows = new Map<string, Glow[]>();
+  readonly lights = new LightPool(this.scene);
   bldMeshes = new Map<string, THREE.Object3D>();
   readonly players = new Map<string, Mover>();
   villagers = new Map<string, Mover & { home: boolean; houseId: string; outfit?: Outfit; model?: VillagerModel }>();
@@ -115,10 +124,13 @@ export class World {
   onGhostClick: () => void = () => {};
 
   constructor(readonly container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    const q = this.quality;
+    // (high-performance: laptops with two GPUs use the fast one)
+    this.renderer = new THREE.WebGLRenderer({ antialias: q.antialias, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(q.maxPixelRatio, window.devicePixelRatio));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    watchContext(this);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -137,7 +149,7 @@ export class World {
     this.scene.background = new THREE.Color('#8fd3f4');
     this.scene.fog = new THREE.Fog('#8fd3f4', 40, 120);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(q.shadowMapSize, q.shadowMapSize);
     const sc = this.sun.shadow.camera;
     sc.left = -22; sc.right = 22; sc.top = 22; sc.bottom = -22; sc.near = 1; sc.far = 90;
     // Bias + normal offset keep surfaces from shadowing themselves ("shadow acne" stripes).
@@ -261,11 +273,12 @@ export class World {
 
   private clearRoom() {
     clearSealife(this);
-    for (const f of this.flying) this.world.remove(f.mesh);
+    for (const f of this.flying) discard(this, '', f.mesh);
     this.flying = [];
-    for (const m of this.objMeshes.values()) this.world.remove(m);
+    for (const [id, m] of this.objMeshes) discard(this, `o:${id}`, m);
     this.batcher.clear();
-    for (const m of this.bldMeshes.values()) this.world.remove(m);
+    for (const [id, m] of this.bldMeshes) discard(this, `b:${id}`, m);
+    this.glows.clear();
     for (const p of this.players.values()) removeMover(this, p);
     for (const v of this.villagers.values()) removeMover(this, v);
     this.objMeshes.clear();
@@ -276,7 +289,7 @@ export class World {
     this.buildings.clear();
     if (this.terrain) {
       this.world.remove(this.terrain);
-      this.terrain.geometry.dispose();
+      disposeAll(this.terrain);
       this.terrain = null;
     }
     if (this.pathLayer) {
@@ -303,6 +316,15 @@ export class World {
 
   // ── Frame ───────────────────────────────────────────────────────────────
   frameTimes: number[] = [];
+  /** Where the camera is heading (kept between frames: nothing is allocated in the frame loop). */
+  private readonly camGoal = new THREE.Vector3();
+
+  /** How many light sources the room's models have. */
+  private glowCount() {
+    let n = 0;
+    for (const g of this.glows.values()) n += g.length;
+    return n;
+  }
   /** Called every frame after the world has updated (audio hooks in here). */
   onFrame: ((dt: number) => void) | null = null;
   private frame() {
@@ -313,7 +335,12 @@ export class World {
     const t = this.clock.elapsedTime;
     this.frameTimes.push(rawDt);
     if (this.frameTimes.length > 60) this.frameTimes.shift();
-    debug.fps = Math.round(this.frameTimes.length / this.frameTimes.reduce((a, b) => a + b, 0.0001));
+    let spent = 0.0001, slowest = 0;
+    for (const ft of this.frameTimes) {
+      spent += ft;
+      if (ft > slowest) slowest = ft;
+    }
+    debug.fps = Math.round(this.frameTimes.length / spent);
     bendStrength.value = this.room?.kind === 'interior' ? 0 : debug.bend;
     if (this.me) bendFocusZ.value = this.me.z;
     this.renderer.shadowMap.enabled = debug.shadows;
@@ -341,22 +368,21 @@ export class World {
     if (this.paint && (!this.paint.down || this.padAim)) updatePaintGhost(this);
     if (this.paint?.down && this.padAim) paintHere(this); // hold A and walk to paint a trail
     updateEnvironment(this, dt, t);
-    animateProps(this, t);
+    animateProps(this, t, dt);
     animateSealife(this, t, dt);
     // Fishing: the float bobs, the line follows the rod tip.
     updateFishing(this, t);
     // Camera follow.
     const fx = this.me?.x ?? 24, fz = this.me?.z ?? 24;
     const fy = this.me ? groundY(this, this.me.x, this.me.z) : 0;
-    const target = new THREE.Vector3(fx, fy + 0.5, fz);
     // Outdoors the camera sits lower (~36°) so the rolling-log horizon and a
     // band of sky show at the top; indoors it looks more steeply down.
     const inside = this.room?.kind === 'interior';
-    const desired = inside
-      ? new THREE.Vector3(fx, fy + this.camDist * 0.85, fz + this.camDist * 0.78)
-      : new THREE.Vector3(fx, fy + this.camDist * 0.66, fz + this.camDist * 0.92);
+    const desired = this.camGoal;
+    if (inside) desired.set(fx, fy + this.camDist * 0.85, fz + this.camDist * 0.78);
+    else desired.set(fx, fy + this.camDist * 0.66, fz + this.camDist * 0.92);
     this.camera.position.lerp(desired, 1 - Math.exp(-dt * 6));
-    this.camera.lookAt(target.x, target.y, target.z - (inside ? 0.5 : 1.5));
+    this.camera.lookAt(fx, fy + 0.5, fz - (inside ? 0.5 : 1.5));
     this.sun.target.position.set(fx, 0, fz);
     this.moon.target.position.set(fx, 0, fz);
     this.stars.position.copy(this.camera.position);
@@ -368,14 +394,16 @@ export class World {
     this.labels.domElement.style.display = debug.labels ? '' : 'none';
     this.batcher.flush();
     bentCulling(this.camera);
+    this.lights.update(this.glows.values(), this.glowCount(), fx, fz);
     adaptResolution(this, rawDt);
+    if (this.contextLost) return; // (the game goes on; the picture comes back with the context)
     this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
     // Numbers for the rendering stats view.
     const r = debug.render, info = this.renderer.info.render;
     r.cpuMs = performance.now() - cpu0;
     r.frameMs = rawDt * 1000;
-    r.frameMaxMs = Math.max(...this.frameTimes) * 1000;
+    r.frameMaxMs = slowest * 1000;
     r.calls = info.calls;
     r.triangles = info.triangles;
     r.lines = info.lines;

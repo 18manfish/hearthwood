@@ -3,6 +3,7 @@
 // their tile is the wall tile, so they are built against its inner face.
 
 import * as THREE from 'three';
+import { Glow } from './lightPool.ts';
 import { emojiSprite, furnitureModel } from './models/furniture.ts';
 import { mat, part } from './models/primitives.ts';
 
@@ -27,7 +28,7 @@ export function decorModel(item: string, rot = 0): THREE.Object3D {
       g.add(part('box', '#3b3b48', 0.22, 0.04, 0.22, 0, 0.02, 0));
       g.add(part('box', mat('#fff3c4', { emissive: '#ffcf6b', ei: 1.2 }), 0.16, 0.24, 0.16, 0, 0.16, 0, false));
       g.add(part('box', '#3b3b48', 0.22, 0.04, 0.22, 0, 0.3, 0));
-      const l = new THREE.PointLight('#ffcf8a', 1.2, 5, 1.5);
+      const l = new Glow('#ffcf8a', 1.2, 5, 1.5);
       l.position.set(0, 0.5, 0);
       g.add(l);
       break;
@@ -278,7 +279,7 @@ export function decorModel(item: string, rot = 0): THREE.Object3D {
       fire.name = 'flame';
       g.add(fire);
       g.add(part('box', '#7a5230', 1.35, 0.08, 0.5, 0, 1.12, WALL_Z + 0.22));
-      const l = new THREE.PointLight('#ff9a3c', 1.5, 5, 1.5);
+      const l = new Glow('#ff9a3c', 1.5, 5, 1.5);
       l.position.set(0, 0.5, WALL_Z + 0.8);
       l.name = 'firelight';
       g.add(l);

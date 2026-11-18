@@ -6,6 +6,7 @@ import {
   guessGeoFromTimeZone, computeEnvironment, isValidBirthday, setOutfit, type BiomeId, type Gender, type Look, type Outfit, type Season,
 } from '@hearthwood/shared';
 import { animateRig, type Rig } from '../game/characters.ts';
+import { disposeTree } from '../game/gpu.ts';
 import { makePlayer } from '../game/player.ts';
 import { h, clear } from './dom.ts';
 import { renderWorldMap, BIOME_ICON } from './map.ts';
@@ -30,17 +31,16 @@ export class Preview {
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
   private rig: Rig | null = null;
-  private stopped = false;
   constructor(readonly el: HTMLElement) {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     el.appendChild(this.renderer.domElement);
     this.scene.add(new THREE.HemisphereLight('#ffffff', '#88aa66', 1.6));
     const d = new THREE.DirectionalLight('#fff4dc', 1.8);
     d.position.set(2, 4, 3);
     this.scene.add(d);
     const clock = new THREE.Clock();
-    const loop = () => {
-      if (this.stopped) return;
+    this.renderer.setAnimationLoop(() => {
       const w = el.clientWidth, hh = el.clientHeight;
       if (w && hh && (w !== this.w || hh !== this.h)) {
         this.w = w;
@@ -56,9 +56,7 @@ export class Preview {
         animateRig(this.rig, dt, 0, 0);
       }
       this.renderer.render(this.scene, this.camera);
-      requestAnimationFrame(loop);
-    };
-    loop();
+    });
   }
   private w = 0;
   private h = 0;
@@ -73,15 +71,26 @@ export class Preview {
 
   set(gender: Gender, look: Look, outfit: Outfit | string | null = {}) {
     const rot = this.rig?.root.rotation.y ?? 0.4;
-    if (this.rig) this.scene.remove(this.rig.root);
+    this.drop();
     this.rig = makePlayer(gender, look, outfit);
     this.rig.root.rotation.y = rot;
     this.rig.root.scale.setScalar(1.5);
     this.scene.add(this.rig.root);
   }
+  private drop() {
+    if (!this.rig) return;
+    this.scene.remove(this.rig.root);
+    disposeTree(this.rig.root);
+    this.rig = null;
+  }
   dispose() {
-    this.stopped = true;
+    this.renderer.setAnimationLoop(null);
+    this.drop();
     this.renderer.dispose();
+    // Give the WebGL context back right away: browsers only allow a handful per page,
+    // and one that is merely garbage keeps counting until it is collected.
+    this.renderer.forceContextLoss();
+    this.renderer.domElement.remove();
   }
 }
 

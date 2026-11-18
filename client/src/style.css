@@ -359,3 +359,5 @@ img.emo { width: 20px; height: 20px; vertical-align: -4px; display: inline-block
 .ld-step { font-size: 13px; color: var(--muted); min-height: 1.2em; }
 .ld-tip { margin-top: 10px; font-size: 14px; color: var(--ink); background: var(--cream); border-radius: 12px; padding: 8px 12px; width: 100%; box-sizing: border-box; }
 @media (prefers-reduced-motion: reduce) { .ld-boat, .ld-waves { animation: none; } .ld-boat { transform: translateX(-50%); } }
+/* Shown while the browser has taken the WebGL context away (see watchContext). */
+.gfx-notice { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 5; padding: 14px 20px; border-radius: 14px; background: rgba(40, 32, 24, 0.88); color: #fff8e8; font-weight: 800; text-align: center; pointer-events: none; }

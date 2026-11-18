@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { CLIFF } from '@hearthwood/shared';
 import { layLine } from '../../models/fishing.ts';
-import { WATER_Y } from '../common.ts';
+import { namedPart, WATER_Y } from '../common.ts';
 import { waveY } from '../../water.ts';
 import type { World } from '../../World.ts';
 
@@ -34,8 +34,8 @@ export function updateFishing(self: World, t: number) {
   const lv = self.grid?.level(c.x, c.z) ?? 0;
   // Out at sea the float rides the waves.
   const water = WATER_Y + lv * CLIFF + (lv === 0 ? waveY(c.x + 0.5, c.z + 0.5) : 0);
-  const float = self.bobber.getObjectByName('float')!;
-  const ripple = self.bobber.getObjectByName('ripple')!;
+  const float = namedPart(self.bobber, 'float')!;
+  const ripple = namedPart(self.bobber, 'ripple')!;
   // The float rides on the water; on a bite it is pulled under in jerks and tips over.
   const dip = c.bite ? -0.075 + Math.sin(t * 30) * 0.03 : 0.004 + Math.sin(t * 2.6) * 0.012;
   self.bobber.position.y = water;
@@ -49,13 +49,13 @@ export function updateFishing(self: World, t: number) {
   ripple.scale.set(r, r, 0.04);
   ((ripple as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - k);
   // The line: rod tip to the eyelet on the antenna, slack while waiting, taut on a bite.
-  const rod = self.me?.rig.tool.getObjectByName('rodTip');
+  const rod = self.me && namedPart(self.me.rig.tool, 'rodTip');
   if (!rod) {
     self.fishLine.visible = false;
     return;
   }
   rod.getWorldPosition(tip);
-  self.bobber.getObjectByName('lineAttach')!.getWorldPosition(knot);
+  namedPart(self.bobber, 'lineAttach')!.getWorldPosition(knot);
   const span = tip.distanceTo(knot);
   layLine(self.fishLine, tip, knot, c.bite ? span * 0.01 : span * 0.12, c.bite ? 0.01 : 0, t);
   self.fishLine.visible = true;

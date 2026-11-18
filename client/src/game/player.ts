@@ -417,7 +417,8 @@ export function makePlayer(_gender: Gender, look: Look, outfit: Outfit | string 
   // Swap in the smooth model when it has loaded (the procedural one stays as fallback).
   void makePlayerModel(_gender, look).then((vm) => {
     if (!vm) return;
-    for (const c of [...rig.root.children]) if (!(c as { isCSS2DObject?: boolean }).isCSS2DObject && c.name !== 'wade') c.visible = false;
+    // (the boxes leave the scene: hidden nodes would still have their matrices updated every frame)
+    for (const c of [...rig.root.children]) if (!(c as { isCSS2DObject?: boolean }).isCSS2DObject && c.name !== 'wade') rig.root.remove(c);
     rig.root.add(vm.root);
     rig.model = vm;
     dress(vm, o, PLAYER_SLOTS);

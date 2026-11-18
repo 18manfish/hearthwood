@@ -7,6 +7,7 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
 import { bendDrop } from '../../bend.ts';
+import { disposeTree } from '../../gpu.ts';
 import { animateRig, setTool } from '../../characters.ts';
 import { makePlayer } from '../../player.ts';
 import { act, drive } from '../../villagerModels.ts';
@@ -41,6 +42,7 @@ export function addPlayer(self: World, p: PlayerView) {
 export function removeMover(self: World, m: Mover) {
   m.label.element.remove();
   m.rig.root.removeFromParent();
+  disposeTree(m.rig.root); // the model's own materials and its merged skin
 }
 
 export function interp(self: World, m: Mover, dt: number) {
@@ -59,7 +61,7 @@ export function interp(self: World, m: Mover, dt: number) {
   m.rig.root.rotation.y = m.r;
   wadeRipple(self, m.rig.root, m.speed);
   bendLabel(self, m);
-  animateRig(m.rig, dt, m.speed, m.swing);
+  if (!m.rig.model) animateRig(m.rig, dt, m.speed, m.swing); // (the box rig, until the model has loaded)
   driveModel(m.rig, dt, m.speed, m.swing, false);
 }
 
@@ -77,10 +79,12 @@ function driveModel(rig: Rig, dt: number, speed: number, swing: number, fishing:
   drive(vm, dt, { speed, rain: false, now: Date.now(), fishing, walkRef: 2.6, runAt: 3.3, walkClip: 'pwalk', runClip: 'prun' });
 }
 
+const NO_KEYS: ReadonlySet<string> = new Set<string>();
+
 export function updateLocal(self: World, dt: number) {
   const me = self.me!;
   let dx = 0, dz = 0;
-  const k = self.hold || self.stepping ? new Set<string>() : self.keys;
+  const k = self.hold || self.stepping ? NO_KEYS : self.keys;
   if (self.stepping) {
     // Walking out of the front door: scripted, and nothing is sent until we're on the doorstep.
     const st = self.stepping;
@@ -93,7 +97,7 @@ export function updateLocal(self: World, dt: number) {
     me.rig.root.position.set(me.x, groundY(self, me.x, me.z), me.z);
     me.rig.root.rotation.y = me.r;
     bendLabel(self, me);
-    animateRig(me.rig, dt, me.speed, 0);
+    if (!me.rig.model) animateRig(me.rig, dt, me.speed, 0);
     driveModel(me.rig, dt, me.speed, 0, false);
     return;
   }
@@ -134,7 +138,7 @@ export function updateLocal(self: World, dt: number) {
   wadeRipple(self, me.rig.root, me.speed);
   bendLabel(self, me);
   me.swing = Math.max(0, me.swing - dt * 2.5);
-  animateRig(me.rig, dt, me.speed, me.swing);
+  if (!me.rig.model) animateRig(me.rig, dt, me.speed, me.swing);
   driveModel(me.rig, dt, me.speed, me.swing, !!self.cast, self.tool === 'net');
   setTool(me.rig, self.tool === 'axe' && (state.inv.stone_axe || state.inv.iron_axe) ? 'axe' : self.tool === 'shovel' && (state.inv.shovel || state.inv.iron_shovel) ? 'shovel' : self.cast ? (state.inv.pro_rod ? 'rod_pro' : 'rod') : null);
 
@@ -147,16 +151,19 @@ export function updateLocal(self: World, dt: number) {
 }
 
 /** A ring of foam where a wading character meets the sea surface. */
+const WADE_RING = new THREE.RingGeometry(0.24, 0.34, 20).rotateX(-Math.PI / 2);
+
 export function wadeRipple(self: World, root: THREE.Object3D, speed: number) {
-  let ring = root.getObjectByName('wade') as THREE.Mesh | undefined;
+  let ring = root.userData.wade as THREE.Mesh | undefined;
   const depth = SEA_LEVEL - root.position.y;
   if (depth < 0.03 || self.room?.kind === 'interior') {
     if (ring) ring.visible = false;
     return;
   }
   if (!ring) {
-    ring = new THREE.Mesh(new THREE.RingGeometry(0.24, 0.34, 20).rotateX(-Math.PI / 2), mat('#ffffff', { opacity: 0.6 }));
+    ring = new THREE.Mesh(WADE_RING, mat('#ffffff', { opacity: 0.6 }));
     ring.name = 'wade';
+    root.userData.wade = ring;
     root.add(ring);
   }
   ring.visible = true;

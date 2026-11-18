@@ -7,7 +7,7 @@ import { isWaterTile, Tile } from '@hearthwood/shared';
 import { kitClip, kitModel } from '../../assets/kit.ts';
 import { caughtFishModel, SHADOW_COLOR, SHADOW_SWIM, swimShadow } from '../../models/fish.ts';
 import { mat } from '../../models/primitives.ts';
-import { WATER_Y } from '../common.ts';
+import { namedPart, WATER_Y } from '../common.ts';
 import type { World } from '../../World.ts';
 
 interface School {
@@ -90,7 +90,7 @@ export function animateSealife(self: World, t: number, dt: number) {
   for (const mesh of self.objMeshes.values()) {
     const f = mesh.userData.fish as { size: keyof typeof SHADOW_SWIM; phase: number } | undefined;
     if (!f) continue;
-    const swimmer = mesh.getObjectByName('swimmer');
+    const swimmer = namedPart(mesh, 'swimmer');
     if (!swimmer) continue;
     const spec = SHADOW_SWIM[f.size];
     // Bobber close by: swim up to it and nose at it.

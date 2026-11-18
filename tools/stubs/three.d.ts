@@ -1,4 +1,7 @@
 declare module 'three' {
+  export const PCFShadowMap: any;
+  export const Skeleton: any; export type Skeleton = any;
+  export const Bone: any; export type Bone = any;
   export const MeshPhysicalMaterial: any; export type MeshPhysicalMaterial = any;
   export const Sphere: any; export type Sphere = any;
   export const Frustum: any; export type Frustum = any;

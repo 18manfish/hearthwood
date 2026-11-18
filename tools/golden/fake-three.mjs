@@ -104,7 +104,7 @@ export class BufferAttribute {
 export class Float32BufferAttribute extends BufferAttribute { constructor(a, n) { super(Float32Array.from(a), n); } }
 
 export class BufferGeometry {
-  constructor() { this.attributes = {}; this.index = null; this.isBufferGeometry = true; }
+  constructor() { this.attributes = {}; this.index = null; this.isBufferGeometry = true; this.userData = {}; }
   setAttribute(k, v) { this.attributes[k] = v; return this; }
   setFromPoints(pts) { const arr = new Float32Array(pts.length * 3); pts.forEach((p, i) => { arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z; }); return this.setAttribute('position', new BufferAttribute(arr, 3)); }
   getAttribute(k) { return this.attributes[k]; }
@@ -136,7 +136,7 @@ export const SphereGeometry = prim('Sphere'), ShapeGeometry = prim('ShapeG'), Ex
 export class Shape { constructor() { this.cmds = []; return new Proxy(this, { get: (t, k) => (k in t ? t[k] : (...a) => { t.cmds.push([k, ...a]); return t; }) }); } }
 
 export class Material {
-  constructor(o = {}) { this.isMaterial = true; this.side = FrontSide; this.transparent = false; this.opacity = 1; this.color = new Color(); this.setValues(o); }
+  constructor(o = {}) { this.isMaterial = true; this.userData = {}; this.side = FrontSide; this.transparent = false; this.opacity = 1; this.color = new Color(); this.setValues(o); }
   setValues(o) { for (const [k, v] of Object.entries(o)) { if (k === 'color') this.color = new Color().set(v); else this[k] = v; } }
   clone() { const m = new this.constructor(); Object.assign(m, this); m.color = this.color.clone(); return m; }
   dispose() {}

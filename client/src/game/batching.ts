@@ -125,12 +125,12 @@ interface Batch {
 }
 
 /** A moving or swapped part keeps its own mesh: any named node and everything under it. */
-function movable(o: THREE.Object3D, root: THREE.Object3D) {
+export function movable(o: THREE.Object3D, root: THREE.Object3D) {
   for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if (p.name && KEEP.test(p.name)) return true;
   return false;
 }
 /** Names the game animates or looks up (see world/room/objects.ts and friends). */
-const KEEP = /^(beam|spout|flame|firelight|swing|boat|body|head|swimmer|window|bulb|berries|float|ripple|hop|model|lighthouse-light|keeper|wade|bird)$/;
+export const KEEP = /^(beam|spout|flame|firelight|swing|boat|body|head|swimmer|window|bulb|float|ripple|hop|model|lighthouse-light|keeper|wade|bird)$/;
 
 export class StaticBatcher {
   private batches = new Map<string, Batch>();

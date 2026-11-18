@@ -13,6 +13,7 @@ import {
   type BirdDef, type DialogueRule, type FieldHint, type GameData, type GameTable, type ItemDef, type VillagerDef, type BuildingType, type Building,
 } from '@hearthwood/shared';
 import { structuredField, type ItemSource } from './fields.ts';
+import { disposeTree } from '../game/gpu.ts';
 import { chips, dialogueEditor, dialogueSummary, SPECIES_ICON, type DialogueHost } from './dialogue.ts';
 import { api, clearToken, health, logout, token } from '../auth.ts';
 import { showLogin } from '../ui/login.ts';
@@ -24,7 +25,7 @@ import { loadKitAssets } from '../game/assets/kit.ts';
 import { loadHouseAssets } from '../game/houseAssets.ts';
 import { buildPaths } from '../game/paths.ts';
 import { makeVillager, animateRig, type Rig } from '../game/characters.ts';
-import { dress, makePlayerModel, makeVillagerModel, play, PLAYER_SLOTS, type VillagerModel } from '../game/villagerModels.ts';
+import { showProps, dress, makePlayerModel, makeVillagerModel, play, PLAYER_SLOTS, type VillagerModel } from '../game/villagerModels.ts';
 
 const app = document.getElementById('app')!;
 type Row = Record<string, unknown>;
@@ -92,6 +93,7 @@ class Preview3D {
     try {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
       this.el.appendChild(this.renderer.domElement);
     } catch {
       this.el.append(h('div', { class: 'muted', style: 'padding:20px' }, 'No WebGL – preview unavailable.'));
@@ -101,11 +103,13 @@ class Preview3D {
     d.position.set(2, 4, 3);
     this.scene.add(d);
     const clock = new THREE.Clock();
-    const loop = () => {
-      requestAnimationFrame(loop);
+    let fw = 0, fh = 0;
+    this.renderer?.setAnimationLoop(() => {
       if (!this.renderer || !this.el.isConnected) return;
       const w = this.el.clientWidth, hh = this.el.clientHeight;
-      if (w && hh) {
+      if (w && hh && (w !== fw || hh !== fh)) {
+        fw = w;
+        fh = hh;
         this.renderer.setSize(w, hh, false);
         this.camera.aspect = w / hh;
         this.camera.updateProjectionMatrix();
@@ -115,15 +119,18 @@ class Preview3D {
       if (this.rig) animateRig(this.rig, dt, 0, 0);
       if (this.vm) {
         this.vm.mixer.update(dt);
+        showProps(this.vm);
         const cur = this.vm.current;
         if (cur && !cur.isRunning() && this.vm.currentName !== 'idle') play(this.vm, 'idle', 0.3); // one-shots go back to idle
       }
       this.renderer.render(this.scene, this.camera);
-    };
-    loop();
+    });
   }
   show(o: THREE.Object3D | null, rig: Rig | null = null, fit = 1.4, vm: VillagerModel | null = null) {
-    if (this.obj) this.scene.remove(this.obj);
+    if (this.obj) {
+      this.scene.remove(this.obj);
+      disposeTree(this.obj);
+    }
     this.obj = o;
     this.rig = rig;
     this.vm = vm;

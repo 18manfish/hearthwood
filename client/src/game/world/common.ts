@@ -129,3 +129,22 @@ export function round2(n: number) {
 }
 
 export { setHat };
+
+const found = new WeakMap<THREE.Object3D, Map<string, THREE.Object3D>>();
+
+/**
+ * `root.getObjectByName(name)`, remembered: searching a model for its moving parts
+ * every frame adds up. Looked up again when the part has left the model (a swapped tool).
+ */
+export function namedPart(root: THREE.Object3D, name: string): THREE.Object3D | undefined {
+  let parts = found.get(root);
+  if (!parts) found.set(root, (parts = new Map()));
+  let o = parts.get(name);
+  if (o) for (let p: THREE.Object3D | null = o; p !== root; p = p.parent) if (!p) { o = undefined; break; }
+  if (!o) {
+    o = root.getObjectByName(name);
+    if (o) parts.set(name, o);
+    else parts.delete(name);
+  }
+  return o;
+}

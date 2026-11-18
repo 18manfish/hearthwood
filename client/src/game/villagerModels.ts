@@ -17,6 +17,8 @@ import * as THREE from 'three';
 import { garmentOf, ITEMS, type Gender, type Look, type Outfit, type Species, type VillagerDef } from '@hearthwood/shared';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { bend, bentDepth, standardClone } from './bend.ts';
+import { disposeTree, own } from './gpu.ts';
+import { RigidSkin } from './merge.ts';
 
 const BASE = '/models/villagers/';
 const FUR_PARTS = new Set(['head', 'earL', 'earR', 'torso', 'armL', 'armR', 'legL', 'legR', 'tail']);
@@ -132,15 +134,27 @@ function loadSpecies(sp: Species) {
   return p;
 }
 
+/** A model's own copy of a file material (freed with the model, see gpu.ts). */
 function bentClone(src: THREE.Material): THREE.Material {
-  return bend(standardClone(src));
+  return own(bend(standardClone(src)));
 }
+
+/** Face details lie flat on the head: their shadow is the head's, so they needn't be drawn into the shadow map. */
+const NO_SHADOW = /^(eye|shine|brow|lookbrow|mouth|nose|cheek|freckle|lash|whisker)/;
 
 function prepMesh(o: THREE.Object3D) {
   const m = o as THREE.Mesh;
   if (!m.isMesh) return;
-  m.castShadow = true;
-  m.customDepthMaterial = bentDepth;
+  m.castShadow = !NO_SHADOW.test(m.name) && !NO_SHADOW.test(m.parent?.name ?? '');
+  if (m.castShadow) m.customDepthMaterial = bentDepth;
+}
+
+/** Painted coats, loaded once per villager (they come and go with every room change). */
+const furs = new Map<string, Promise<THREE.Texture | null>>();
+function loadFur(id: string) {
+  let p = furs.get(id);
+  if (!p) furs.set(id, (p = loadTex(BASE + `fur_${id}.jpg`)));
+  return p;
 }
 
 // ── One villager ─────────────────────────────────────────────────────────
@@ -155,6 +169,8 @@ export interface VillagerModel {
   currentName: string;
   shared: Shared;
   clothes: THREE.Object3D[];
+  /** Umbrella and gift: scaled up from nothing by the clips that use them. */
+  props: THREE.Object3D[];
   outfitKey: string;
   // state machine
   mode: Mode;
@@ -172,11 +188,11 @@ export interface VillagerModel {
 }
 
 export async function makeVillagerModel(def: VillagerDef): Promise<VillagerModel | null> {
-  const [sh, sp, fur] = await Promise.all([loadShared(), loadSpecies(def.species), loadTex(BASE + `fur_${def.id}.jpg`)]);
+  const [sh, sp, fur] = await Promise.all([loadShared(), loadSpecies(def.species), loadFur(def.id)]);
   if (!sh || !sp) return null;
   const root = sp.scene.clone(true);
   root.name = `villager_${def.id}`;
-  const furMat = bend(new THREE.MeshStandardMaterial({ map: fur, normalMap: sp.normal, roughness: 0.85, metalness: 0 }));
+  const furMat = own(bend(new THREE.MeshStandardMaterial({ map: fur, normalMap: sp.normal, roughness: 0.85, metalness: 0 })));
   if (sp.normal) furMat.normalScale.set(0.8, 0.8);
   if (def.species === 'frog') furMat.roughness = 0.45;
   if (!fur) furMat.color.set(def.color); // no painted coat (e.g. made in the game creation tool): their colour
@@ -208,6 +224,7 @@ export async function makeVillagerModel(def: VillagerDef): Promise<VillagerModel
 
 /** Props, mixer and actions for a freshly cloned model (villager or player). */
 function animated(root: THREE.Object3D, sh: Shared): VillagerModel {
+  const props: THREE.Object3D[] = [];
   // Props: the umbrella in the right paw, the gift in front of the body.
   if (sh.propScene) {
     for (const [name, info] of Object.entries(sh.props) as [string, AnimJson["props"][string]][]) {
@@ -237,9 +254,13 @@ function animated(root: THREE.Object3D, sh: Shared): VillagerModel {
           (m.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
         }
       });
+      p.visible = false;
+      props.push(p);
       parent.add(p);
     }
   }
+  // Dozens of rigid parts: drawn as a few skinned meshes instead (merge.ts).
+  root.add(new RigidSkin());
   const mixer = new THREE.AnimationMixer(root);
   const actions = new Map<string, THREE.AnimationAction>();
   for (const [name, clip] of sh.clips) {
@@ -251,7 +272,7 @@ function animated(root: THREE.Object3D, sh: Shared): VillagerModel {
     actions.set(name, a);
   }
   const vm: VillagerModel = {
-    root, mixer, actions, current: null, currentName: '', shared: sh, clothes: [], outfitKey: '',
+    root, mixer, actions, current: null, currentName: '', shared: sh, clothes: [], props, outfitKey: '',
     mode: 'normal', lock: 0, queue: [], sadUntil: 0, idleFor: 0, wantSit: false, speed: 0, moving: false, running: false, fade: 0.25,
   };
   play(vm, 'idle', 0);
@@ -263,8 +284,18 @@ export function dress(vm: VillagerModel, outfit: Outfit | undefined, slots: read
   const key = JSON.stringify(outfit ?? {});
   if (key === vm.outfitKey) return;
   vm.outfitKey = key;
-  for (const c of vm.clothes) c.removeFromParent();
+  for (const c of vm.clothes) {
+    c.removeFromParent();
+    disposeTree(c);
+  }
   vm.clothes = [];
+  // One material per fabric, however many pieces a garment has.
+  const fabrics = new Map<string, THREE.Material>();
+  const fabric = (key: string, make: () => THREE.Material) => {
+    let m = fabrics.get(key);
+    if (!m) fabrics.set(key, (m = own(bend(make()))));
+    return m;
+  };
   for (const slot of slots) {
     const item = outfit?.[slot];
     if (!item) continue;
@@ -277,14 +308,17 @@ export function dress(vm: VillagerModel, outfit: Outfit | undefined, slots: read
       if (!parent) continue;
       const m = src.clone();
       const o = src.userData.origin as [number, number, number];
-      m.position.sub(new THREE.Vector3(...o));
+      m.position.x -= o[0];
+      m.position.y -= o[1];
+      m.position.z -= o[2];
       if (cut === 'sun_hat') m.position.y += 0.05; // the wide floppy brim clears the eyes
       if (src.userData.tint) {
-        m.material = bend(new THREE.MeshStandardMaterial({ map: vm.shared.clothTex, color: colour, roughness: item === 'jacket_rain' ? 0.45 : 0.9, side: THREE.DoubleSide }));
+        m.material = fabric(`tint|${item}`, () => new THREE.MeshStandardMaterial({ map: vm.shared.clothTex, color: colour, roughness: item === 'jacket_rain' ? 0.45 : 0.9, side: THREE.DoubleSide }));
       } else if (PATTERN_CUTS.has(cut)) {
-        m.material = bend(new THREE.MeshStandardMaterial({ map: vm.shared.clothTex, roughness: 0.9, side: THREE.DoubleSide }));
+        m.material = fabric('pattern', () => new THREE.MeshStandardMaterial({ map: vm.shared.clothTex, roughness: 0.9, side: THREE.DoubleSide }));
       } else {
-        m.material = bentClone(src.material as THREE.Material);
+        const file = src.material as THREE.Material;
+        m.material = fabric(`file|${file.uuid}`, () => standardClone(file));
       }
       prepMesh(m);
       parent.add(m);
@@ -395,6 +429,12 @@ export function drive(vm: VillagerModel, dt: number, d: Drive) {
   choose(vm, dt, d);
   blendWeights(vm, dt);
   vm.mixer.update(dt);
+  showProps(vm);
+}
+
+/** A prop scaled down to nothing is put away (so it isn't drawn at all) until a clip brings it out. */
+export function showProps(vm: VillagerModel) {
+  for (const p of vm.props) p.visible = p.scale.x > 0.001;
 }
 
 function choose(vm: VillagerModel, dt: number, d: Drive) {

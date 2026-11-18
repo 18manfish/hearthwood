@@ -113,24 +113,24 @@ export class IslandPreviewer {
     if (this.running) return;
     this.running = true;
     let last = performance.now();
-    const loop = (t: number) => {
-      if (!this.running) return;
-      if (!this.renderer.domElement.isConnected) {
-        this.running = false;
-        return;
-      }
+    this.renderer.setAnimationLoop((t: number) => {
+      if (!this.renderer.domElement.isConnected) return this.stop();
       this.angle += ((t - last) / 1000) * 0.25;
       last = t;
       if (this.live) this.draw(this.live.scene, this.live.center, this.angle);
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
+    });
+  }
+
+  private stop() {
+    this.running = false;
+    this.renderer.setAnimationLoop(null);
   }
 
   dispose() {
-    this.running = false;
+    this.stop();
     this.live?.dispose();
     this.live = null;
     this.renderer.dispose();
+    this.renderer.forceContextLoss(); // (browsers allow only a handful of WebGL contexts per page)
   }
 }

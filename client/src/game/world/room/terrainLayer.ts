@@ -3,6 +3,8 @@
 
 import * as THREE from 'three';
 import { bend } from '../../bend.ts';
+import { disposeAll } from '../../gpu.ts';
+import { mergeStatic } from '../../merge.ts';
 import { buildFoliage, disposeFoliage } from '../../foliage.ts';
 import { buildPaths, disposePaths } from '../../paths.ts';
 import { buildPuddles, disposePuddles } from '../../puddles.ts';
@@ -18,12 +20,18 @@ export function buildTerrain(self: World) {
   if (!self.room || !self.grid) return;
   if (self.terrain) {
     self.world.remove(self.terrain);
-    self.terrain.geometry.dispose();
+    disposeAll(self.terrain); // with its water, docks and stairs
   }
   const v = currentVisual(self);
   const m = buildTerrainMesh(self.grid, { biome: self.room.biome, season: v.season, vs: v.vs, snowy: v.snowy, interior: self.room.interior, theme: self.room.theme }, v.look);
-  m.add(buildDockModels(self.grid) ?? buildDocks(self.grid)); // boardwalks & piers ride along with the terrain mesh
-  m.add(buildStairs(self.grid));
+  // Boardwalks, piers and stairs ride along with the terrain mesh; they are put
+  // together from one model per tile, so each set is baked into a few meshes.
+  const docks = buildDockModels(self.grid);
+  if (docks) mergeStatic(docks);
+  m.add(docks ?? buildDocks(self.grid));
+  const stairs = buildStairs(self.grid);
+  mergeStatic(stairs);
+  m.add(stairs);
   self.waterFx = self.room.kind !== 'interior' ? buildWater(self.grid, waterColor(self.room.biome)) : null; // depth, rivers, waterfalls, surf
   if (self.waterFx) m.add(self.waterFx);
   self.terrain = m;

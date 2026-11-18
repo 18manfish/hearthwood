@@ -5,7 +5,7 @@ import { state } from '../../state.ts';
 import { addPlayer, removeMover } from './entities/players.ts';
 import { showCatch } from './entities/sealife.ts';
 import { upsertVillager, villagerReact } from './entities/villagers.ts';
-import { upsertBuildingMesh, upsertObjectMesh } from './room/objects.ts';
+import { discard, upsertBuildingMesh, upsertObjectMesh } from './room/objects.ts';
 import { scheduleFoliage, schedulePaths, scheduleTerrain } from './room/terrainLayer.ts';
 import { refreshVisuals } from './scene/environment.ts';
 import { endCast } from './tools/fishing.ts';
@@ -46,7 +46,8 @@ export function handle(self: World, m: ServerMessage) {
         self.objects.delete(id);
         const mesh = self.objMeshes.get(id);
         if (mesh && m.fx === 'fly') self.flying.push({ mesh, t0: self.clock.elapsedTime, dir: Math.random() * Math.PI * 2 });
-        else if (mesh) self.world.remove(mesh);
+        else discard(self, `o:${id}`, mesh);
+        self.glows.delete(`o:${id}`);
         self.batcher.remove(id);
         self.objMeshes.delete(id);
       }
@@ -68,8 +69,7 @@ export function handle(self: World, m: ServerMessage) {
         const prev = self.buildings.get(id);
         if (prev) self.grid!.removeBuilding(prev);
         self.buildings.delete(id);
-        const mesh = self.bldMeshes.get(id);
-        if (mesh) self.world.remove(mesh);
+        discard(self, `b:${id}`, self.bldMeshes.get(id));
         self.bldMeshes.delete(id);
       }
       break;

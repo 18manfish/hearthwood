@@ -5,6 +5,8 @@ import { type Building, bridgeRunsNS, buildingLevel, BUILDINGS, hashString, hous
 import { kitModel } from '../assets/kit.ts';
 import { gltfHouse, gltfVillagerHouse, type SharedMat, villagerHouseStyle } from '../houseAssets.ts';
 import { bend } from '../bend.ts';
+import { own } from '../gpu.ts';
+import { Glow } from '../lightPool.ts';
 import { dockProps } from './dockProps.ts';
 import { emojiSprite } from './furniture.ts';
 import { mat, part } from './primitives.ts';
@@ -165,13 +167,13 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       const lampRoom = part('cyl', mat('#fff3c4', { emissive: '#ffcf6b', ei: 0.2 }), 0.32, 0.45, 0.32, 0, 3.42, 0, false);
       g.add(lampRoom);
       g.add(part('cone', '#d64541', 0.42, 0.4, 0.42, 0, 3.85, 0));
-      const beam = new THREE.Mesh(new THREE.ConeGeometry(0.9, 9, 12, 1, true).translate(0, -4.5, 0).rotateZ(Math.PI / 2), bend(new THREE.MeshBasicMaterial({ color: '#fff3c4', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })));
+      const beam = new THREE.Mesh(own(new THREE.ConeGeometry(0.9, 9, 12, 1, true).translate(0, -4.5, 0).rotateZ(Math.PI / 2)), own(bend(new THREE.MeshBasicMaterial({ color: '#fff3c4', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }))));
       const pivot = new THREE.Group();
       pivot.position.set(0, 3.42, 0);
       pivot.add(beam);
       pivot.name = 'beam';
       g.add(pivot);
-      const light = new THREE.PointLight('#ffe2a8', 0, 12, 1.5);
+      const light = new Glow('#ffe2a8', 0, 12, 1.5);
       light.position.set(0, 3.4, 0);
       light.name = 'lighthouse-light';
       g.add(light);
@@ -232,7 +234,7 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       const flame = part('cone', mat('#ffb347', { emissive: '#ff7b00', ei: 1.4 }), 0.18, 0.45, 0.18, 0, 0.35, 0, false);
       flame.name = 'flame';
       g.add(flame);
-      const light = new THREE.PointLight('#ff9a3c', 2, 6, 1.5);
+      const light = new Glow('#ff9a3c', 2, 6, 1.5);
       light.position.set(0, 0.7, 0);
       light.name = 'firelight';
       g.add(light);

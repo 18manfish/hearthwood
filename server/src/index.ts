@@ -6,7 +6,7 @@ import { PROTOCOL_VERSION } from '@hearthwood/shared';
 import { config } from './config.ts';
 import { Store } from './store.ts';
 import { Game } from './game/Game.ts';
-import { buildApi } from './api.ts';
+import { buildApi } from './api/index.ts';
 import { clientIp, json } from './http.ts';
 import { logger, logLevel } from './log.ts';
 

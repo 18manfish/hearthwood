@@ -4,7 +4,7 @@ import { type TalkView, villagerDef, type VillagerView } from '@hearthwood/share
 import { disposeTree } from '../../gpu.ts';
 import { namedPart } from '../../parts.ts';
 import { makeVillager, swapInModel } from '../../characters.ts';
-import { dress, drive, makeVillagerModel, react, type VillagerModel } from '../../villagerModels.ts';
+import { dress, drive, makeVillagerModel, react } from '../../villagerModels.ts';
 import { currentEnv } from '../scene/environment.ts';
 import { debug } from '../common.ts';
 import { makeLabel } from './players.ts';

@@ -7,7 +7,7 @@ import { dockRamp, dockRampLen } from './dock.ts';
 import { cornerHeights, surfaceY } from './heights.ts';
 import { WADE_FLOOR } from './constants.ts';
 import { type Building, isBridge, isTransient, objectBlocks, objectTiles, type WorldObject } from './objects.ts';
-import { DIRS, isWaterTile, Tile, tileAt } from './tiles.ts';
+import { DIRS, Tile, tileAt } from './tiles.ts';
 
 const WALKABLE = new Set<Tile>([Tile.Ground, Tile.Shore, Tile.Dock, Tile.Ramp, Tile.Floor]);
 

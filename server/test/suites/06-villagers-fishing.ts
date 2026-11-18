@@ -1,9 +1,7 @@
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
-  villagerWear, villagerDefaultOutfit,
-  type RoomView, type ServerMessage, type WorldObject, type BuildingType,
+  isWaterTile, Tile, FISH, villagerWear, villagerDefaultOutfit, type ServerMessage,
 } from '@hearthwood/shared';
-import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
+import { check, sleep, type Ctx } from '../harness.ts';
 
 export async function run(ctx: Ctx) {
   const { A, vAdd, vid } = ctx;

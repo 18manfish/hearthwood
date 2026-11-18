@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { dress, makePlayerModel, PLAYER_SLOTS } from './villagerModels.ts';
 import { garmentOf, ITEMS, isDress, type Gender, type Look, type Outfit } from '@hearthwood/shared';
 import { bend, bentDepth } from './bend.ts';
-import { mat, part } from './models.ts';
+import { mat, part, shade } from './models/primitives.ts';
 import { addHair, setHat, swapInModel, type Rig } from './characters.ts';
 
 // ── Building blocks ────────────────────────────────────────────────────────
@@ -69,13 +69,6 @@ function openMat(color: string) {
     openMats.set(color, m);
   }
   return m;
-}
-
-function shade(hex: string, f: number) {
-  const c = new THREE.Color(hex);
-  if (f < 1) c.multiplyScalar(f);
-  else c.lerp(new THREE.Color('#ffffff'), f - 1);
-  return `#${c.getHexString()}`;
 }
 
 function pivot(x: number, y: number, z = 0) {

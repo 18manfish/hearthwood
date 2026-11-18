@@ -134,13 +134,6 @@ export function fishingRodModel(style: RodStyle = 'basic'): THREE.Group {
   return outer;
 }
 
-/** The world-space position of a rod's tip (or null if this isn't a rod). */
-export function rodTipWorld(tool: THREE.Object3D, out: THREE.Vector3): THREE.Vector3 | null {
-  const tip = tool.getObjectByName('rodTip');
-  if (!tip) return null;
-  return tip.getWorldPosition(out);
-}
-
 /**
  * A classic float: red cap over a white body with a black band, a thin antenna
  * with a bright tip on top and a keel stem below. Its waist (y = 0) sits on the

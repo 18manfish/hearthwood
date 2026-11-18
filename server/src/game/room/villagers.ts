@@ -1,6 +1,6 @@
 // Villagers walking around their house by day and staying in at night.
 
-import { villagerAtHome } from '@hearthwood/shared';
+import { round2, villagerAtHome } from '@hearthwood/shared';
 import type { Room } from '../Room.ts';
 
 export interface VillagerRuntime {
@@ -20,11 +20,6 @@ export interface VillagerRuntime {
 
 export const VILLAGER_WALK = 1.3;
 export const VILLAGER_RUN = 3.0;
-
-/** Positions go over the wire with two decimals. */
-export function round2(n: number) {
-  return Math.round(n * 100) / 100;
-}
 
 export function spawnVillager(room: Room, defId: string, houseId: string) {
   const house = room.buildings.get(houseId);

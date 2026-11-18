@@ -3,19 +3,12 @@
 
 import { debug } from '../../game/world/common.ts';
 import { h } from '../dom.ts';
+import { remembered } from './remembered.ts';
 
-const KEY = 'hearthwood.showFps';
+const choice = remembered('hearthwood.showFps');
 
 const el = h('div', { class: 'fps', style: 'display:none', title: 'Frames per second (turn off in ⚙️ Options)' });
 let timer = 0;
-
-function stored(): boolean {
-  try {
-    return localStorage.getItem(KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 function tick() {
   const fps = debug.fps;
@@ -28,23 +21,23 @@ export function fpsVisible(): boolean {
   return el.style.display !== 'none';
 }
 
-/** Show or hide the counter (and remember the choice). */
-export function setFpsVisible(on: boolean, remember = true) {
+function show(on: boolean) {
   el.style.display = on ? '' : 'none';
   clearInterval(timer);
   if (on) {
     tick();
     timer = window.setInterval(tick, 250);
   }
-  if (remember) {
-    try {
-      localStorage.setItem(KEY, on ? '1' : '0');
-    } catch { /* private mode etc. */ }
-  }
+}
+
+/** Show or hide the counter, and remember the choice. */
+export function setFpsVisible(on: boolean) {
+  show(on);
+  choice.set(on);
 }
 
 /** Add the counter to the HUD, in the state the player last chose. */
 export function mountFps(root: HTMLElement) {
   root.append(el);
-  setFpsVisible(stored(), false);
+  show(choice.get());
 }

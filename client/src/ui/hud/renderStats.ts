@@ -5,8 +5,9 @@
 
 import { debug } from '../../game/world/common.ts';
 import { h } from '../dom.ts';
+import { remembered } from './remembered.ts';
 
-const KEY = 'hearthwood.showRenderStats';
+const choice = remembered('hearthwood.showRenderStats');
 const GRAPH_W = 200, GRAPH_H = 36;
 
 const text = h('div', { class: 'rs-text' });
@@ -14,14 +15,6 @@ const graph = h('canvas', { class: 'rs-graph', width: GRAPH_W, height: GRAPH_H }
 const el = h('div', { class: 'render-stats', style: 'display:none', title: 'Rendering stats (F4, or turn off in ⚙️ Options)' }, text, graph);
 let timer = 0;
 let fast = 0;
-
-function stored(): boolean {
-  try {
-    return localStorage.getItem(KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)} M` : n >= 1e4 ? `${Math.round(n / 1e3)} k` : n.toLocaleString());
 const ms = (n: number) => `${n.toFixed(1)} ms`;
@@ -93,8 +86,7 @@ export function renderStatsVisible(): boolean {
   return el.style.display !== 'none';
 }
 
-/** Show or hide the view (and remember the choice). */
-export function setRenderStatsVisible(on: boolean, remember = true) {
+function show(on: boolean) {
   el.style.display = on ? '' : 'none';
   clearInterval(timer);
   cancelAnimationFrame(fast);
@@ -103,11 +95,12 @@ export function setRenderStatsVisible(on: boolean, remember = true) {
     timer = window.setInterval(tick, 250);
     fast = requestAnimationFrame(draw);
   }
-  if (remember) {
-    try {
-      localStorage.setItem(KEY, on ? '1' : '0');
-    } catch { /* private mode etc. */ }
-  }
+}
+
+/** Show or hide the view, and remember the choice. */
+export function setRenderStatsVisible(on: boolean) {
+  show(on);
+  choice.set(on);
 }
 
 export function toggleRenderStats() {
@@ -117,5 +110,5 @@ export function toggleRenderStats() {
 /** Add the view to the HUD, in the state the player last chose. */
 export function mountRenderStats(root: HTMLElement) {
   root.append(el);
-  setRenderStatsVisible(stored(), false);
+  show(choice.get());
 }

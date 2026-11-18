@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { loadGlb } from './assets/glb.ts';
 import { TREES, type WorldObject } from '@hearthwood/shared';
 import { bentDepth } from './bend.ts';
+import { shade } from './models/primitives.ts';
 
 export const TREE_MODEL_URL = '/models/trees.glb';
 
@@ -122,10 +123,4 @@ export function gltfTree(
   tree.scale.setScalar(t.scale);
   g.add(tree);
   return g;
-}
-
-function shade(hex: string, f: number) {
-  const c = new THREE.Color(hex);
-  c.multiplyScalar(f);
-  return `#${c.getHexString()}`;
 }

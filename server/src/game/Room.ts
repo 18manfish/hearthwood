@@ -5,7 +5,7 @@
 import {
   TREES, Grid, generateHarbor, computeEnvironment, daysBetween, encodeTiles, decodeTiles, generateIsland, generateInterior, applyTerrainAndWater, classifyWater, type TerrainChange, Rng, type BiomeId, type Building, type EnvView, type GeoInfo, type RoomView, type ServerMessage, type VillagerView, type WorldObject, type IslandLayout, type Weather, type Season, type BoardPost, type InteriorSpec, type InteriorTheme, HOME_STYLES,
   isTransient, type FishShadow,
-  outfitOf, villagerDefaultOutfit, SHOP_STOCK, type BuildingType,
+  outfitOf, round2, villagerDefaultOutfit, SHOP_STOCK, type BuildingType,
 } from '@hearthwood/shared';
 import type { IslandRecord, Respawn } from '../types.ts';
 import type { Session } from './Session.ts';
@@ -14,7 +14,7 @@ import { beachTick, washUp, widenBeaches } from './room/beach.ts';
 import { birdTick, landBirdsNear } from './room/birds.ts';
 import { fishNear, fishTick } from './room/fish.ts';
 import { dailyRefresh, processRespawns, scheduleRespawn } from './room/growth.ts';
-import { round2, spawnVillager, villagerTick, type VillagerRuntime } from './room/villagers.ts';
+import { spawnVillager, villagerTick, type VillagerRuntime } from './room/villagers.ts';
 
 export type RoomKind = 'island' | 'shared' | 'tour' | 'interior';
 

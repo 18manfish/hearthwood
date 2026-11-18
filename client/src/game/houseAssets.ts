@@ -90,14 +90,6 @@ export function loadHouseAssets(url = HOUSE_MODEL_URL): Promise<void> {
   return loading;
 }
 
-export function hasHouseModel(level: number) {
-  return templates.has(`house_${level}`);
-}
-
-export function hasVillagerHouseModel(level: number) {
-  return templates.has(`vhouse_${level}`);
-}
-
 /** The game's own materials for roles it lights itself (windows, lamps). */
 export type SharedMat = (role: 'glass' | 'lamp') => THREE.Material;
 

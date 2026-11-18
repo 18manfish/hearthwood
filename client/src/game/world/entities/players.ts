@@ -2,7 +2,7 @@
 // wading ripples, tool swings and speech bubbles.
 
 import * as THREE from 'three';
-import { type PlayerView, SEA_LEVEL, slideMove, wrapAngle } from '@hearthwood/shared';
+import { type PlayerView, SEA_LEVEL, round2, slideMove, wrapAngle } from '@hearthwood/shared';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { net } from '../../../net.ts';
 import { state } from '../../../state.ts';
@@ -13,7 +13,7 @@ import { makePlayer } from '../../player.ts';
 import { act, drive } from '../../villagerModels.ts';
 import type { Rig } from '../../characters.ts';
 import { mat } from '../../models.ts';
-import { Mover, PLAYER_SPEED, round2 } from '../common.ts';
+import { Mover, PLAYER_SPEED } from '../common.ts';
 import { endCast } from '../tools/fishing.ts';
 import type { World } from '../../World.ts';
 

@@ -245,6 +245,7 @@ hearthwood/
 │  ├─ src/
 │  │  ├─ index.ts      HTTP (register, health, static) + WebSocket upgrade
 │  │  ├─ store.ts      SQLite persistence (dirty tracking, batched writes)
+│  │  ├─ api/          HTTP API, one file per area: accounts, news, gifts, players, islands, game data
 │  │  └─ game/
 │  │     ├─ Game.ts     Composition root: store, rooms, sessions; work lives in services/
 │  │     ├─ services/   Accounts, message router (typed table), rooms, travel, roles, bottles, progress, views, social
@@ -265,7 +266,9 @@ hearthwood/
 │     ├─ game/bend.ts  "Rolling log" world-curvature + wind-sway shader patch
 │     ├─ game/foliage.ts, footprints.ts, paths.ts  Instanced grass & foliage, fading footprints, path layer
 │     ├─ game/models/, characters.ts  Procedural low-poly art (trees, nature, furniture, buildings)
-│     └─ ui/           Character creator, world map, HUD (ui/hud/: hotbar and one file per panel)
+│     ├─ ui/           Character creator, world map, HUD (ui/hud/: hotbar and one file per panel)
+│     ├─ admin/        Admin tool: one file per page; the island editor is islandEditor.ts + its map and side panels
+│     └─ editor/       Game creation tool: tables and forms (main.ts), field editors, 3D preview, dialogue editor
 └─ tools/golden/  Golden tests: hashes of generation, movement and client geometry (npm run test:golden)
 ```
 

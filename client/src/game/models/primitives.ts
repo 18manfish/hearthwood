@@ -63,6 +63,14 @@ export function part(geo: keyof typeof G, color: string | THREE.Material, sx: nu
   return m;
 }
 
+/** A colour darkened (`f` below 1) or lightened towards white (above 1). */
+export function shade(hex: string, f: number) {
+  const c = new THREE.Color(hex);
+  if (f < 1) c.multiplyScalar(f);
+  else c.lerp(new THREE.Color('#ffffff'), f - 1);
+  return `#${c.getHexString()}`;
+}
+
 export function rand(id: string, i = 0) {
   return (hashString(`${id}:${i}`) % 1000) / 1000;
 }

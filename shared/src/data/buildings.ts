@@ -171,13 +171,11 @@ function fixture(type: BuildingType, name: string, icon: string, w: number, h: n
 
 // ── Starter House tiers ─────────────────────────────────────────────────────
 // The Starter House ('cabin') is upgraded in place: same 3×3 footprint, a
-// grander model (client/public/models/house.glb, built by art/house_build.py)
+// grander model (client/public/models/house.glb, built by art/houses/export_houses.py)
 // and a bigger interior at every tier. Upgrades are ordered at the Town Hall
 // and the house stays usable while the builders work.
 
-export type HouseTier = BuildingTier;
-
-export const HOUSE_TIERS: HouseTier[] = [
+export const HOUSE_TIERS: BuildingTier[] = [
   {
     level: 1, name: 'Starter House', icon: '🏠', description: 'A snug clapboard cottage with a red tiled roof, green shutters, flower boxes and a chimney.',
     cost: {}, coins: 0, requires: [], minDay: 2, buildMinutes: 60, interior: 9,
@@ -191,17 +189,6 @@ export const HOUSE_TIERS: HouseTier[] = [
     cost: { wood: 120, stone: 150, clay: 40, iron_ore: 25, sea_glass: 10, pearl: 3 }, coins: 40000, requires: ['town_hall'], minDay: 21, buildMinutes: 480, interior: 13,
   },
 ];
-export const MAX_HOUSE_LEVEL = HOUSE_TIERS.length;
-
-/** The tier a house shows right now (finished upgrades count). */
-export function houseLevel(b: { level?: number; upgrade?: { level: number; at: number } }, now: number): number {
-  const lvl = b.upgrade && b.upgrade.at <= now ? b.upgrade.level : b.level ?? 1;
-  return Math.max(1, Math.min(MAX_HOUSE_LEVEL, lvl));
-}
-
-export function houseTier(b: { level?: number; upgrade?: { level: number; at: number } }, now: number): HouseTier {
-  return HOUSE_TIERS[houseLevel(b, now) - 1];
-}
 
 // ── Tiers for the other buildings ──────────────────────────────────────────
 // The Town Hall and the shops grow with the island in three tiers, villager

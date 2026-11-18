@@ -1,8 +1,4 @@
-import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
-  type RoomView, type ServerMessage, type WorldObject, type BuildingType,
-} from '@hearthwood/shared';
-import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
+import { Bot, check, enterAndBack, exitTo, type Ctx } from '../harness.ts';
 
 export async function run(ctx: Ctx) {
   const { A } = ctx;

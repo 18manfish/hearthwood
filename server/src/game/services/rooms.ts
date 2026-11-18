@@ -2,7 +2,7 @@
 // and reloading islands, villagers coming home, and old-save upgrades.
 
 import {
-  buildingLevel, BIOMES, type Building, BUILDINGS, hashString, houseLevel, interiorSpecFor, LEGACY_ISLAND_SIZE, Rng, sharedLocation, villagerDef,
+  buildingLevel, BIOMES, type Building, BUILDINGS, hashString, interiorSpecFor, LEGACY_ISLAND_SIZE, Rng, sharedLocation, villagerDef,
 } from '@hearthwood/shared';
 import { Room } from '../Room.ts';
 import { Session } from '../Session.ts';
@@ -69,7 +69,7 @@ export function interiorRoom(game: Game, parent: Room, b: Building): Room | null
   const id = `${parent.id}~${b.id}`;
   const existing = game.rooms.get(id);
   const villager = b.villagerId ? villagerDef(b.villagerId) : undefined;
-  const level = b.type === 'cabin' ? houseLevel(b, Date.now()) : 1;
+  const level = b.type === 'cabin' ? buildingLevel(b, Date.now()) : 1;
   if (existing && existing.interior?.spec.style === 'cabin' && (existing.interior.spec.level ?? 1) !== level && existing.sessions.size === 0) {
     // The house was upgraded: rebuild the (bigger) interior, keeping the furniture.
     if (existing.syncRecord()) game.store.markIsland(parent.id);

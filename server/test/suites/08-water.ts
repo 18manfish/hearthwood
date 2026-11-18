@@ -1,8 +1,7 @@
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, bridgeRunsNS, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
-  type RoomView, type ServerMessage, type WorldObject, type BuildingType,
+  Grid, BUILDINGS, Tile, placeError, bridgeRunsNS, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
 } from '@hearthwood/shared';
-import { Bot, BASE, PORT, check, sleep, http, state, enterAndBack, exitTo, type Ctx } from '../harness.ts';
+import { Bot, check, sleep, http, type Ctx } from '../harness.ts';
 
 export async function run(ctx: Ctx) {
   const { A, B, C } = ctx;

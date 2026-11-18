@@ -25,6 +25,11 @@ export const PROTOCOL_VERSION = 15;
  */
 export const LOOK_VERSION = 2;
 
+/** Positions and headings go over the wire with two decimals. */
+export function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
 // ── Character ─────────────────────────────────────────────────────────────
 export type Gender = 'boy' | 'girl';
 export const HAIR_STYLES = {

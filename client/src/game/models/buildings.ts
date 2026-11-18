@@ -1,7 +1,7 @@
 // Buildings: tents, cabins, shops, the town hall, bridges, docks… built from primitives.
 
 import * as THREE from 'three';
-import { type Building, bridgeRunsNS, buildingLevel, BUILDINGS, hashString, houseLevel, tiersOf } from '@hearthwood/shared';
+import { type Building, bridgeRunsNS, buildingLevel, BUILDINGS, hashString, tiersOf } from '@hearthwood/shared';
 import { kitModel } from '../assets/kit.ts';
 import { gltfHouse, gltfVillagerHouse, type SharedMat, villagerHouseStyle } from '../houseAssets.ts';
 import { bend } from '../bend.ts';
@@ -9,7 +9,7 @@ import { own } from '../gpu.ts';
 import { Glow } from '../lightPool.ts';
 import { dockProps } from './dockProps.ts';
 import { emojiSprite } from './furniture.ts';
-import { mat, part } from './primitives.ts';
+import { mat, part, shade } from './primitives.ts';
 
 export function houseBody(g: THREE.Group, w: number, d: number, wallH: number, wall: string, roof: string, door = '#7a4f2a') {
   const ww = w - 0.4;
@@ -258,7 +258,7 @@ export function buildingModel(b: Building, now: number, style: 'tent' | 'cabin' 
       break;
     }
     case 'cabin': {
-      const level = houseLevel(b, now);
+      const level = buildingLevel(b, now);
       const model = gltfHouse(level, houseShared);
       if (model) g.add(model);
       else proceduralHouse(g, b, level, def.color, def.roof);
@@ -322,11 +322,6 @@ function kitBuilding(b: Building, level: number): THREE.Object3D | null {
     ? (role: string) => (role === 'vroof' ? mat(roof) : role === 'vroof_dark' ? mat(shade(roof, 0.8)) : role === 'vwall' ? mat(wall) : null)
     : undefined;
   return kitModel(`bld_${b.type}_${level}`, recolor);
-}
-
-function shade(hex: string, f: number) {
-  const c = new THREE.Color(hex).multiplyScalar(f);
-  return `#${c.getHexString()}`;
 }
 
 /** Fallback Starter House tiers when house.glb isn't available. */

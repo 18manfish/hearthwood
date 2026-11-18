@@ -19,7 +19,6 @@ export function carveCliffs(
   const idx = (x: number, z: number) => z * size + x;
   const inB = (x: number, z: number) => x >= 0 && z >= 0 && x < size && z < size;
   const T = (x: number, z: number) => (inB(x, z) ? tiles[idx(x, z)] : Tile.Sea);
-  const Lv = (x: number, z: number) => (inB(x, z) ? levels[idx(x, z)] : 0);
   const c = size / 2;
 
   // 1. Score ground tiles and pick thresholds by quantile.

@@ -9,8 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import {
-  Grid, decodeTiles, isWaterTile, BUILDINGS, PROTOCOL_VERSION, ISLAND_SIZE, TERRA_REACH, Tile, applyTerrain, distToTile, relocationCost, placeError, classifyWater, FISH, DIRS, SEA_LEVEL, WADE_FLOOR, terraformError, terraformChanges, applyTerrainAndWater,
-  type RoomView, type ServerMessage, type WorldObject, type BuildingType,
+  Grid, decodeTiles, BUILDINGS, PROTOCOL_VERSION, applyTerrain, type RoomView, type ServerMessage, type WorldObject, type BuildingType,
 } from '@hearthwood/shared';
 
 export const here = path.dirname(fileURLToPath(import.meta.url));

@@ -78,10 +78,6 @@ function prepare(node: THREE.Object3D): THREE.Object3D {
   return root;
 }
 
-export function hasKitModel(name: string): boolean {
-  return templates.has(name);
-}
-
 /**
  * A copy of a kit model, or null when it isn't loaded. `recolor` may swap the
  * material of single parts (by role and file colour), e.g. snow on a bush.

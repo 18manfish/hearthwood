@@ -1,14 +1,14 @@
-// Dev commands (only in dev mode): kits, time, weather, seasons, birds, fish, bottles…
+// Dev commands (only in dev mode): kits, time, weather, seasons, birds, fish, bottles, building tiers…
 
 import {
-  BIOMES, type DevCommand, ITEMS, PERMITS, type Season, SEASONS_BY_MODEL, type Weather,
+  BIOMES, type DevCommand, ITEMS, PERMITS, type Season, SEASONS_BY_MODEL, tiersOf, type Weather,
 } from '@hearthwood/shared';
 import { logger } from '../../log.ts';
 import { Session } from '../Session.ts';
 import * as inv from '../inventory.ts';
 import type { Game } from '../Game.ts';
 import { deliverBottles } from './bottles.ts';
-import { progress, sendQuest } from './progress.ts';
+import { ownHouse, progress, sendQuest } from './progress.ts';
 import { homeIsland } from './travel.ts';
 import { sendInv, sendSelf } from './views.ts';
 
@@ -94,6 +94,21 @@ export function devCommand(game: Game, s: Session, cmd: DevCommand, args: string
       room.slowTick(Date.now());
       reply('Construction and growth finished.');
       break;
+    case 'tier': {
+      // A building's tier, right now: /tier <level> [building id] – your own house unless told otherwise.
+      const island = room?.interior ? game.rooms.get(room.interior.parentId) : room;
+      if (!island || island.kind !== 'island') return reply('Only on islands.');
+      const b = args[1] ? island.buildings.get(args[1]) : ownHouse(island, p.id);
+      if (!b) return reply(args[1] ? 'That building isn\u2019t on this island.' : 'Build your Starter House first.');
+      const tiers = tiersOf(b.type);
+      const tier = tiers[n(0, 0) - 1];
+      if (!tier) return reply(tiers.length ? `Usage: tier <1\u2013${tiers.length}> [building id]` : 'That building has no tiers.');
+      // The same road a finished upgrade takes (new model for everyone, the owner's panels).
+      b.upgrade = { level: tier.level, at: Date.now() - 1 };
+      island.slowTick(Date.now());
+      reply(`${tier.icon} ${tier.name} (tier ${tier.level})${room?.interior?.buildingId === b.id ? ' \u2013 step outside and back in for the new rooms' : ''}.`);
+      break;
+    }
     case 'respawn':
       if (!room) return;
       for (const r of room.respawns) r.at = 0;

@@ -1,6 +1,8 @@
 // 🐞 Developer debug panel (F3): live stats and dev commands.
 
-import { BIOMES, DEV_COMMANDS, type DevCommand, ITEM_LIST, type Season, SEASONS_BY_MODEL, type Weather } from '@hearthwood/shared';
+import {
+  BIOMES, BUILDINGS, buildingLevel, DEV_COMMANDS, type DevCommand, ITEM_LIST, type Season, SEASONS_BY_MODEL, tiersOf, villagerDef, type Weather,
+} from '@hearthwood/shared';
 import { debug } from '../../../game/World.ts';
 import { setAutoResolution } from '../../../game/world/scene/viewport.ts';
 import { net } from '../../../net.ts';
@@ -29,7 +31,6 @@ export function debugPanel(hud: Hud) {
     ].filter(Boolean).join('\n');
   };
   drawStats();
-  hud.debugTimer = setInterval(drawStats, 400);
 
   const slider = (label: string, min: number, max: number, step: number, get: () => number, set: (v: number) => void, fmt = (v: number) => v.toFixed(3)) => {
     const out = h('span', { class: 'muted' }, fmt(get()));
@@ -85,16 +86,40 @@ export function debugPanel(hud: Hud) {
   const qty = h('input', { type: 'number', value: '10', min: 1, max: 999, style: 'width:70px' }) as HTMLInputElement;
   const srvWeather = h('select', {}, h('option', { value: 'normal' }, '(normal)'), weathers.map((x) => h('option', { value: x }, x))) as HTMLSelectElement;
   const b = (label: string, fn: () => void) => h('button', { class: 'btn small', disabled: !state.dev, onclick: fn }, label);
+
+  // Building tiers: your own house, or (outdoors) any building here that has tiers.
+  const mine = (o: { type: string; ownerId?: string }) => o.type === 'cabin' && (o.ownerId ?? state.room?.ownerId) === state.self?.id;
+  const tiered = [...w.buildings.values()].filter((x) => tiersOf(x.type).length && !mine(x));
+  const which = h('select', { onchange: () => drawTiers() },
+    h('option', { value: '' }, '🏠 My house'),
+    tiered.map((x) => h('option', { value: x.id }, `${BUILDINGS[x.type].icon} ${(x.villagerId && villagerDef(x.villagerId)?.name) || BUILDINGS[x.type].name} (${x.id})`))) as HTMLSelectElement;
+  const tierButtons = h('span', { class: 'row' });
+  const chosen = () => (which.value ? w.buildings.get(which.value) : [...w.buildings.values()].find(mine));
+  const drawTiers = () => {
+    tierButtons.replaceChildren(...tiersOf(chosen()?.type ?? 'cabin').map((tier) =>
+      h('button', { class: 'btn small', disabled: !state.dev, title: tier.description, onclick: () => dev('tier', tier.level, ...(which.value ? [which.value] : [])) },
+        `${tier.icon} ${tier.name}`)));
+    markTier();
+  };
+  /** Light the tier the building has now (it changes when the server answers). */
+  const markTier = () => {
+    const at = chosen();
+    const now = at ? buildingLevel(at, Date.now()) : 0;
+    [...tierButtons.children].forEach((el, i) => el.classList.toggle('ghost', i + 1 !== now));
+  };
+  drawTiers();
   body.append(
     h('h3', { style: 'margin-top:6px' }, 'Server (dev mode)'),
     state.dev ? '' : h('p', { class: 'muted' }, 'These need the server running with DEV_FAST=1 (npm run dev:fast).'),
     h('div', { class: 'row' }, b('🧰 Material kit', () => dev('kit')), b('🪙 +1000', () => dev('coins', 1000)), b('🪙 +10000', () => dev('coins', 10000)), b('🗑️ Empty pockets', () => dev('clearinv')), b('📜 All permits', () => dev('permits')), b('🐦 Land birds', () => dev('birds', 4)), b('🐟 Fish shadows', () => dev('fish', 4))),
     h('div', { class: 'row' }, b('📅 Day +1', () => dev('day', 1)), b('Day +7', () => dev('day', 7)), b('Day +30', () => dev('day', 30)), b('⏩ Finish building & growth', () => dev('finish')), b('♻️ Respawn resources', () => dev('respawn'))),
     h('div', { class: 'row' }, give, qty, b('Give', () => dev('give', give.value, Math.max(1, Math.min(999, Number(qty.value) || 1))))),
+    h('div', { class: 'row' }, h('b', {}, 'Building tier'), which, tierButtons),
     h('div', { class: 'row' }, h('b', {}, 'Island weather'), srvWeather, b('Set (30 min)', () => dev('weather', srvWeather.value))),
     h('div', { class: 'row' }, b('📍 Teleport to spawn', () => state.room && dev('tp', state.room.spawn.x, state.room.spawn.z)),
       b('🏠 Go home', () => net.send({ t: 'travel', to: { kind: 'home' } }))),
     h('p', { class: 'muted' }, `Chat shortcuts: ${DEV_COMMANDS.map((c) => '/' + c).join(' ')}`),
   );
+  hud.debugTimer = setInterval(() => { drawStats(); markTier(); }, 400);
   hud.frame('🐞 Developer debug', body, 'debug');
 }

@@ -146,6 +146,12 @@ export async function run(ctx: Ctx) {
     await A.chat('/finish');
     const up = await A.wait('bAdd', (m) => m.b.some((b) => b.id === store.id && b.level === 2)).catch(() => null);
     check(!!up, 'the tool store is now tier 2');
+    // The debug menu's tier buttons: any tier at once, down as well as up.
+    for (const level of [3, 2]) {
+      A.send({ t: 'dev', cmd: 'tier', args: [String(level), store.id] });
+      const set = await A.wait('bAdd', (m) => m.b.some((b) => b.id === store.id && b.level === level && !b.upgrade)).catch(() => null);
+      check(!!set, `the dev tier command puts the tool store on tier ${level}`);
+    }
     const tentB = A.room.buildings.find((b) => b.type === 'tent');
     if (tentB) check(!(await A.act({ k: 'upgrade', id: tentB.id })).ok, 'a tent has no tiers');
   }

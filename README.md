@@ -50,7 +50,7 @@ In VS Code, press **Ctrl+Shift+B** to run the dev task. Use **F5 → "Debug game
 - **Client-only visual controls:** world-bend strength, a time-of-day shift, a weather preview, and shadows, labels and collision-grid overlay on or off.
 - **Server buttons (need `dev:fast`):** material kit, coins, day +1/+7/+30, finish construction and growth, respawn resources now, give any item, set the island's weather, teleport to spawn.
 
-The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /season /tp /clearinv /permits /birds /beach /bottles`. `/permits` grants both Town Hall permits, `/birds [n]` lands a few birds next to you, `/beach [n]` washes things up on the beach, and `/bottles` delivers every bottle still at sea right away.
+The server buttons are sent as a schema-checked `dev` message, and the server rejects them unless it runs with `DEV_FAST=1`. The same commands work as chat shortcuts: `/kit /give /coins /day /finish /respawn /weather /season /tp /clearinv /permits /birds /fish /beach /bottles /tier`. `/permits` grants both Town Hall permits, `/birds [n]` lands a few birds next to you, `/beach [n]` washes things up on the beach, `/bottles` delivers every bottle still at sea right away, and `/tier <level> [building id]` puts a building on any of its tiers at once (your own house unless you name another; the debug panel has a button per tier).
 
 ---
 
